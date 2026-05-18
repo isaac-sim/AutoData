@@ -1,0 +1,4 @@
+[submodule "submodules/IsaacLab-Arena"]
+	path = submodules/IsaacLab-Arena
+	url = git@github.com:isaac-sim/IsaacLab-Arena.git
+	branch = main
