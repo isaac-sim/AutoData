@@ -17,7 +17,7 @@ IsaacAutoData
 Clone the repo and initialize all submodules:
 
 ```bash
-git clone --recurse-submodules git@github.com:peterd-NV/IsaacAutoData.git
+git clone --recurse-submodules git@github.com:isaac-sim/Isaac-AutoData.git
 ```
 
 If you already cloned without `--recurse-submodules`, run:

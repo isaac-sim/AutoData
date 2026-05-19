@@ -80,6 +80,9 @@ install_all() {
     echo ">>> Installing Isaac Auto Data"
     pip install -e "${REPO_ROOT}"
 
+    echo ">>> Pinning daqp to 0.8.5 for Pink IK"
+    uv pip install "daqp==0.8.5"
+
     echo ">>> Installation complete."
 }
 
