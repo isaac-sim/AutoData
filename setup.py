@@ -24,9 +24,10 @@ setup(
     description="Isaac Auto Data.",
     packages=find_packages(
         include=[
-            "isaac_auto_data_core*",
-            "isaac_auto_data_interfaces*",
-            "isaac_auto_data_examples*",
+            "isaac_autodata_core*",
+            "isaac_autodata_interfaces*",
+            "isaac_autodata_utils*",
+            "isaac_autodata_examples*",
         ]
     ),
     python_requires=">=3.12",
