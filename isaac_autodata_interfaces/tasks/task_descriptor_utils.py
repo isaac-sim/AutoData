@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import fields
 from typing import Any, get_origin, get_type_hints
 
-from isaac_autodata_interfaces.subtask_spec import (
+from isaac_autodata_interfaces.tasks.subtask_spec import (
     ALGO_PARAMS_REGISTRY,
     Subtask,
     SubtaskAlgoParams,

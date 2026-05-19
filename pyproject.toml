@@ -51,14 +51,15 @@ known_third_party = [
 
 # Imports from this repository
 known_first_party = [
-    "isaac_auto_data_core",
-    "isaac_auto_data_interfaces",
-    "isaac_auto_data_examples",
+    "isaac_autodata_core",
+    "isaac_autodata_interfaces",
+    "isaac_autodata_utils",
+    "isaac_autodata_examples",
 ]
 
 [tool.pyright]
 
-include = ["isaac_auto_data_core", "isaac_auto_data_interfaces", "isaac_auto_data_examples"]
+include = ["isaac_autodata_core", "isaac_autodata_interfaces", "isaac_autodata_utils", "isaac_autodata_examples"]
 exclude = [
     "**/__pycache__",
     "**/_isaac_sim",

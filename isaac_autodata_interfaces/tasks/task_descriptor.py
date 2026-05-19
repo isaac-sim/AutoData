@@ -11,8 +11,8 @@ from dataclasses import MISSING, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from isaac_autodata_interfaces.subtask_spec import ALGO_PARAMS_REGISTRY, Subtask, SubtaskAlgoParams
-from isaac_autodata_interfaces.task_descriptor_utils import build_subtask, validate_task_dict
+from isaac_autodata_interfaces.tasks.subtask_spec import ALGO_PARAMS_REGISTRY, Subtask, SubtaskAlgoParams
+from isaac_autodata_interfaces.tasks.task_descriptor_utils import build_subtask, validate_task_dict
 
 
 @dataclass

@@ -1,0 +1,23 @@
+# Embodiment descriptor for the Franka Cube Stack task.
+#
+# Action vector layout (7-D):
+#   [0..3)   delta position
+#   [3..6)   delta rotation (compact axis-angle, axis * angle in radians)
+#   [6..7)   gripper actuation
+#
+# The pose part is the delta from the current EEF pose to the target,
+# clipped to [-1, 1] after noise.
+
+type: delta_pose_ik_single_arm
+name: franka_panda
+description: Franka 7-DOF arm with parallel gripper, delta-pose IK control.
+
+eef_name: franka
+
+pose_obs_keys:
+  pos: eef_pos
+  quat: eef_quat
+
+action_layout:
+  gripper_dim: 1
+  clip_pose_action_to_unit: true

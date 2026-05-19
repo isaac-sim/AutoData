@@ -1,0 +1,36 @@
+# Embodiment descriptor for the GR1T2 PickPlace task.
+#
+# Action vector layout (36-D):
+#   [0..7)    left  [pos(3), quat_wxyz(4)] absolute target pose
+#   [7..14)   right [pos(3), quat_wxyz(4)] absolute target pose
+#   [14..36)  interleaved hand-joint actuation (22 joints in URDF order)
+#
+# Hand-joint URDF order (interleaved L/R):
+#   L_proximal(5), R_proximal(5), L_intermediate(5), R_intermediate(5),
+#   L_distal(1),   R_distal(1)
+# Indices below are positions within the [14..36) hand-joints slice (0-based).
+
+type: absolute_pose_whole_body_bimanual
+name: gr1t2
+description: GR1T2 humanoid, bimanual whole-body absolute-pose IK control.
+
+eefs:
+  left:
+    pose_obs_keys:
+      pos: left_eef_pos
+      quat: left_eef_quat
+    # 11 left-hand joints: 5 proximal + 5 intermediate + 1 distal
+    gripper_action_indices: [0, 1, 2, 3, 4, 10, 11, 12, 13, 14, 20]
+
+  right:
+    pose_obs_keys:
+      pos: right_eef_pos
+      quat: right_eef_quat
+    # 11 right-hand joints: 5 proximal + 5 intermediate + 1 distal
+    gripper_action_indices: [5, 6, 7, 8, 9, 15, 16, 17, 18, 19, 21]
+
+action_layout:
+  left_pose_slice:   [0, 7]      # 3 pos + 4 quat
+  right_pose_slice:  [7, 14]
+  hand_joints_slice: [14, 36]    # 22 interleaved hand joints
+  canonicalize_quat: true
