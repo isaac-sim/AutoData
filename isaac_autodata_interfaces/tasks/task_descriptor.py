@@ -11,8 +11,9 @@ from dataclasses import MISSING, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from isaac_autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint
 from isaac_autodata_interfaces.tasks.subtask_spec import ALGO_PARAMS_REGISTRY, Subtask, SubtaskAlgoParams
-from isaac_autodata_interfaces.tasks.task_descriptor_utils import build_subtask, validate_task_dict
+from isaac_autodata_interfaces.tasks.task_descriptor_utils import build_constraint, build_subtask, validate_task_dict
 
 
 @dataclass
@@ -24,11 +25,13 @@ class TaskDescriptor:
         description: Human/agent-readable task description.
         subtasks: Per-end-effector ordered subtask lists. Keys are eef names;
             each value is the ordered sequence of :class:`Subtask` for that eef.
+        constraints: Cross-subtask coordination/sequential constraints (multi-eef tasks).
     """
 
     name: str = MISSING
     description: str = ""
     subtasks: dict[str, list[Subtask]] = field(default_factory=dict)
+    constraints: list[SubtaskConstraint] = field(default_factory=list)
     env: Any = None
 
     def bind_env(self, env: Any) -> None:
@@ -81,6 +84,15 @@ class TaskDescriptor:
         assert eef_name in self.subtasks, f"Unknown eef name: {eef_name}"
         return [st.algo_params for st in self.subtasks[eef_name]]
 
+    def get_task_constraints(self) -> list[SubtaskConstraint]:
+        """Return the task's cross-subtask constraints, in declaration order.
+
+        Each :class:`SubtaskConstraint` exposes ``generate_runtime_subtask_constraints()``, the
+        verbatim expansion the data generator consumes — mirroring ``MimicEnvCfg.task_constraint_configs``.
+        """
+
+        return self.constraints
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> TaskDescriptor:
         """Build a TaskDescriptor from a YAML config file.
@@ -96,10 +108,29 @@ class TaskDescriptor:
                   description: <str>           # optional
                   subtask_start_signal: <str>  # optional
                   subtask_term_signal: <str>   # optional
-                  algo_params:                 # optional; fields match the
-                    <kwarg>: <value>           #   chosen algo's dataclass
+
+                  # algorithm-agnostic generation knobs:
+                  selection_strategy: <str>
+                  selection_strategy_kwargs: {<kwarg>: <value>}
+                  first_subtask_start_offset_range: [<int>, <int>]
+                  subtask_term_offset_range: [<int>, <int>]
+                  action_noise: <float>
+                  num_interpolation_steps: <int>
+                  num_fixed_steps: <int>
+                  apply_noise_during_interpolation: <bool>
+                  algo_params:                 # optional, fields match the
+                    <kwarg>: <value>           # chosen algo's dataclass
                 - ...
               <other_eef>: [...]
+            constraints:                        # optional, cross-subtask constraints
+              - constraint_type: <str>          # "sequential" | "coordination"
+                eef_subtask_constraint_tuple: [[<eef>, <int>], [<eef>, <int>]]
+                sequential_min_time_diff: <int>            # sequential only
+                coordination_scheme: <str>                 # coordination only
+                coordination_scheme_pos_noise_scale: <float>
+                coordination_scheme_rot_noise_scale: <float>
+                coordination_synchronize_start: <bool>
+              - ...
         """
 
         with open(path) as f:
@@ -121,9 +152,11 @@ class TaskDescriptor:
             eef_name: [build_subtask(st, algo_cls) for st in eef_subtasks]
             for eef_name, eef_subtasks in data["subtasks"].items()
         }
+        constraints = [build_constraint(c) for c in data.get("constraints", [])]
 
         return cls(
             name=data["name"],
             description=data.get("description", ""),
             subtasks=subtasks,
+            constraints=constraints,
         )

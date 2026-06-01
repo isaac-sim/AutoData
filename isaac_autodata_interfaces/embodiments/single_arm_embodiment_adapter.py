@@ -12,16 +12,15 @@ is ``[delta_pos(3), delta_rot_axis_angle(3), gripper]``.
 
 from __future__ import annotations
 
+import torch
 from abc import abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-import torch
-
-from isaac_autodata_utils import pose_math
 from isaac_autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 from isaac_autodata_interfaces.embodiments.embodiment_types import PoseObsKeys
+from isaac_autodata_utils import pose_math
 
 # The delta-pose IK action layout is always 3D Cartesian + 3D compact
 # axis-angle. No real upstream embodiment varies these widths.
@@ -45,7 +44,6 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
         obs_group: Observation-buffer group name under which the pose obs
             keys live. Defaults to ``"policy"`` to match Isaac Lab's
             standard observation manager.
-        env: Live env handle exposing ``obs_buf``. Bound via :meth:`bind_env`.
     """
 
     name: str
@@ -54,21 +52,15 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
     pose_obs_keys: PoseObsKeys
     gripper_action_dim: int
     obs_group: str = "policy"
-    env: Any = None
 
     def __post_init__(self) -> None:
         assert self.name, "name must be a non-empty string"
         assert self.eef_name, "eef_name must be a non-empty string"
         assert self.gripper_action_dim >= 0, f"gripper_action_dim must be non-negative, got {self.gripper_action_dim}"
-        assert isinstance(self.pose_obs_keys, PoseObsKeys), (
-            f"pose_obs_keys must be a PoseObsKeys instance, got {type(self.pose_obs_keys).__name__}"
-        )
+        assert isinstance(
+            self.pose_obs_keys, PoseObsKeys
+        ), f"pose_obs_keys must be a PoseObsKeys instance, got {type(self.pose_obs_keys).__name__}"
         assert self.obs_group, "obs_group must be a non-empty string"
-
-    def bind_env(self, env: Any) -> None:
-        """Attach the live env. Asserts the env was not previously bound."""
-        assert self.env is None, "env already bound"
-        self.env = env
 
     def get_eef_names(self) -> tuple[str, ...]:
         return (self.eef_name,)
@@ -131,9 +123,9 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
             Dictionary ``{eef_name: target_pose}`` with target pose of shape
             (num_envs, 4, 4).
         """
-        assert action.dim() == 2 and action.shape[-1] == self.action_dim, (
-            f"action shape must be (num_envs, {self.action_dim}), got {tuple(action.shape)}"
-        )
+        assert (
+            action.dim() == 2 and action.shape[-1] == self.action_dim
+        ), f"action shape must be (num_envs, {self.action_dim}), got {tuple(action.shape)}"
         delta_pos = action[:, :3]
         delta_aa = action[:, 3:6]
         curr_pos, curr_rot = pose_math.unmake_pose(self.get_eef_poses(env_ids=None)[self.eef_name])
@@ -164,12 +156,12 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
         Returns:
             Env action tensor of shape (action_dim,).
         """
-        assert set(target_eef_pose_dict) == {self.eef_name}, (
-            f"target_eef_pose_dict must have exactly one key '{self.eef_name}', got {list(target_eef_pose_dict)}"
-        )
-        assert set(gripper_action_dict) == {self.eef_name}, (
-            f"gripper_action_dict must have exactly one key '{self.eef_name}', got {list(gripper_action_dict)}"
-        )
+        assert set(target_eef_pose_dict) == {
+            self.eef_name
+        }, f"target_eef_pose_dict must have exactly one key '{self.eef_name}', got {list(target_eef_pose_dict)}"
+        assert set(gripper_action_dict) == {
+            self.eef_name
+        }, f"gripper_action_dict must have exactly one key '{self.eef_name}', got {list(gripper_action_dict)}"
         target_pose = target_eef_pose_dict[self.eef_name]
         assert target_pose.shape == (4, 4), f"target pose must be (4, 4), got {tuple(target_pose.shape)}"
         target_pos, target_rot = pose_math.unmake_pose(target_pose)
@@ -185,9 +177,9 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
         if self.clip_pose_action_to_unit:
             pose_action = torch.clamp(pose_action, -1.0, 1.0)
         gripper_action = gripper_action_dict[self.eef_name]
-        assert gripper_action.shape == (self.gripper_action_dim,), (
-            f"gripper action must be ({self.gripper_action_dim},), got {tuple(gripper_action.shape)}"
-        )
+        assert gripper_action.shape == (
+            self.gripper_action_dim,
+        ), f"gripper action must be ({self.gripper_action_dim},), got {tuple(gripper_action.shape)}"
         return torch.cat([pose_action, gripper_action], dim=0)
 
     def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -201,9 +193,9 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
         Returns:
             Dictionary ``{eef_name: gripper_actions}``.
         """
-        assert actions.shape[-1] == self.action_dim, (
-            f"actions last dim must be {self.action_dim}, got {actions.shape[-1]}"
-        )
+        assert (
+            actions.shape[-1] == self.action_dim
+        ), f"actions last dim must be {self.action_dim}, got {actions.shape[-1]}"
         return {self.eef_name: actions[..., -self.gripper_action_dim :]}
 
     @classmethod
