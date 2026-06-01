@@ -16,16 +16,15 @@ bimanual (two arms with independent IK).
 
 from __future__ import annotations
 
+import torch
 from abc import abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-import torch
-
-from isaac_autodata_utils import pose_math
 from isaac_autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 from isaac_autodata_interfaces.embodiments.embodiment_types import PoseObsKeys
+from isaac_autodata_utils import pose_math
 
 
 @dataclass(frozen=True)
@@ -59,7 +58,6 @@ class BimanualEmbodimentAdapter(EmbodimentAdapter):
         right: Right-EEF configuration.
         obs_group: Observation-buffer group name under which the per-EEF
             pose obs keys live. Defaults to ``"policy"``.
-        env: Live env handle exposing ``obs_buf``. Bound via :meth:`bind_env`.
     """
 
     name: str
@@ -67,27 +65,21 @@ class BimanualEmbodimentAdapter(EmbodimentAdapter):
     left: BimanualEefConfig
     right: BimanualEefConfig
     obs_group: str = "policy"
-    env: Any = None
 
     def __post_init__(self) -> None:
         assert self.name, "name must be a non-empty string"
-        assert isinstance(self.left, BimanualEefConfig), (
-            f"left must be a BimanualEefConfig, got {type(self.left).__name__}"
-        )
-        assert isinstance(self.right, BimanualEefConfig), (
-            f"right must be a BimanualEefConfig, got {type(self.right).__name__}"
-        )
-        assert self.left.name != self.right.name, (
-            f"left and right EEFs must have distinct names; both are {self.left.name!r}"
-        )
+        assert isinstance(
+            self.left, BimanualEefConfig
+        ), f"left must be a BimanualEefConfig, got {type(self.left).__name__}"
+        assert isinstance(
+            self.right, BimanualEefConfig
+        ), f"right must be a BimanualEefConfig, got {type(self.right).__name__}"
+        assert (
+            self.left.name != self.right.name
+        ), f"left and right EEFs must have distinct names; both are {self.left.name!r}"
         overlap = set(self.left.gripper_action_indices) & set(self.right.gripper_action_indices)
         assert not overlap, f"left and right gripper_action_indices overlap on {sorted(overlap)}"
         assert self.obs_group, "obs_group must be a non-empty string"
-
-    def bind_env(self, env: Any) -> None:
-        """Attach the live env. Asserts the env was not previously bound."""
-        assert self.env is None, "env already bound"
-        self.env = env
 
     def get_eef_names(self) -> tuple[str, ...]:
         return (self.left.name, self.right.name)
@@ -154,13 +146,13 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
         for label, sl in (("left", self.left_pose_slice), ("right", self.right_pose_slice)):
             assert sl[1] - sl[0] == 7, f"{label}_pose_slice must span 7 dims, got {sl[1] - sl[0]}"
         assert self.right_pose_slice[0] == self.left_pose_slice[1], (
-            f"right_pose_slice must immediately follow left_pose_slice; "
+            "right_pose_slice must immediately follow left_pose_slice; "
             f"got left=({self.left_pose_slice[0]}, {self.left_pose_slice[1]}), "
             f"right=({self.right_pose_slice[0]}, {self.right_pose_slice[1]})"
         )
-        assert self.hand_joints_slice[0] == self.right_pose_slice[1], (
-            "hand_joints_slice must immediately follow right_pose_slice"
-        )
+        assert (
+            self.hand_joints_slice[0] == self.right_pose_slice[1]
+        ), "hand_joints_slice must immediately follow right_pose_slice"
         hand_joints_width = self.hand_joints_slice[1] - self.hand_joints_slice[0]
         all_indices = set(self.left.gripper_action_indices) | set(self.right.gripper_action_indices)
         if all_indices:
@@ -184,9 +176,9 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
             Dictionary with one key per EEF, each value of shape
             (num_envs, 4, 4).
         """
-        assert action.dim() == 2 and action.shape[-1] == self.action_dim, (
-            f"action shape must be (num_envs, {self.action_dim}), got {tuple(action.shape)}"
-        )
+        assert (
+            action.dim() == 2 and action.shape[-1] == self.action_dim
+        ), f"action shape must be (num_envs, {self.action_dim}), got {tuple(action.shape)}"
         result: dict[str, torch.Tensor] = {}
         for eef, sl in ((self.left, self.left_pose_slice), (self.right, self.right_pose_slice)):
             pos = action[:, sl[0] : sl[0] + 3]
@@ -218,12 +210,12 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
             Env action tensor of shape (action_dim,).
         """
         expected_keys = {self.left.name, self.right.name}
-        assert set(target_eef_pose_dict) == expected_keys, (
-            f"target_eef_pose_dict must have exactly {expected_keys}, got {set(target_eef_pose_dict)}"
-        )
-        assert set(gripper_action_dict) == expected_keys, (
-            f"gripper_action_dict must have exactly {expected_keys}, got {set(gripper_action_dict)}"
-        )
+        assert (
+            set(target_eef_pose_dict) == expected_keys
+        ), f"target_eef_pose_dict must have exactly {expected_keys}, got {set(target_eef_pose_dict)}"
+        assert (
+            set(gripper_action_dict) == expected_keys
+        ), f"gripper_action_dict must have exactly {expected_keys}, got {set(gripper_action_dict)}"
         left_pos, left_quat = self._encode_pose(target_eef_pose_dict[self.left.name])
         right_pos, right_quat = self._encode_pose(target_eef_pose_dict[self.right.name])
         if action_noise_dict is not None:
@@ -244,9 +236,9 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
             where each tensor's last dim equals that arm's
             ``len(gripper_action_indices)``.
         """
-        assert actions.shape[-1] == self.action_dim, (
-            f"actions last dim must be {self.action_dim}, got {actions.shape[-1]}"
-        )
+        assert (
+            actions.shape[-1] == self.action_dim
+        ), f"actions last dim must be {self.action_dim}, got {actions.shape[-1]}"
         hand_joints = actions[..., self.hand_joints_slice[0] : self.hand_joints_slice[1]]
         return {
             self.left.name: self._gather_indices(hand_joints, self.left.gripper_action_indices),
@@ -274,12 +266,12 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
         width = self.hand_joints_slice[1] - self.hand_joints_slice[0]
         left = gripper_action_dict[self.left.name]
         right = gripper_action_dict[self.right.name]
-        assert left.shape == (len(self.left.gripper_action_indices),), (
-            f"left gripper action must be shape ({len(self.left.gripper_action_indices)},), got {tuple(left.shape)}"
-        )
-        assert right.shape == (len(self.right.gripper_action_indices),), (
-            f"right gripper action must be shape ({len(self.right.gripper_action_indices)},), got {tuple(right.shape)}"
-        )
+        assert left.shape == (
+            len(self.left.gripper_action_indices),
+        ), f"left gripper action must be shape ({len(self.left.gripper_action_indices)},), got {tuple(left.shape)}"
+        assert right.shape == (
+            len(self.right.gripper_action_indices),
+        ), f"right gripper action must be shape ({len(self.right.gripper_action_indices)},), got {tuple(right.shape)}"
         out = torch.zeros(width, dtype=left.dtype, device=left.device)
         out[list(self.left.gripper_action_indices)] = left
         out[list(self.right.gripper_action_indices)] = right

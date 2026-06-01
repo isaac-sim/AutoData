@@ -13,55 +13,79 @@ episodes obtained any other way (live recordings, in-memory replays, tests).
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler
 
 from isaac_autodata_core.datagen_info import DatagenInfo
 
+if TYPE_CHECKING:
+    from isaac_autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+    from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor
+
 
 class DataGenInfoPool:
     """Container of source :class:`DatagenInfo` records keyed by EEF subtask boundary."""
 
-    def __init__(self, env, env_cfg, device, asyncio_lock: asyncio.Lock | None = None) -> None:
+    def __init__(
+        self,
+        task_descriptor: TaskDescriptor,
+        embodiment_adapter: EmbodimentAdapter,
+        device,
+        uses_start_signals: bool,
+        asyncio_lock: asyncio.Lock | None = None,
+    ) -> None:
         """
         Args:
-            env: Live env handle; used by ``_add_episode`` to project recorded actions into gripper
-                actions (via ``env.actions_to_gripper_actions``).
-            env_cfg: ``MimicEnvCfg``; the pool reads subtask config metadata from it.
+            task_descriptor: Source of subtask semantics.
+            embodiment_adapter: Projects recorded actions into per-eef gripper actions via
+                ``actions_to_gripper_actions``.
             device: Target torch device for episode tensors.
+            uses_start_signals: Whether the algorithm reads subtask start signals
+                (SkillGen-only). Selects how subtask boundaries are parsed and validated.
             asyncio_lock: Optional lock guarding concurrent ``add_episode`` calls when a single pool
                 feeds multiple async generators.
         """
         self._datagen_infos: list[DatagenInfo] = []
         self._subtask_boundaries: dict[str, list[list[tuple[int, int]]]] = {}
 
-        self.env = env
-        self.env_cfg = env_cfg
+        self.task_descriptor = task_descriptor
+        self.embodiment_adapter = embodiment_adapter
         self.device = device
+        self.uses_start_signals = uses_start_signals
         self._asyncio_lock = asyncio_lock
 
         self.subtask_term_signal_names: dict[str, list[str]] = {}
         self.subtask_term_offset_ranges: dict[str, list[tuple[int, int]]] = {}
         self.subtask_start_offset_ranges: dict[str, list[tuple[int, int]]] = {}
 
-        for eef_name, eef_subtask_configs in env_cfg.subtask_configs.items():
-            self.subtask_term_signal_names[eef_name] = [c.subtask_term_signal for c in eef_subtask_configs]
-            self.subtask_start_offset_ranges[eef_name] = [c.subtask_start_offset_range for c in eef_subtask_configs]
-            self.subtask_term_offset_ranges[eef_name] = [c.subtask_term_offset_range for c in eef_subtask_configs]
+        for eef_name in task_descriptor.get_eef_names():
+            subtasks = task_descriptor.get_subtasks(eef_name)
+            self.subtask_term_signal_names[eef_name] = [st.subtask_term_signal for st in subtasks]
+            self.subtask_term_offset_ranges[eef_name] = [st.subtask_term_offset_range for st in subtasks]
+            self.subtask_start_offset_ranges[eef_name] = [
+                getattr(st.algo_params, "subtask_start_offset_range", (0, 0)) for st in subtasks
+            ]
 
     @classmethod
     def from_hdf5(
         cls,
         file_path: str,
-        env,
-        env_cfg,
+        task_descriptor: TaskDescriptor,
+        embodiment_adapter: EmbodimentAdapter,
         device,
-        *,
+        uses_start_signals: bool,
         select_demo_keys: list[str] | None = None,
         asyncio_lock: asyncio.Lock | None = None,
     ) -> DataGenInfoPool:
         """Build a pool by reading every (or selected) episode from an HDF5 dataset."""
-        pool = cls(env=env, env_cfg=env_cfg, device=device, asyncio_lock=asyncio_lock)
+        pool = cls(
+            task_descriptor=task_descriptor,
+            embodiment_adapter=embodiment_adapter,
+            device=device,
+            uses_start_signals=uses_start_signals,
+            asyncio_lock=asyncio_lock,
+        )
         handler = HDF5DatasetFileHandler()
         handler.open(file_path)
         episode_names = handler.get_episode_names()
@@ -107,7 +131,7 @@ class DataGenInfoPool:
         subtask_term_signals_dict = ep_grp["obs"]["datagen_info"]["subtask_term_signals"]
         subtask_start_signals_dict = ep_grp["obs"]["datagen_info"].get("subtask_start_signals")
 
-        gripper_actions = self.env.actions_to_gripper_actions(ep_grp["actions"])
+        gripper_actions = self.embodiment_adapter.actions_to_gripper_actions(ep_grp["actions"])
 
         ep_datagen_info = DatagenInfo(
             eef_pose=eef_pose,
@@ -121,9 +145,7 @@ class DataGenInfoPool:
 
         for eef_name in self.subtask_term_signal_names.keys():
             self._subtask_boundaries.setdefault(eef_name, [])
-            self._subtask_boundaries[eef_name].append(
-                self._parse_subtask_boundaries(eef_name, ep_datagen_info, ep_grp)
-            )
+            self._subtask_boundaries[eef_name].append(self._parse_subtask_boundaries(eef_name, ep_datagen_info, ep_grp))
 
     def _parse_subtask_boundaries(
         self,
@@ -132,7 +154,7 @@ class DataGenInfoPool:
         ep_grp,
     ) -> list[tuple[int, int]]:
         """Compute ``[(start, end), ...]`` indices for each subtask of ``eef_name`` in this episode."""
-        use_skillgen = self.env_cfg.datagen_config.use_skillgen
+        use_skillgen = self.uses_start_signals
         signal_names = self.subtask_term_signal_names[eef_name]
         boundaries: list[tuple[int, int]] = []
         prev_end = 0
@@ -155,9 +177,7 @@ class DataGenInfoPool:
                 end_index = int((term_indicators[1:] - term_indicators[:-1]).nonzero()[0][0]) + 2
 
             if end_index <= start_index:
-                raise ValueError(
-                    f"subtask {signal_name!r} has non-increasing boundary: {start_index} -> {end_index}"
-                )
+                raise ValueError(f"subtask {signal_name!r} has non-increasing boundary: {start_index} -> {end_index}")
             boundaries.append((start_index, end_index))
             prev_end = end_index
 
@@ -169,14 +189,14 @@ class DataGenInfoPool:
         start_offsets = self.subtask_start_offset_ranges[eef_name]
         term_offsets = self.subtask_term_offset_ranges[eef_name]
 
-        if self.env_cfg.datagen_config.use_skillgen:
+        if self.uses_start_signals:
             for i, (s, e) in enumerate(boundaries):
                 assert s + start_offsets[i][1] < e + term_offsets[i][0], f"subtask {i} empty in worst case"
                 if i == len(boundaries) - 1:
                     break
-                assert e + term_offsets[i][1] < boundaries[i + 1][0] + start_offsets[i + 1][0], (
-                    f"subtasks {i} and {i + 1} overlap in worst case"
-                )
+                assert (
+                    e + term_offsets[i][1] < boundaries[i + 1][0] + start_offsets[i + 1][0]
+                ), f"subtasks {i} and {i + 1} overlap in worst case"
         else:
             for i in range(1, len(boundaries)):
                 prev_max = term_offsets[i - 1][1]

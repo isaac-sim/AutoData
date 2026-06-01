@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-ENV_NAME="isaac_auto_data"
+ENV_NAME="isaac_autodata"
 PYTHON_VERSION="3.12"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
