@@ -14,14 +14,16 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from copy import deepcopy
+from typing import TYPE_CHECKING
 
 import torch
 
 import isaaclab.utils.math as PoseUtils
-from isaaclab.envs import ManagerBasedRLMimicEnv
 from isaaclab.managers import TerminationTermCfg
+
+if TYPE_CHECKING:
+    from isaac_autodata_interfaces.datastream.datastream import Datastream
 
 
 class Waypoint:
@@ -276,7 +278,7 @@ class MultiWaypoint:
 
     async def execute(
         self,
-        env: ManagerBasedRLMimicEnv,
+        datastream: "Datastream",
         success_term: TerminationTermCfg,
         env_id: int = 0,
         env_action_queue: asyncio.Queue | None = None,
@@ -284,35 +286,31 @@ class MultiWaypoint:
     ) -> dict:
         """Issue one env step from the assembled multi-EEF action.
 
+        Action encoding is routed through the embodiment adapter (via Datastream). Env-side
+        controller ops (``env.step``, ``env.obs_buf``, ``env.scene.get_state``) are reached
+        through the Datastream ``get_env()`` escape hatch — by design, they stay on env.
+
         Args:
-            env: Mimic env instance.
+            datastream: Composed datastream; provides action encoding and env access.
             success_term: Termination term used to check task success after the step.
             env_id: Vectorized env index.
             env_action_queue: If given, action is enqueued for the simulator-side loop instead of
                 stepped here; the result observation is read from ``env.obs_buf``.
             export_step: Whether the recorder should export this tick.
         """
-        state = env.scene.get_state(is_relative=True)
+        env = datastream.get_env()
+        state = datastream.get_scene_state(is_relative=True)
 
         target_eef_pose_dict = {name: w.pose for name, w in self.waypoints.items()}
         gripper_action_dict = {name: w.gripper_action for name, w in self.waypoints.items()}
+        action_noise_dict = {name: w.noise for name, w in self.waypoints.items()}
 
-        if "action_noise_dict" in inspect.signature(env.target_eef_pose_to_action).parameters:
-            action_noise_dict = {name: w.noise for name, w in self.waypoints.items()}
-            play_action = env.target_eef_pose_to_action(
-                target_eef_pose_dict=target_eef_pose_dict,
-                gripper_action_dict=gripper_action_dict,
-                action_noise_dict=action_noise_dict,
-                env_id=env_id,
-            )
-        else:
-            # Legacy env subclasses that take a single scalar noise instead of a per-eef dict.
-            play_action = env.target_eef_pose_to_action(
-                target_eef_pose_dict=target_eef_pose_dict,
-                gripper_action_dict=gripper_action_dict,
-                noise=max(w.noise for w in self.waypoints.values()),
-                env_id=env_id,
-            )
+        play_action = datastream.target_eef_pose_to_action(
+            target_eef_pose_dict=target_eef_pose_dict,
+            gripper_action_dict=gripper_action_dict,
+            action_noise_dict=action_noise_dict,
+            env_id=env_id,
+        )
 
         if play_action.dim() == 1:
             play_action = play_action.unsqueeze(0)

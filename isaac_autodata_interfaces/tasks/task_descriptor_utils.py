@@ -10,6 +10,7 @@ import enum
 from dataclasses import fields
 from typing import Any, get_origin, get_type_hints
 
+from isaac_autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from isaac_autodata_interfaces.tasks.subtask_constraint_spec import (
     SubtaskConstraint,
     SubTaskConstraintCoordinationScheme,
@@ -41,7 +42,7 @@ def validate_task_dict(data: dict[str, Any]) -> None:
     assert isinstance(data, dict), f"Expected top-level dict, got {type(data).__name__}"
 
     required_keys = {"name", "algo", "subtasks"}
-    optional_keys = {"description", "constraints"}
+    optional_keys = {"description", "constraints", "generation_policy"}
     keys = set(data)
     missing = required_keys - keys
     assert not missing, f"Missing required top-level keys: {sorted(missing)}"
@@ -97,6 +98,14 @@ def validate_task_dict(data: dict[str, Any]) -> None:
         assert (
             not c_unknown
         ), f"constraints[{i}] has unknown keys {sorted(c_unknown)}. Allowed: {sorted(constraint_keys)}"
+
+    policy = data.get("generation_policy", {})
+    assert isinstance(policy, dict), f"'generation_policy' must be a dict, got {type(policy).__name__}"
+    policy_keys = {f.name for f in fields(GenerationPolicy)}
+    policy_unknown = set(policy) - policy_keys
+    assert (
+        not policy_unknown
+    ), f"'generation_policy' has unknown keys {sorted(policy_unknown)}. Allowed: {sorted(policy_keys)}"
 
 
 def _coerce_enum(value: Any, enum_cls: type[enum.IntEnum]) -> enum.IntEnum:

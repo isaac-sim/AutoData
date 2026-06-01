@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from isaac_autodata_core.data_generator import DataGenerator, _EEFGenerationState
     from isaac_autodata_core.waypoint import Waypoint, WaypointTrajectory
+    from isaac_autodata_interfaces.datastream.datastream import Datastream
 
 REGISTERED_ALGORITHMS: dict[str, type[GenerationAlgorithm]] = {}
 
@@ -67,8 +68,12 @@ class GenerationAlgorithm(metaclass=_AlgorithmMeta):
     uses_subtask_start_signals: bool = False
     supports_coordination: bool = False
 
-    def validate_setup(self, env_cfg) -> None:
-        """Algorithm-specific config validation. Default: no-op."""
+    def validate_setup(self, datastream: "Datastream") -> None:
+        """Algorithm-specific validation against the composed datastream. Default: no-op.
+
+        Subclasses can read ``datastream.get_subtasks(eef)``, ``datastream.get_task_constraints()``,
+        or ``datastream.get_env()`` (escape hatch) to enforce algorithm-specific invariants.
+        """
 
     def plan_subtask_trajectory(
         self,
@@ -96,7 +101,7 @@ class GenerationAlgorithm(metaclass=_AlgorithmMeta):
 
         Args:
             data_generator: The owning :class:`DataGenerator`; exposes ``generate_eef_subtask_trajectory``,
-                ``merge_eef_subtask_trajectory``, ``env``, ``src_demo_datagen_info_pool``.
+                ``merge_eef_subtask_trajectory``, ``datastream``, ``src_demo_datagen_info_pool``.
             env_id: Env index this trajectory belongs to.
             eef_name: End-effector key.
             eef_state: Mutable per-EEF state container.
@@ -229,7 +234,10 @@ class SkillGen(GenerationAlgorithm):
         target_pose = subtask_traj[0].pose
         target_gripper_action = subtask_traj[0].gripper_action
 
-        env = data_generator.env
+        # SkillGen needs a piece of env-specific state (`get_expected_attached_object`) that does
+        # not fit cleanly into TaskDescriptor or EmbodimentAdapter. This is the legitimate use of
+        # the Datastream get_env() escape hatch; treat it as a localized coupling.
+        env = data_generator.datastream.get_env()
         expected_attached_object = None
         if hasattr(env, "get_expected_attached_object"):
             expected_attached_object = env.get_expected_attached_object(

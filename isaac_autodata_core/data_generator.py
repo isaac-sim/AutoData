@@ -19,16 +19,10 @@ from typing import Any
 import numpy as np
 import torch
 
-from isaaclab.envs import (
-    ManagerBasedRLMimicEnv,
-    MimicEnvCfg,
-    SubTaskConstraintType,
-)
 from isaaclab.managers import TerminationTermCfg
 
 from isaac_autodata_core.algorithms import GenerationAlgorithm
 from isaac_autodata_core.datagen_info import DatagenInfo
-from isaac_autodata_core.pool import DataGenInfoPool
 from isaac_autodata_core.selection_strategy import make_selection_strategy
 from isaac_autodata_core.transforms import (
     get_delta_pose_with_scheme,
@@ -36,6 +30,11 @@ from isaac_autodata_core.transforms import (
     transform_source_data_segment_using_object_pose,
 )
 from isaac_autodata_core.waypoint import MultiWaypoint, Waypoint, WaypointSequence, WaypointTrajectory
+from isaac_autodata_interfaces.datastream.datastream import Datastream
+from isaac_autodata_interfaces.tasks.subtask_constraint_spec import (
+    SubTaskConstraintCoordinationScheme,
+    SubTaskConstraintType,
+)
 
 
 @dataclass(frozen=True)
@@ -88,24 +87,29 @@ class DataGenerator:
 
     def __init__(
         self,
-        env: ManagerBasedRLMimicEnv,
+        datastream: Datastream,
         algorithm: GenerationAlgorithm,
-        source_pool: DataGenInfoPool,
         *,
         demo_keys: list[str] | None = None,
     ) -> None:
-        self.env = env
-        self.env_cfg = env.cfg
-        assert isinstance(self.env_cfg, MimicEnvCfg)
-
+        """
+        Args:
+            datastream: Composed task descriptor + embodiment adapter + source pool + env handle.
+                Datastream has already validated that the task descriptor and embodiment adapter
+                agree on EEF names by construction.
+            algorithm: Generation algorithm plug-in (Mimic, DexMimicGen, SkillGen, ...).
+            demo_keys: Optional subset of source-demo keys to consider; ``None`` uses every demo
+                in ``datastream.source_pool``.
+        """
+        self.datastream = datastream
         self.algorithm = algorithm
-        self.src_demo_datagen_info_pool = source_pool
+        self.src_demo_datagen_info_pool = datastream.source_pool
         self.demo_keys = demo_keys
 
         self._validate_eef_count_for_algorithm()
         self._validate_coordination_for_algorithm()
         self._validate_terminal_subtask_offsets()
-        self.algorithm.validate_setup(self.env_cfg)
+        self.algorithm.validate_setup(self.datastream)
 
     def __repr__(self) -> str:
         return f"DataGenerator(algorithm={self.algorithm.name!r}, demo_keys={self.demo_keys})"
@@ -115,28 +119,29 @@ class DataGenerator:
     # ------------------------------------------------------------------
 
     def _validate_eef_count_for_algorithm(self) -> None:
-        num_eefs = len(self.env_cfg.subtask_configs)
+        num_eefs = len(self.datastream.get_eef_names())
         expected = self.algorithm.expected_eef_count
         ok = num_eefs == expected if isinstance(expected, int) else num_eefs in expected
         if not ok:
             raise ValueError(
                 f"Algorithm {self.algorithm.name!r} expects {expected} EEF(s), "
-                f"env_cfg defines {num_eefs}"
+                f"task descriptor defines {num_eefs}"
             )
 
     def _validate_coordination_for_algorithm(self) -> None:
-        has_coord_cfg = bool(self.env_cfg.task_constraint_configs)
+        has_coord_cfg = bool(self.datastream.get_task_constraints())
         if has_coord_cfg and not self.algorithm.supports_coordination:
             raise ValueError(
-                f"env_cfg.task_constraint_configs is non-empty but algorithm "
+                f"task descriptor declares constraints but algorithm "
                 f"{self.algorithm.name!r} does not support coordination"
             )
 
     def _validate_terminal_subtask_offsets(self) -> None:
         # Upstream invariant: the last subtask of each EEF has no termination signal to offset.
-        for subtask_configs in self.env_cfg.subtask_configs.values():
-            assert subtask_configs[-1].subtask_term_offset_range[0] == 0
-            assert subtask_configs[-1].subtask_term_offset_range[1] == 0
+        for eef_name in self.datastream.get_eef_names():
+            last_subtask = self.datastream.get_subtasks(eef_name)[-1]
+            assert last_subtask.subtask_term_offset_range[0] == 0
+            assert last_subtask.subtask_term_offset_range[1] == 0
 
     # ------------------------------------------------------------------
     # Subtask boundary randomization
@@ -154,20 +159,26 @@ class DataGenerator:
 
         for eef_name, raw_boundaries in self.src_demo_datagen_info_pool.subtask_boundaries.items():
             boundaries = np.array(raw_boundaries)
-            eef_subtask_cfgs = self.env_cfg.subtask_configs[eef_name]
+            eef_subtasks = self.datastream.get_subtasks(eef_name)
 
             first_start_offsets = np.random.randint(
-                low=eef_subtask_cfgs[0].first_subtask_start_offset_range[0],
-                high=eef_subtask_cfgs[0].first_subtask_start_offset_range[0] + 1,
+                low=eef_subtasks[0].first_subtask_start_offset_range[0],
+                high=eef_subtasks[0].first_subtask_start_offset_range[0] + 1,
                 size=boundaries.shape[0],
             )
             boundaries[:, 0, 0] += first_start_offsets
 
             for i in range(boundaries.shape[1]):
                 if randomize_starts:
+                    # subtask_start_offset_range lives on the algorithm-specific algo_params
+                    # (SkillGen today). Fall back to (0, 0) if the active algorithm does not
+                    # declare it — mirrors the defensive lookup in DataGenInfoPool.
+                    start_range = getattr(
+                        eef_subtasks[i].algo_params, "subtask_start_offset_range", (0, 0)
+                    )
                     start_offset = np.random.randint(
-                        low=eef_subtask_cfgs[i].subtask_start_offset_range[0],
-                        high=eef_subtask_cfgs[i].subtask_start_offset_range[1] + 1,
+                        low=start_range[0],
+                        high=start_range[1] + 1,
                         size=boundaries.shape[0],
                     )
                     boundaries[:, i, 0] += start_offset
@@ -175,8 +186,8 @@ class DataGenerator:
                     boundaries[:, i, 0] = boundaries[:, i - 1, 1]
 
                 end_offsets = np.random.randint(
-                    low=eef_subtask_cfgs[i].subtask_term_offset_range[0],
-                    high=eef_subtask_cfgs[i].subtask_term_offset_range[1] + 1,
+                    low=eef_subtasks[i].subtask_term_offset_range[0],
+                    high=eef_subtasks[i].subtask_term_offset_range[1] + 1,
                     size=boundaries.shape[0],
                 )
                 boundaries[:, i, 1] = boundaries[:, i, 1] + end_offsets
@@ -250,17 +261,20 @@ class DataGenerator:
         selected_src_demo_inds: dict,
     ) -> WaypointTrajectory:
         """Build a transformed :class:`WaypointTrajectory` for ``subtask_ind`` of ``eef_name``."""
-        subtask_configs = self.env_cfg.subtask_configs[eef_name]
-        subtask_object_name = subtask_configs[subtask_ind].object_ref
+        subtasks = self.datastream.get_subtasks(eef_name)
+        policy = self.datastream.get_generation_policy()
+        # Subtask.object_ref is empty string when no object is involved; normalize to None so the
+        # rest of the pipeline can keep using the upstream `is not None` convention.
+        subtask_object_name = subtasks[subtask_ind].object_ref or None
         subtask_object_pose = (
-            self.env.get_object_poses(env_ids=[env_id])[subtask_object_name][0]
+            self.datastream.get_object_poses(env_ids=[env_id])[subtask_object_name][0]
             if subtask_object_name is not None
             else None
         )
 
         is_first_subtask = subtask_ind == 0
-        need_selection = is_first_subtask or self.env_cfg.datagen_config.generation_select_src_per_subtask
-        if not self.env_cfg.datagen_config.generation_select_src_per_arm:
+        need_selection = is_first_subtask or policy.select_src_per_subtask
+        if not policy.select_src_per_arm:
             need_selection = need_selection and selected_src_demo_inds[eef_name] is None
 
         use_delta_transform, coord_transform_scheme = self._resolve_coordination_for_subtask(
@@ -276,19 +290,19 @@ class DataGenerator:
         if need_selection:
             selected_src_demo_inds[eef_name] = self.select_source_demo(
                 eef_name=eef_name,
-                eef_pose=self.env.get_robot_eef_pose(env_ids=[env_id], eef_name=eef_name)[0],
+                eef_pose=self.datastream.get_robot_eef_pose(env_ids=[env_id], eef_name=eef_name)[0],
                 object_pose=subtask_object_pose,
                 src_demo_current_subtask_boundaries=all_randomized_subtask_boundaries[eef_name][:, subtask_ind],
                 subtask_object_name=subtask_object_name,
-                selection_strategy_name=subtask_configs[subtask_ind].selection_strategy,
-                selection_strategy_kwargs=subtask_configs[subtask_ind].selection_strategy_kwargs,
+                selection_strategy_name=subtasks[subtask_ind].selection_strategy,
+                selection_strategy_kwargs=subtasks[subtask_ind].selection_strategy_kwargs,
             )
 
         assert selected_src_demo_inds[eef_name] is not None
         selected_src_demo_ind = selected_src_demo_inds[eef_name]
 
-        if not self.env_cfg.datagen_config.generation_select_src_per_arm and need_selection:
-            for other_eef_name in self.env_cfg.subtask_configs.keys():
+        if not policy.select_src_per_arm and need_selection:
+            for other_eef_name in self.datastream.get_eef_names():
                 selected_src_demo_inds[other_eef_name] = selected_src_demo_ind
 
         selected_boundary = all_randomized_subtask_boundaries[eef_name][selected_src_demo_ind, subtask_ind]
@@ -311,7 +325,7 @@ class DataGenerator:
             else None
         )
 
-        if is_first_subtask or self.env_cfg.datagen_config.generation_transform_first_robot_pose:
+        if is_first_subtask or policy.transform_first_robot_pose:
             # Prepending the recorded EEF pose makes interpolation seed from the robot's actual
             # pose rather than the first target pose.
             src_eef_poses = torch.cat([src_subtask_eef_poses[0:1], src_subtask_target_poses], dim=0)
@@ -337,7 +351,7 @@ class DataGenerator:
         seq = WaypointSequence.from_poses(
             poses=transformed_eef_poses,
             gripper_actions=src_subtask_gripper_actions,
-            action_noise=subtask_configs[subtask_ind].action_noise,
+            action_noise=subtasks[subtask_ind].action_noise,
         )
         traj = WaypointTrajectory()
         traj.add_waypoint_sequence(seq)
@@ -373,8 +387,6 @@ class DataGenerator:
 
         assert "transform" not in constraint, "transform should not be set for concurrent task"
         scheme = constraint["coordination_scheme"]
-        from isaaclab.envs import SubTaskConstraintCoordinationScheme
-
         if scheme != SubTaskConstraintCoordinationScheme.REPLAY:
             assert subtask_object_name is not None, (
                 f"object reference required for {scheme} coordination scheme"
@@ -464,9 +476,10 @@ class DataGenerator:
         """
         is_first_subtask = subtask_index == 0
         traj_to_execute = WaypointTrajectory()
+        subtask = self.datastream.get_subtask(eef_name, subtask_index)
 
         use_prev_traj = force_use_prev_traj or (
-            self.env_cfg.datagen_config.generation_interpolate_from_last_target_pose
+            self.datastream.get_generation_policy().interpolate_from_last_target_pose
             and not is_first_subtask
         )
 
@@ -475,19 +488,18 @@ class DataGenerator:
             init_sequence = WaypointSequence(sequence=[prev_executed_traj[-1]])
         else:
             init_sequence = WaypointSequence.from_poses(
-                poses=self.env.get_robot_eef_pose(env_ids=[env_id], eef_name=eef_name)[0].unsqueeze(0),
+                poses=self.datastream.get_robot_eef_pose(env_ids=[env_id], eef_name=eef_name)[0].unsqueeze(0),
                 gripper_actions=subtask_trajectory[0].gripper_action.unsqueeze(0),
-                action_noise=self.env_cfg.subtask_configs[eef_name][subtask_index].action_noise,
+                action_noise=subtask.action_noise,
             )
         traj_to_execute.add_waypoint_sequence(init_sequence)
 
-        subtask_cfg = self.env_cfg.subtask_configs[eef_name][subtask_index]
         traj_to_execute.merge(
             subtask_trajectory,
-            num_steps_interp=subtask_cfg.num_interpolation_steps,
-            num_steps_fixed=subtask_cfg.num_fixed_steps,
+            num_steps_interp=subtask.num_interpolation_steps,
+            num_steps_fixed=subtask.num_fixed_steps,
             action_noise=(
-                float(subtask_cfg.apply_noise_during_interpolation) * subtask_cfg.action_noise
+                float(subtask.apply_noise_during_interpolation) * subtask.action_noise
             ),
         )
 
@@ -517,7 +529,7 @@ class DataGenerator:
         runtime_constraints = self._build_runtime_subtask_constraints()
         eef_states = self._initialize_eef_states()
         selected_src_demo_inds: dict[str, int | None] = {
-            name: None for name in self.env_cfg.subtask_configs.keys()
+            name: None for name in self.datastream.get_eef_names()
         }
         buffers = _GenerationBuffers()
 
@@ -567,7 +579,7 @@ class DataGenerator:
             multi_waypoint = MultiWaypoint(eef_waypoints)
 
             exec_results = await multi_waypoint.execute(
-                env=self.env,
+                datastream=self.datastream,
                 success_term=success_term,
                 env_id=env_id,
                 env_action_queue=env_action_queue,
@@ -585,12 +597,15 @@ class DataGenerator:
         actions: torch.Tensor | list[torch.Tensor]
         actions = torch.cat(buffers.actions, dim=0) if buffers.actions else buffers.actions
 
-        self.env.recorder_manager.set_success_to_episodes(
+        # Recorder lifecycle stays on env by design (see datastream-context.md): Datastream is a
+        # read facade, controller-side mutation is reached through the get_env() escape hatch.
+        env = self.datastream.get_env()
+        env.recorder_manager.set_success_to_episodes(
             env_id_tensor,
-            torch.tensor([[buffers.success]], dtype=torch.bool, device=self.env.device),
+            torch.tensor([[buffers.success]], dtype=torch.bool, device=self.datastream.device),
         )
         if export_demo:
-            self.env.recorder_manager.export_episodes(env_id_tensor)
+            env.recorder_manager.export_episodes(env_id_tensor)
 
         return GenerationResult(
             initial_state=initial_state,
@@ -609,20 +624,22 @@ class DataGenerator:
         env_id: int,
         env_reset_queue: asyncio.Queue,
     ) -> tuple[torch.Tensor, dict]:
-        env_id_tensor = torch.tensor([env_id], dtype=torch.int64, device=self.env.device)
-        self.env.recorder_manager.reset(env_ids=env_id_tensor)
+        env_id_tensor = torch.tensor([env_id], dtype=torch.int64, device=self.datastream.device)
+        # Recorder + reset queue stay on env (see datastream-context.md). The initial scene state
+        # snapshot is read through the Datastream facade.
+        self.datastream.get_env().recorder_manager.reset(env_ids=env_id_tensor)
         await env_reset_queue.put(env_id)
         await env_reset_queue.join()
-        return env_id_tensor, self.env.scene.get_state(is_relative=True)
+        return env_id_tensor, self.datastream.get_scene_state(is_relative=True)
 
     def _build_runtime_subtask_constraints(self) -> dict:
         runtime_constraints: dict = {}
-        for subtask_constraint in self.env_cfg.task_constraint_configs:
+        for subtask_constraint in self.datastream.get_task_constraints():
             runtime_constraints.update(subtask_constraint.generate_runtime_subtask_constraints())
         return runtime_constraints
 
     def _initialize_eef_states(self) -> dict[str, _EEFGenerationState]:
-        return {name: _EEFGenerationState() for name in self.env_cfg.subtask_configs.keys()}
+        return {name: _EEFGenerationState() for name in self.datastream.get_eef_names()}
 
     def _maybe_refresh_randomized_subtask_boundaries(
         self,
@@ -640,7 +657,7 @@ class DataGenerator:
         eef_states: dict[str, _EEFGenerationState],
     ) -> dict[str, Waypoint]:
         eef_waypoint_dict: dict[str, Waypoint] = {}
-        for eef_name in sorted(self.env_cfg.subtask_configs.keys()):
+        for eef_name in sorted(self.datastream.get_eef_names()):
             eef_state = eef_states[eef_name]
             if eef_state.subtask_step_index is None:
                 continue
@@ -803,7 +820,7 @@ class DataGenerator:
                 "Press Enter to continue..."
             )
 
-        last_subtask_index = len(self.env_cfg.subtask_configs[eef_name]) - 1
+        last_subtask_index = self.datastream.num_subtasks(eef_name) - 1
         if eef_state.current_subtask_index == last_subtask_index:
             eef_state.subtasks_done = True
             # Repeat the final waypoint to keep this EEF stationary while others finish.

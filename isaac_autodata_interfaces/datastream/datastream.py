@@ -14,6 +14,7 @@ from isaaclab.utils.datasets import EpisodeData
 
 from isaac_autodata_core.pool import DataGenInfoPool
 from isaac_autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+from isaac_autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from isaac_autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint
 from isaac_autodata_interfaces.tasks.subtask_spec import Subtask, SubtaskAlgoParams
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor
@@ -148,6 +149,11 @@ class Datastream:
 
         return self.task_descriptor.get_task_constraints()
 
+    def get_generation_policy(self) -> GenerationPolicy:
+        """Return the cross-cutting generation flags (source-demo selection, interpolation seeding)."""
+
+        return self.task_descriptor.get_generation_policy()
+
     def get_object_refs(self, eef_name: str) -> list[str]:
         """Return per-subtask object reference names for the EEF, in subtask order."""
 
@@ -224,6 +230,16 @@ class Datastream:
                 obj_state["root_pose"][index, :3], pose_math.matrix_from_quat(obj_state["root_pose"][index, 3:7])
             )
         return object_pose_matrix
+
+    def get_scene_state(self, is_relative: bool = True) -> dict:
+        """Return the raw scene-state snapshot from the underlying env.
+
+        Used by the data generator to record the env's initial state at episode start. Prefer
+        :meth:`get_object_poses` for object pose math; this method is the raw scene-state escape
+        hatch for callers that need the full dict (e.g. recorder ``initial_state``).
+        """
+
+        return self.env.scene.get_state(is_relative=is_relative)
 
     # ------------------------------------------------------------------
     # Source-demo pool access

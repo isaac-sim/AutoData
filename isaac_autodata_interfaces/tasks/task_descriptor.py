@@ -11,6 +11,7 @@ from dataclasses import MISSING, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from isaac_autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from isaac_autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint
 from isaac_autodata_interfaces.tasks.subtask_spec import ALGO_PARAMS_REGISTRY, Subtask, SubtaskAlgoParams
 from isaac_autodata_interfaces.tasks.task_descriptor_utils import build_constraint, build_subtask, validate_task_dict
@@ -26,12 +27,15 @@ class TaskDescriptor:
         subtasks: Per-end-effector ordered subtask lists. Keys are eef names;
             each value is the ordered sequence of :class:`Subtask` for that eef.
         constraints: Cross-subtask coordination/sequential constraints (multi-eef tasks).
+        generation_policy: Cross-cutting generation flags (source-demo selection scope, first-pose
+            anchoring, interpolation source). Defaults match upstream MimicEnvCfg.datagen_config.
     """
 
     name: str = MISSING
     description: str = ""
     subtasks: dict[str, list[Subtask]] = field(default_factory=dict)
     constraints: list[SubtaskConstraint] = field(default_factory=list)
+    generation_policy: GenerationPolicy = field(default_factory=GenerationPolicy)
     env: Any = None
 
     def bind_env(self, env: Any) -> None:
@@ -93,6 +97,11 @@ class TaskDescriptor:
 
         return self.constraints
 
+    def get_generation_policy(self) -> GenerationPolicy:
+        """Return the cross-cutting generation flags."""
+
+        return self.generation_policy
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> TaskDescriptor:
         """Build a TaskDescriptor from a YAML config file.
@@ -131,6 +140,11 @@ class TaskDescriptor:
                 coordination_scheme_rot_noise_scale: <float>
                 coordination_synchronize_start: <bool>
               - ...
+            generation_policy:                  # optional; defaults match upstream Mimic
+              select_src_per_subtask: <bool>
+              select_src_per_arm: <bool>
+              transform_first_robot_pose: <bool>
+              interpolate_from_last_target_pose: <bool>
         """
 
         with open(path) as f:
@@ -153,10 +167,12 @@ class TaskDescriptor:
             for eef_name, eef_subtasks in data["subtasks"].items()
         }
         constraints = [build_constraint(c) for c in data.get("constraints", [])]
+        generation_policy = GenerationPolicy(**data.get("generation_policy", {}))
 
         return cls(
             name=data["name"],
             description=data.get("description", ""),
             subtasks=subtasks,
             constraints=constraints,
+            generation_policy=generation_policy,
         )

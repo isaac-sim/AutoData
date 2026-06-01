@@ -11,6 +11,8 @@ Usage::
     python isaac_autodata_examples/generate_dataset.py \\
         --task <task_name> \\
         --alg {mimicgen|dexmimicgen|skillgen} \\
+        --task_descriptor <task_descriptor.yaml> \\
+        --embodiment <embodiment.yaml> \\
         --input_file <source.hdf5> \\
         --output_file <out.hdf5> \\
         --generation_num_trials <N> \\
@@ -23,6 +25,9 @@ The ``--alg`` choice selects the :class:`GenerationAlgorithm` plug-in driving th
 * ``skillgen`` — single-arm SkillGen. SkillGen depends on a motion-planner interface; until the
   planner code is ported into this repo, the CLI satisfies that interface with the upstream Arena
   ``CuroboPlanner``.
+
+The CLI composes a :class:`Datastream` from the task descriptor YAML, the embodiment YAML, the
+live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -43,6 +48,18 @@ parser.add_argument(
     choices=_ALG_CHOICES,
     required=True,
     help="Generation algorithm. skillgen needs a motion planner (auto-wired from upstream curobo).",
+)
+parser.add_argument(
+    "--task_descriptor",
+    type=str,
+    required=True,
+    help="Path to the task descriptor YAML (defines subtasks, constraints, generation policy).",
+)
+parser.add_argument(
+    "--embodiment",
+    type=str,
+    required=True,
+    help="Path to the embodiment YAML (defines the robot's pose ↔ action transforms).",
 )
 parser.add_argument("--generation_num_trials", type=int, default=None, help="Number of demos to generate.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
@@ -70,8 +87,6 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import asyncio  # noqa: E402
-import inspect  # noqa: E402
-import logging  # noqa: E402
 import random  # noqa: E402
 import sys  # noqa: E402
 import traceback  # noqa: E402
@@ -88,9 +103,10 @@ from isaaclab_mimic.datagen.utils import get_env_name_from_dataset, setup_output
 
 import isaaclab_tasks  # noqa: F401, E402
 
-from isaac_autodata_core import DataGenerator, DataGenInfoPool, get_algorithm  # noqa: E402
-
-logger = logging.getLogger(__name__)
+from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
+from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
+from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
+from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
 
 async def run_data_generator(
@@ -129,26 +145,31 @@ def setup_async_generation(
     env: ManagerBasedRLMimicEnv,
     num_envs: int,
     input_file: str,
+    task_descriptor_yaml: str,
+    embodiment_yaml: str,
     success_term,
     algorithm,
     pause_subtask: bool,
 ) -> dict:
-    """Build the shared pool, a single :class:`DataGenerator`, and ``num_envs`` async tasks."""
+    """Build the Datastream, a single :class:`DataGenerator`, and ``num_envs`` async tasks."""
     asyncio_event_loop = asyncio.get_event_loop()
     env_reset_queue: asyncio.Queue = asyncio.Queue()
     env_action_queue: asyncio.Queue = asyncio.Queue()
     pool_lock = asyncio.Lock()
 
-    shared_pool = DataGenInfoPool.from_hdf5(
-        file_path=input_file,
+    task_descriptor = TaskDescriptor.from_yaml(task_descriptor_yaml)
+    embodiment_adapter = embodiment_adapter_from_yaml(embodiment_yaml)
+    datastream = Datastream(
         env=env,
-        env_cfg=env.cfg,
-        device=env.device,
+        task_descriptor=task_descriptor,
+        embodiment_adapter=embodiment_adapter,
+        source_dataset_path=input_file,
         asyncio_lock=pool_lock,
+        uses_start_signals=algorithm.uses_subtask_start_signals,
     )
-    print(f"Loaded {shared_pool.num_datagen_infos} source episodes into the datagen pool")
+    print(f"Loaded {datastream.num_source_demos} source episodes into the datagen pool")
 
-    data_generator = DataGenerator(env=env, algorithm=algorithm, source_pool=shared_pool)
+    data_generator = DataGenerator(datastream=datastream, algorithm=algorithm)
     stats = {"num_success": 0, "num_failures": 0, "num_attempts": 0}
 
     tasks = []
@@ -172,7 +193,7 @@ def setup_async_generation(
         "event_loop": asyncio_event_loop,
         "reset_queue": env_reset_queue,
         "action_queue": env_action_queue,
-        "info_pool": shared_pool,
+        "info_pool": datastream.source_pool,
         "stats": stats,
     }
 
@@ -231,12 +252,6 @@ def main() -> None:
     if not isinstance(env, ManagerBasedRLMimicEnv):
         raise ValueError(f"Env {env_name!r} is not a ManagerBasedRLMimicEnv")
 
-    if "action_noise_dict" not in inspect.signature(env.target_eef_pose_to_action).parameters:
-        logger.warning(
-            f"{env_name!r}'s target_eef_pose_to_action takes the deprecated 'noise' parameter; "
-            "please migrate to action_noise_dict."
-        )
-
     # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
     motion_planners: dict | None = None
     alg_kwargs: dict = {}
@@ -245,8 +260,10 @@ def main() -> None:
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 
-    # Mirror the algorithm's expectation onto the env config so the pool's boundary parser
-    # reads start signals when required.
+    # Mirror the algorithm's start-signal expectation onto the upstream env config so anything
+    # downstream that still reads ``env.cfg.datagen_config.use_skillgen`` (e.g. the upstream
+    # ``env_loop``) stays consistent. The Datastream constructed below uses the algorithm's flag
+    # directly via ``uses_start_signals=algorithm.uses_subtask_start_signals``.
     env_cfg.datagen_config.use_skillgen = algorithm.uses_subtask_start_signals
 
     random.seed(env.cfg.datagen_config.seed)
@@ -260,6 +277,8 @@ def main() -> None:
             env=env,
             num_envs=args_cli.num_envs,
             input_file=args_cli.input_file,
+            task_descriptor_yaml=args_cli.task_descriptor,
+            embodiment_yaml=args_cli.embodiment,
             success_term=success_term,
             algorithm=algorithm,
             pause_subtask=args_cli.pause_subtask,
