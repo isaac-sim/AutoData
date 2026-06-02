@@ -1,3 +1,8 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # Copyright (c) 2026, The Isaac Auto Data Project Developers.
 # All rights reserved.
 #
@@ -180,6 +185,25 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
         assert gripper_action.shape == (
             self.gripper_action_dim,
         ), f"gripper action must be ({self.gripper_action_dim},), got {tuple(gripper_action.shape)}"
+
+        # --- DEBUG: every 10th step, dump curr / target / delta to spot scaling, NaN, frame, or sign-flip issues ---
+        self._dbg_step = getattr(self, "_dbg_step", 0) + 1
+        if self._dbg_step % 10 == 1:
+            cp = curr_pos.detach().cpu().tolist()
+            tp = target_pos.detach().cpu().tolist()
+            dp = delta_pos.detach().cpu().tolist()
+            da = delta_aa.detach().cpu().tolist()
+            g = gripper_action.detach().cpu().tolist()
+            print(
+                f"[ADAPTER] step={self._dbg_step:4d}  "
+                f"curr=({cp[0]:+.3f},{cp[1]:+.3f},{cp[2]:+.3f})  "
+                f"target=({tp[0]:+.3f},{tp[1]:+.3f},{tp[2]:+.3f})  "
+                f"dpos=({dp[0]:+.4f},{dp[1]:+.4f},{dp[2]:+.4f})  "
+                f"delta_aa=({da[0]:+.3f},{da[1]:+.3f},{da[2]:+.3f})  "
+                f"grip={g}",
+                flush=True,
+            )
+
         return torch.cat([pose_action, gripper_action], dim=0)
 
     def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:

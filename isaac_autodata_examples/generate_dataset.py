@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # Copyright (c) 2026, The Isaac Auto Data Project Developers.
 # All rights reserved.
 #
@@ -22,9 +27,10 @@ The ``--alg`` choice selects the :class:`GenerationAlgorithm` plug-in driving th
 
 * ``mimicgen`` — single-arm MimicGen.
 * ``dexmimicgen`` — two-arm MimicGen with subtask coordination constraints.
-* ``skillgen`` — single-arm SkillGen. SkillGen depends on a motion-planner interface; until the
-  planner code is ported into this repo, the CLI satisfies that interface with the upstream Arena
-  ``CuroboPlanner``.
+* ``skillgen`` — single-arm SkillGen. The CLI builds one
+  :class:`~isaac_autodata_interfaces.motion_planners.curobo.CuroboPlanner` per env to satisfy the
+  motion-planner protocol. Requires cuRobo installed in the env (see
+  ``submodules/IsaacLab-Arena/submodules/IsaacLab/docs/source/overview/imitation-learning/skillgen.rst``).
 
 The CLI composes a :class:`Datastream` from the task descriptor YAML, the embodiment YAML, the
 live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
@@ -63,9 +69,7 @@ parser.add_argument(
 )
 parser.add_argument("--generation_num_trials", type=int, default=None, help="Number of demos to generate.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
-parser.add_argument(
-    "--input_file", type=str, required=True, help="Source dataset HDF5 file."
-)
+parser.add_argument("--input_file", type=str, required=True, help="Source dataset HDF5 file.")
 parser.add_argument(
     "--output_file",
     type=str,
@@ -77,6 +81,16 @@ parser.add_argument(
     action="store_true",
     help="Pause after every subtask for interactive debugging.",
 )
+parser.add_argument(
+    "--curobo_version",
+    type=str,
+    choices=["v1", "v2", "auto"],
+    default="auto",
+    help=(
+        "Which cuRobo backend to use for SkillGen motion planning. 'auto' picks v2 when the v2 "
+        "MotionPlanner API is importable, otherwise falls back to v1. Ignored unless --alg skillgen."
+    ),
+)
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -87,21 +101,19 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import asyncio  # noqa: E402
-import random  # noqa: E402
-import sys  # noqa: E402
-import traceback  # noqa: E402
-
 import gymnasium as gym  # noqa: E402
 import numpy as np  # noqa: E402
+import os  # noqa: E402
+import random  # noqa: E402
+import sys  # noqa: E402
 import torch  # noqa: E402
-
-from isaaclab.envs import ManagerBasedRLMimicEnv  # noqa: E402
+import traceback  # noqa: E402
 
 import isaaclab_mimic.envs  # noqa: F401, E402
+import isaaclab_tasks  # noqa: F401, E402
+from isaaclab.envs import ManagerBasedRLMimicEnv  # noqa: E402
 from isaaclab_mimic.datagen.generation import env_loop, setup_env_config  # noqa: E402
 from isaaclab_mimic.datagen.utils import get_env_name_from_dataset, setup_output_paths  # noqa: E402
-
-import isaaclab_tasks  # noqa: F401, E402
 
 from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
@@ -132,13 +144,24 @@ async def run_data_generator(
         except Exception as exc:
             sys.stderr.write(traceback.format_exc())
             sys.stderr.flush()
-            raise exc
+            # The upstream ``env_loop`` blocks on ``env_action_queue.get()`` in the main thread
+            # and has no signal path for async-task failures. Re-raising leaves the loop hung
+            # forever, holding HDF5 locks until the process is SIGKILLed. Force-exit so the
+            # traceback above is the last word.
+            os._exit(1)
+            raise exc  # unreachable; kept for type-checkers
 
         if result.success:
             stats["num_success"] += 1
         else:
             stats["num_failures"] += 1
         stats["num_attempts"] += 1
+        print(
+            f"[TRIAL] env={env_id}  outcome={'SUCCESS' if result.success else 'FAIL'}  "
+            f"running: {stats['num_success']}/{stats['num_attempts']} "
+            f"({stats['num_failures']} failed)",
+            flush=True,
+        )
 
 
 def setup_async_generation(
@@ -198,23 +221,28 @@ def setup_async_generation(
     }
 
 
-def _build_motion_planners(env, num_envs: int, env_name: str) -> dict:
+def _build_motion_planners(env, num_envs: int, env_name: str, curobo_version: str = "auto") -> dict:
     """Construct one motion planner per env_id satisfying the SkillGen planner interface.
 
-    The upstream Arena ``CuroboPlanner`` is imported here as a placeholder. When the planner
-    code is ported into this repo (follow-up commit), swap this import for the local one.
+    Dispatches between the v1 backend (:mod:`isaac_autodata_interfaces.motion_planners.curobo`)
+    and the v2 backend (:mod:`isaac_autodata_interfaces.motion_planners.curobo_v2`) via
+    :func:`isaac_autodata_interfaces.motion_planners.get_curobo_planner_classes`. Both backends
+    satisfy the protocol declared in ``docs/agents/phase-2-datagenerator/data_generator.md``.
     """
-    from isaaclab_mimic.motion_planners.curobo.curobo_planner import CuroboPlanner
-    from isaaclab_mimic.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
+    from isaac_autodata_interfaces.motion_planners import detect_curobo_version, get_curobo_planner_classes
 
-    planners: dict[int, CuroboPlanner] = {}
+    resolved_version = detect_curobo_version() if curobo_version == "auto" else curobo_version
+    print(f"[generate_dataset] Using cuRobo {resolved_version} backend")
+    planner_cls, planner_cfg_cls = get_curobo_planner_classes(resolved_version)
+
+    planners: dict[int, planner_cls] = {}
     for env_id in range(num_envs):
-        planner_config = CuroboPlannerCfg.from_task_name(env_name)
+        planner_config = planner_cfg_cls.from_task_name(env_name)
         # Visualization is rerun-based; limit to env_id 0 to keep simulation responsive.
         if env_id != 0:
             planner_config.visualize_spheres = False
             planner_config.visualize_plan = False
-        planners[env_id] = CuroboPlanner(
+        planners[env_id] = planner_cls(
             env=env,
             robot=env.scene["robot"],
             config=planner_config,
@@ -256,7 +284,9 @@ def main() -> None:
     motion_planners: dict | None = None
     alg_kwargs: dict = {}
     if args_cli.alg == "skillgen":
-        motion_planners = _build_motion_planners(env, args_cli.num_envs, env_name)
+        motion_planners = _build_motion_planners(
+            env, args_cli.num_envs, env_name, curobo_version=args_cli.curobo_version
+        )
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 

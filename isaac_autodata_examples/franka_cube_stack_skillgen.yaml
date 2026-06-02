@@ -1,0 +1,86 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Task descriptor for the Isaac Lab Mimic Franka Cube Stack task — SkillGen variant.
+#
+# Mirrors upstream:
+#   submodules/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_mimic/
+#   isaaclab_mimic/envs/franka_stack_ik_rel_skillgen_env_cfg.py
+#
+# Differences from the MimicGen variant (franka_cube_stack.yaml):
+#   - algo: skillgen (motion-planned transit per subtask, no interpolation segment).
+#   - All four subtasks (including the last) have a subtask_term_signal — SkillGen needs
+#     the final boundary so the planner knows when each skill segment ends.
+#   - subtask_term_offset_range: [0, 0] for every subtask (no boundary jitter — SkillGen
+#     replays the recorded skill verbatim and stitches MP transits, not interp segments).
+#   - num_interpolation_steps: 0, num_fixed_steps: 0 — SkillGen substitutes the entire
+#     transit with the motion planner's output.
+#   - generation_policy.select_src_per_subtask: true — match upstream
+#     `datagen_config.generation_select_src_per_subtask = True`.
+#
+# Annotated source dataset for this task (with subtask start AND term signals):
+#   datasets/annotated_dataset_skillgen.hdf5
+
+name: demo_src_stack_isaac_lab_task_D0
+description: Stack red, green, and blue cubes into a single tower (SkillGen).
+algo: skillgen
+
+generation_policy:
+  select_src_per_subtask: true
+  select_src_per_arm: false
+  transform_first_robot_pose: false
+  interpolate_from_last_target_pose: true
+
+subtasks:
+  franka:
+    - object_ref: cube_2
+      description: Grasp red cube.
+      subtask_term_signal: grasp_1
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [0, 0]
+      action_noise: 0.03
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
+
+    - object_ref: cube_1
+      description: Stack red cube on top of blue cube.
+      subtask_term_signal: stack_1
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [0, 0]
+      action_noise: 0.03
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
+
+    - object_ref: cube_3
+      description: Grasp green cube.
+      subtask_term_signal: grasp_2
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [0, 0]
+      action_noise: 0.03
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
+
+    # Final subtask: SkillGen *does* need a term signal here (unlike MimicGen), so the
+    # planner knows when the last skill segment finishes.
+    - object_ref: cube_2
+      description: Stack green cube on top of red cube.
+      subtask_term_signal: stack_2
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [0, 0]
+      action_noise: 0.03
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false

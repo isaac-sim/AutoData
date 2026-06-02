@@ -83,3 +83,4 @@ reportPrivateUsage = "warning"
 [tool.codespell]
 skip = '*.usd,*.svg,*.png,_isaac_sim*,*.bib,*.css,*/_build'
 quiet-level = 0
+ignore-words-list = 'reacher'
