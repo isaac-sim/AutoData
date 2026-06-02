@@ -3,10 +3,10 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Modular data generator for Mimic, DexMimicGen, and SkillGen.
+"""Modular data generator for different generation algorithms.
 
 Behavior that varies between algorithms is routed through :class:`GenerationAlgorithm` so future
-algorithms (e.g. bimanual SkillGen) plug in without editing this file.
+algorithms plug in without editing this file.
 """
 
 from __future__ import annotations

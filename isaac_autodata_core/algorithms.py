@@ -6,8 +6,8 @@
 """Generation algorithm registry.
 
 :class:`GenerationAlgorithm` is the plug-in surface :class:`DataGenerator` consults whenever a
-behavior diverges between Mimic, DexMimicGen, SkillGen, and future entrants (e.g. bimanual
-SkillGen). Subclasses self-register at import time via :class:`_AlgorithmMeta`.
+behavior diverges between Mimic, DexMimicGen, SkillGen, etc.
+Subclasses self-register at import time via :class:`_AlgorithmMeta`.
 
 The single behavioral hook is :meth:`GenerationAlgorithm.plan_subtask_trajectory`, called by
 ``DataGenerator`` every time an EEF needs a new executable trajectory. The default implementation
