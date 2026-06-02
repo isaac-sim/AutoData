@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (c) 2025, The Isaac Auto Data Project Developers.
+# Copyright (c) 2025, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0

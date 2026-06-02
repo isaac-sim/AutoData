@@ -1,4 +1,4 @@
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -10,10 +10,9 @@ This is the generator-internal stand-in for the eventual ``Datastream`` abstract
 
 from __future__ import annotations
 
+import torch
 from copy import deepcopy
 from typing import Any
-
-import torch
 
 
 class DatagenInfo:

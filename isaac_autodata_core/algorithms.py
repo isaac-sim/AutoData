@@ -1,4 +1,4 @@
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from isaac_autodata_core.data_generator import DataGenerator, _EEFGenerationState
-    from isaac_autodata_core.waypoint import Waypoint, WaypointTrajectory
+    from isaac_autodata_core.waypoint import Waypoint
     from isaac_autodata_interfaces.datastream.datastream import Datastream
 
 REGISTERED_ALGORITHMS: dict[str, type[GenerationAlgorithm]] = {}
@@ -34,9 +34,7 @@ def get_algorithm(name: str, **kwargs: Any) -> GenerationAlgorithm:
     Mimic and DexMimicGen take no kwargs. SkillGen requires ``motion_planners=`` (per-env dict).
     """
     if name not in REGISTERED_ALGORITHMS:
-        raise KeyError(
-            f"Unknown algorithm {name!r}. Registered: {sorted(REGISTERED_ALGORITHMS)}"
-        )
+        raise KeyError(f"Unknown algorithm {name!r}. Registered: {sorted(REGISTERED_ALGORITHMS)}")
     return REGISTERED_ALGORITHMS[name](**kwargs)
 
 
@@ -68,7 +66,7 @@ class GenerationAlgorithm(metaclass=_AlgorithmMeta):
     uses_subtask_start_signals: bool = False
     supports_coordination: bool = False
 
-    def validate_setup(self, datastream: "Datastream") -> None:
+    def validate_setup(self, datastream: Datastream) -> None:
         """Algorithm-specific validation against the composed datastream. Default: no-op.
 
         Subclasses can read ``datastream.get_subtasks(eef)``, ``datastream.get_task_constraints()``,
@@ -78,14 +76,14 @@ class GenerationAlgorithm(metaclass=_AlgorithmMeta):
     def plan_subtask_trajectory(
         self,
         *,
-        data_generator: "DataGenerator",
+        data_generator: DataGenerator,
         env_id: int,
         eef_name: str,
-        eef_state: "_EEFGenerationState",
+        eef_state: _EEFGenerationState,
         all_randomized_subtask_boundaries: dict,
         runtime_subtask_constraints_dict: dict,
         selected_src_demo_inds: dict,
-    ) -> tuple[list["Waypoint"], bool] | None:
+    ) -> tuple[list[Waypoint], bool] | None:
         """Return the next trajectory to execute, paired with ``is_motion_plan_phase``.
 
         Return value semantics:
@@ -197,14 +195,14 @@ class SkillGen(GenerationAlgorithm):
     def plan_subtask_trajectory(
         self,
         *,
-        data_generator: "DataGenerator",
+        data_generator: DataGenerator,
         env_id: int,
         eef_name: str,
-        eef_state: "_EEFGenerationState",
+        eef_state: _EEFGenerationState,
         all_randomized_subtask_boundaries: dict,
         runtime_subtask_constraints_dict: dict,
         selected_src_demo_inds: dict,
-    ) -> tuple[list["Waypoint"], bool] | None:
+    ) -> tuple[list[Waypoint], bool] | None:
         # Resume path — same as the base class. Splice the stashed skill segment now.
         if eef_state.pending_subtask_trajectory is not None:
             pending = eef_state.pending_subtask_trajectory
@@ -250,9 +248,7 @@ class SkillGen(GenerationAlgorithm):
             expected_attached_object=expected_attached_object,
             env_id=env_id,
             step_size=getattr(planner, "step_size", None),
-            enable_retiming=(
-                hasattr(planner, "step_size") and planner.step_size is not None
-            ),
+            enable_retiming=(hasattr(planner, "step_size") and planner.step_size is not None),
         )
         if not planning_success:
             return None
@@ -268,7 +264,7 @@ class SkillGen(GenerationAlgorithm):
     def _convert_planned_trajectory_to_waypoints(
         motion_planner: Any,
         gripper_action,
-    ) -> list["Waypoint"]:
+    ) -> list[Waypoint]:
         """Wrap each planner pose into a :class:`Waypoint` with the supplied gripper action.
 
         Reads ``motion_planner.config.motion_noise_scale`` if present; defaults to 0.0.

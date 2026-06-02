@@ -1,4 +1,4 @@
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -12,12 +12,11 @@ algorithms (e.g. bimanual SkillGen) plug in without editing this file.
 from __future__ import annotations
 
 import asyncio
+import numpy as np
+import torch
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
-
-import numpy as np
-import torch
 
 from isaaclab.managers import TerminationTermCfg
 
@@ -124,15 +123,14 @@ class DataGenerator:
         ok = num_eefs == expected if isinstance(expected, int) else num_eefs in expected
         if not ok:
             raise ValueError(
-                f"Algorithm {self.algorithm.name!r} expects {expected} EEF(s), "
-                f"task descriptor defines {num_eefs}"
+                f"Algorithm {self.algorithm.name!r} expects {expected} EEF(s), task descriptor defines {num_eefs}"
             )
 
     def _validate_coordination_for_algorithm(self) -> None:
         has_coord_cfg = bool(self.datastream.get_task_constraints())
         if has_coord_cfg and not self.algorithm.supports_coordination:
             raise ValueError(
-                f"task descriptor declares constraints but algorithm "
+                "task descriptor declares constraints but algorithm "
                 f"{self.algorithm.name!r} does not support coordination"
             )
 
@@ -173,9 +171,7 @@ class DataGenerator:
                     # subtask_start_offset_range lives on the algorithm-specific algo_params
                     # (SkillGen today). Fall back to (0, 0) if the active algorithm does not
                     # declare it — mirrors the defensive lookup in DataGenInfoPool.
-                    start_range = getattr(
-                        eef_subtasks[i].algo_params, "subtask_start_offset_range", (0, 0)
-                    )
+                    start_range = getattr(eef_subtasks[i].algo_params, "subtask_start_offset_range", (0, 0))
                     start_offset = np.random.randint(
                         low=start_range[0],
                         high=start_range[1] + 1,
@@ -320,9 +316,7 @@ class DataGenerator:
         src_subtask_target_poses = src_ep.target_eef_pose[eef_name][selected_boundary[0] : selected_boundary[1]]
         src_subtask_gripper_actions = src_ep.gripper_action[eef_name][selected_boundary[0] : selected_boundary[1]]
         src_subtask_object_pose = (
-            src_ep.object_poses[subtask_object_name][selected_boundary[0]]
-            if subtask_object_name is not None
-            else None
+            src_ep.object_poses[subtask_object_name][selected_boundary[0]] if subtask_object_name is not None else None
         )
 
         if is_first_subtask or policy.transform_first_robot_pose:
@@ -388,9 +382,7 @@ class DataGenerator:
         assert "transform" not in constraint, "transform should not be set for concurrent task"
         scheme = constraint["coordination_scheme"]
         if scheme != SubTaskConstraintCoordinationScheme.REPLAY:
-            assert subtask_object_name is not None, (
-                f"object reference required for {scheme} coordination scheme"
-            )
+            assert subtask_object_name is not None, f"object reference required for {scheme} coordination scheme"
         return None, scheme
 
     def _propagate_coordination_selection(
@@ -479,8 +471,7 @@ class DataGenerator:
         subtask = self.datastream.get_subtask(eef_name, subtask_index)
 
         use_prev_traj = force_use_prev_traj or (
-            self.datastream.get_generation_policy().interpolate_from_last_target_pose
-            and not is_first_subtask
+            self.datastream.get_generation_policy().interpolate_from_last_target_pose and not is_first_subtask
         )
 
         if use_prev_traj:
@@ -498,9 +489,7 @@ class DataGenerator:
             subtask_trajectory,
             num_steps_interp=subtask.num_interpolation_steps,
             num_steps_fixed=subtask.num_fixed_steps,
-            action_noise=(
-                float(subtask.apply_noise_during_interpolation) * subtask.action_noise
-            ),
+            action_noise=(float(subtask.apply_noise_during_interpolation) * subtask.action_noise),
         )
 
         # Drop the seed waypoint used only to anchor interpolation.
@@ -528,9 +517,7 @@ class DataGenerator:
 
         runtime_constraints = self._build_runtime_subtask_constraints()
         eef_states = self._initialize_eef_states()
-        selected_src_demo_inds: dict[str, int | None] = {
-            name: None for name in self.datastream.get_eef_names()
-        }
+        selected_src_demo_inds: dict[str, int | None] = {name: None for name in self.datastream.get_eef_names()}
         buffers = _GenerationBuffers()
 
         randomized_subtask_boundaries: dict[str, np.ndarray] | None = None
@@ -728,10 +715,7 @@ class DataGenerator:
         concurrent_constraint = runtime_constraints[(concurrent_key, concurrent_ind)]
         concurrent_state = eef_states[concurrent_key]
 
-        if (
-            constraint["coordination_synchronize_start"]
-            and concurrent_state.current_subtask_index < concurrent_ind
-        ):
+        if constraint["coordination_synchronize_start"] and concurrent_state.current_subtask_index < concurrent_ind:
             eef_state.subtask_step_index = 0
             return True
 
@@ -805,20 +789,13 @@ class DataGenerator:
                 constraint["finished"] = True
                 concurrent_constraint = runtime_constraints[(concurrent_key, concurrent_ind)]
                 concurrent_state = eef_states[concurrent_key]
-                assert (
-                    concurrent_constraint["finished"]
-                    or (
-                        concurrent_state.subtask_step_index is not None
-                        and concurrent_state.subtask_step_index
-                        >= len(concurrent_state.current_trajectory) - 1
-                    )
+                assert concurrent_constraint["finished"] or (
+                    concurrent_state.subtask_step_index is not None
+                    and concurrent_state.subtask_step_index >= len(concurrent_state.current_trajectory) - 1
                 )
 
         if pause_subtask:
-            input(
-                f"Paused after subtask {eef_state.current_subtask_index} of {eef_name}. "
-                "Press Enter to continue..."
-            )
+            input(f"Paused after subtask {eef_state.current_subtask_index} of {eef_name}. Press Enter to continue...")
 
         last_subtask_index = self.datastream.num_subtasks(eef_name) - 1
         if eef_state.current_subtask_index == last_subtask_index:

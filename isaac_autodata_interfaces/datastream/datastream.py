@@ -1,4 +1,4 @@
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -79,7 +79,7 @@ class Datastream:
                 "Either use the same env for the embodiment adapter and the Datastream, or leave "
                 "the embodiment adapter env unset before creating the Datastream."
             )
-        
+
         # Ensure that task descriptor and embodiment adapter declare the same EEFs.
         task_eefs = set(task_descriptor.get_eef_names())
         adapter_eefs = set(embodiment_adapter.get_eef_names())
@@ -171,7 +171,7 @@ class Datastream:
 
     def get_subtask_algo_params(self, eef_name: str) -> list[SubtaskAlgoParams]:
         """Return per-subtask algorithm parameters for the EEF, in subtask order."""
-        
+
         return self.task_descriptor.get_subtask_algo_params(eef_name)
 
     def get_subtask_descriptions(self, eef_name: str) -> list[str]:
@@ -248,7 +248,7 @@ class Datastream:
     @property
     def source_pool(self) -> DataGenInfoPool:
         """Get the source-demo pool."""
-        
+
         return self._pool
 
     @property
@@ -276,5 +276,5 @@ class Datastream:
 
     async def add_episode(self, episode: EpisodeData) -> None:
         """Add an episode to the source-demo pool."""
-        
+
         await self._pool.add_episode(episode)

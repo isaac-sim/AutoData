@@ -1,4 +1,4 @@
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -14,10 +14,9 @@
 from __future__ import annotations
 
 import asyncio
+import torch
 from copy import deepcopy
 from typing import TYPE_CHECKING
-
-import torch
 
 import isaaclab.utils.math as PoseUtils
 from isaaclab.managers import TerminationTermCfg
@@ -278,11 +277,10 @@ class MultiWaypoint:
 
     async def execute(
         self,
-        datastream: "Datastream",
+        datastream: Datastream,
         success_term: TerminationTermCfg,
         env_id: int = 0,
         env_action_queue: asyncio.Queue | None = None,
-        export_step: bool = True,
     ) -> dict:
         """Issue one env step from the assembled multi-EEF action.
 
@@ -296,7 +294,6 @@ class MultiWaypoint:
             env_id: Vectorized env index.
             env_action_queue: If given, action is enqueued for the simulator-side loop instead of
                 stepped here; the result observation is read from ``env.obs_buf``.
-            export_step: Whether the recorder should export this tick.
         """
         env = datastream.get_env()
         state = datastream.get_scene_state(is_relative=True)
@@ -318,7 +315,7 @@ class MultiWaypoint:
         if env_action_queue is None:
             obs, _, _, _, _ = env.step(play_action)
         else:
-            await env_action_queue.put((env_id, play_action[0], export_step))
+            await env_action_queue.put((env_id, play_action[0]))
             await env_action_queue.join()
             obs = env.obs_buf
 

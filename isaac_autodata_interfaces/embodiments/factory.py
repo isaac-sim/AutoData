@@ -1,4 +1,4 @@
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -15,15 +15,12 @@ combinations register themselves by adding to
 
 from __future__ import annotations
 
+import yaml
 from pathlib import Path
 from typing import Any
 
-import yaml
-
+from isaac_autodata_interfaces.embodiments.bimanual_embodiment_adapter import AbsolutePoseWholeBodyBimanualAdapter
 from isaac_autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
-from isaac_autodata_interfaces.embodiments.bimanual_embodiment_adapter import (
-    AbsolutePoseWholeBodyBimanualAdapter,
-)
 from isaac_autodata_interfaces.embodiments.single_arm_embodiment_adapter import DeltaPoseIKSingleArmAdapter
 
 EMBODIMENT_TYPE_REGISTRY: dict[str, type[EmbodimentAdapter]] = {
@@ -69,9 +66,9 @@ def embodiment_adapter_from_dict(data: dict[str, Any], env: Any = None) -> Embod
     assert "type" in data, f"Missing required top-level key 'type'. Got: {sorted(data)}"
     type_key = data["type"]
     assert isinstance(type_key, str), f"'type' must be a string, got {type(type_key).__name__}"
-    assert type_key in EMBODIMENT_TYPE_REGISTRY, (
-        f"Unknown embodiment type {type_key!r}. Registered: {sorted(EMBODIMENT_TYPE_REGISTRY)}"
-    )
+    assert (
+        type_key in EMBODIMENT_TYPE_REGISTRY
+    ), f"Unknown embodiment type {type_key!r}. Registered: {sorted(EMBODIMENT_TYPE_REGISTRY)}"
     cls = EMBODIMENT_TYPE_REGISTRY[type_key]
     payload = {k: v for k, v in data.items() if k != "type"}
     adapter = cls.from_dict(payload)  # type: ignore[attr-defined]

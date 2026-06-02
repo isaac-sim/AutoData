@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -63,9 +63,7 @@ parser.add_argument(
 )
 parser.add_argument("--generation_num_trials", type=int, default=None, help="Number of demos to generate.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
-parser.add_argument(
-    "--input_file", type=str, required=True, help="Source dataset HDF5 file."
-)
+parser.add_argument("--input_file", type=str, required=True, help="Source dataset HDF5 file.")
 parser.add_argument(
     "--output_file",
     type=str,
@@ -87,21 +85,18 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import asyncio  # noqa: E402
-import random  # noqa: E402
-import sys  # noqa: E402
-import traceback  # noqa: E402
-
 import gymnasium as gym  # noqa: E402
 import numpy as np  # noqa: E402
+import random  # noqa: E402
+import sys  # noqa: E402
 import torch  # noqa: E402
-
-from isaaclab.envs import ManagerBasedRLMimicEnv  # noqa: E402
+import traceback  # noqa: E402
 
 import isaaclab_mimic.envs  # noqa: F401, E402
+import isaaclab_tasks  # noqa: F401, E402
+from isaaclab.envs import ManagerBasedRLMimicEnv  # noqa: E402
 from isaaclab_mimic.datagen.generation import env_loop, setup_env_config  # noqa: E402
 from isaaclab_mimic.datagen.utils import get_env_name_from_dataset, setup_output_paths  # noqa: E402
-
-import isaaclab_tasks  # noqa: F401, E402
 
 from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402

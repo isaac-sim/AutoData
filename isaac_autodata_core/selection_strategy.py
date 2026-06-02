@@ -1,4 +1,4 @@
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -12,9 +12,8 @@ Subclasses self-register via :class:`SelectionStrategyMeta`. Look up by name wit
 from __future__ import annotations
 
 import abc
-from typing import Any
-
 import torch
+from typing import Any
 
 import isaaclab.utils.math as PoseUtils
 
@@ -24,9 +23,7 @@ REGISTERED_SELECTION_STRATEGIES: dict[str, type[SelectionStrategy]] = {}
 def make_selection_strategy(name: str, *args: Any, **kwargs: Any) -> SelectionStrategy:
     """Construct the selection strategy registered under ``name``."""
     if name not in REGISTERED_SELECTION_STRATEGIES:
-        raise KeyError(
-            f"Unknown selection strategy {name!r}. Registered: {sorted(REGISTERED_SELECTION_STRATEGIES)}"
-        )
+        raise KeyError(f"Unknown selection strategy {name!r}. Registered: {sorted(REGISTERED_SELECTION_STRATEGIES)}")
     return REGISTERED_SELECTION_STRATEGIES[name](*args, **kwargs)
 
 
