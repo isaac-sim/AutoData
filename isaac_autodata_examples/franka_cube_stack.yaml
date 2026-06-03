@@ -1,3 +1,8 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # Task descriptor for the Isaac Lab Mimic Franka Cube Stack task.
 #
 # Mirrors:
@@ -21,51 +26,47 @@ subtasks:
     - object_ref: cube_2
       description: Grasp red cube.
       subtask_term_signal: grasp_1
-      algo_params:
-        selection_strategy: nearest_neighbor_object
-        selection_strategy_kwargs:
-          nn_k: 3
-        subtask_term_offset_range: [10, 20]
-        action_noise: 0.03
-        num_interpolation_steps: 5
-        num_fixed_steps: 0
-        apply_noise_during_interpolation: false
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [10, 20]
+      action_noise: 0.03
+      num_interpolation_steps: 5
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
 
     - object_ref: cube_1
       description: Stack red cube on top of blue cube.
       subtask_term_signal: stack_1
-      algo_params:
-        selection_strategy: nearest_neighbor_object
-        selection_strategy_kwargs:
-          nn_k: 3
-        subtask_term_offset_range: [10, 20]
-        action_noise: 0.03
-        num_interpolation_steps: 5
-        num_fixed_steps: 0
-        apply_noise_during_interpolation: false
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [10, 20]
+      action_noise: 0.03
+      num_interpolation_steps: 5
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
 
     - object_ref: cube_3
       description: Grasp green cube.
       subtask_term_signal: grasp_2
-      algo_params:
-        selection_strategy: nearest_neighbor_object
-        selection_strategy_kwargs:
-          nn_k: 3
-        subtask_term_offset_range: [10, 20]
-        action_noise: 0.03
-        num_interpolation_steps: 5
-        num_fixed_steps: 0
-        apply_noise_during_interpolation: false
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [10, 20]
+      action_noise: 0.03
+      num_interpolation_steps: 5
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
 
     # Final subtask: no term signal (end-of-trajectory) and no term offset.
     - object_ref: cube_2
       description: Stack green cube on top of red cube.
-      algo_params:
-        selection_strategy: nearest_neighbor_object
-        selection_strategy_kwargs:
-          nn_k: 3
-        subtask_term_offset_range: [0, 0]
-        action_noise: 0.03
-        num_interpolation_steps: 5
-        num_fixed_steps: 0
-        apply_noise_during_interpolation: false
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [0, 0]
+      action_noise: 0.03
+      num_interpolation_steps: 5
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false

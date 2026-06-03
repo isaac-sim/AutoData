@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Copyright (c) 2025, The Isaac Auto Data Project Developers.
+# Copyright (c) 2025, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
 
-ENV_NAME="isaac_auto_data"
+ENV_NAME="isaac_autodata"
 PYTHON_VERSION="3.12"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

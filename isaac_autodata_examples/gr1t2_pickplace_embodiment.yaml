@@ -1,3 +1,8 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # Embodiment descriptor for the GR1T2 PickPlace task.
 #
 # Action vector layout (36-D):

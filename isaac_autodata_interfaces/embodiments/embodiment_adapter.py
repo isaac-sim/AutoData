@@ -1,4 +1,4 @@
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -16,10 +16,10 @@ Implementations populate the embodiment-side fields of :class:`StaticInfo` and
 
 from __future__ import annotations
 
+import torch
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-
-import torch
+from typing import Any
 
 
 class EmbodimentAdapter(ABC):
@@ -27,10 +27,22 @@ class EmbodimentAdapter(ABC):
 
     Concrete subclasses bridge a particular robot abstraction (Arena
     ``EmbodimentBase``, a custom URDF wrapper, etc.) to the Datastream's
-    embodiment-side fields. See
-    :meth:`isaac_autodata_core.coordinator.Coordinator` for how
-    instances are composed with :class:`TaskDescriptor` and :class:`SceneProbe`.
+    embodiment-side fields.
+
+    Attributes:
+        env: Live env handle, bound post-construction via :meth:`bind_env`. ``None`` until bound.
     """
+
+    env: Any = None
+
+    def bind_env(self, env: Any) -> None:
+        """Attach the env after construction.
+
+        Asserts the env was not previously bound — call exactly once.
+        """
+
+        assert self.env is None, "env already bound"
+        self.env = env
 
     @abstractmethod
     def get_eef_names(self) -> tuple[str, ...]:

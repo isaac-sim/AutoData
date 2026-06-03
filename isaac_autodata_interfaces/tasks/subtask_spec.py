@@ -1,4 +1,4 @@
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -22,35 +22,17 @@ class SubtaskAlgoParams:
 
 
 @dataclass
+class MimicGenSubtaskAlgoParams(SubtaskAlgoParams):
+    """MimicGen has no subtask parameters beyond the shared ones on :class:`Subtask`."""
+
+    pass
+
+
+@dataclass
 class DexMimicGenSubtaskAlgoParams(SubtaskAlgoParams):
-    """DexMimicGen-specific subtask parameters.
+    """DexMimicGen has no subtask parameters beyond the shared ones on :class:`Subtask`."""
 
-    Args:
-        selection_strategy: Source-segment selection strategy name. One of
-            ``"random"``, ``"nearest_neighbor_object"``,
-            ``"nearest_neighbor_robot_distance"``.
-        selection_strategy_kwargs: Extra arguments to the selection strategy.
-        subtask_term_offset_range: Random offset range applied to termination
-            boundaries during generation, in steps.
-        first_subtask_start_offset_range: Random offset range for the first
-            subtask's start, in steps.
-        action_noise: Amplitude of action noise applied during this subtask.
-        num_interpolation_steps: Steps used to interpolate to the start of
-            this subtask's segment.
-        num_fixed_steps: Additional fixed steps the robot holds before
-            executing this subtask's segment.
-        apply_noise_during_interpolation: Whether to apply ``action_noise``
-            during the interpolation phase as well.
-    """
-
-    selection_strategy: str = "random"
-    selection_strategy_kwargs: dict[str, Any] = field(default_factory=dict)
-    subtask_term_offset_range: tuple[int, int] = (0, 0)
-    first_subtask_start_offset_range: tuple[int, int] = (0, 0)
-    action_noise: float = 0.0
-    num_interpolation_steps: int = 0
-    num_fixed_steps: int = 0
-    apply_noise_during_interpolation: bool = False
+    pass
 
 
 @dataclass
@@ -77,8 +59,22 @@ class Subtask:
             subtask has no explicit start signal.
         subtask_term_signal: Boolean termination signal name. Empty string
             for the final subtask in a sequence.
+        selection_strategy: Source-segment selection strategy name. One of
+            ``"random"``, ``"nearest_neighbor_object"``,
+            ``"nearest_neighbor_robot_distance"``.
+        selection_strategy_kwargs: Extra arguments to the selection strategy.
+        first_subtask_start_offset_range: Random offset range for the first
+            subtask's start, in steps.
+        subtask_term_offset_range: Random offset range applied to termination
+            boundaries during generation, in steps.
+        action_noise: Amplitude of action noise applied during this subtask.
+        num_interpolation_steps: Steps used to interpolate to the start of
+            this subtask's segment.
+        num_fixed_steps: Additional fixed steps the robot holds before
+            executing this subtask's segment.
+        apply_noise_during_interpolation: Whether to apply ``action_noise``
+            during the interpolation phase as well.
         algo_params: Algorithm-specific parameters (e.g.
-            :class:`DexMimicGenSubtaskAlgoParams`,
             :class:`SkillGenSubtaskAlgoParams`).
     """
 
@@ -86,10 +82,19 @@ class Subtask:
     description: str = ""
     subtask_start_signal: str = ""
     subtask_term_signal: str = ""
+    selection_strategy: str = "random"
+    selection_strategy_kwargs: dict[str, Any] = field(default_factory=dict)
+    first_subtask_start_offset_range: tuple[int, int] = (0, 0)
+    subtask_term_offset_range: tuple[int, int] = (0, 0)
+    action_noise: float = 0.0
+    num_interpolation_steps: int = 0
+    num_fixed_steps: int = 0
+    apply_noise_during_interpolation: bool = False
     algo_params: SubtaskAlgoParams = MISSING
 
 
 ALGO_PARAMS_REGISTRY: dict[str, type[SubtaskAlgoParams]] = {
+    "mimicgen": MimicGenSubtaskAlgoParams,
     "dexmimicgen": DexMimicGenSubtaskAlgoParams,
     "skillgen": SkillGenSubtaskAlgoParams,
 }

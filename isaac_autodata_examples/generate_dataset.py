@@ -1,0 +1,311 @@
+#!/usr/bin/env python
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""Data generation entrypoint.
+
+Usage::
+
+    python isaac_autodata_examples/generate_dataset.py \\
+        --task <task_name> \\
+        --alg {mimicgen|dexmimicgen|skillgen} \\
+        --task_descriptor <task_descriptor.yaml> \\
+        --embodiment <embodiment.yaml> \\
+        --input_file <source.hdf5> \\
+        --output_file <out.hdf5> \\
+        --generation_num_trials <N> \\
+        --num_envs <N>
+
+The ``--alg`` choice selects the :class:`GenerationAlgorithm` plug-in driving the run:
+
+* ``mimicgen`` — single-arm MimicGen.
+* ``dexmimicgen`` — two-arm MimicGen with subtask coordination constraints.
+* ``skillgen`` — single-arm SkillGen. SkillGen depends on a motion-planner interface; until the
+  planner code is ported into this repo, the CLI satisfies that interface with the upstream Arena
+  ``CuroboPlanner``.
+
+The CLI composes a :class:`Datastream` from the task descriptor YAML, the embodiment YAML, the
+live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
+"""
+
+"""Launch Isaac Sim Simulator first."""
+
+import argparse
+
+from isaaclab.app import AppLauncher
+
+# Hardcoded to keep argparse importable without pulling in the heavy core package.
+# Add new algorithms here when registering them in isaac_autodata_core.algorithms.
+_ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
+
+parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument(
+    "--alg",
+    type=str,
+    choices=_ALG_CHOICES,
+    required=True,
+    help="Generation algorithm. skillgen needs a motion planner (auto-wired from upstream curobo).",
+)
+parser.add_argument(
+    "--task_descriptor",
+    type=str,
+    required=True,
+    help="Path to the task descriptor YAML (defines subtasks, constraints, generation policy).",
+)
+parser.add_argument(
+    "--embodiment",
+    type=str,
+    required=True,
+    help="Path to the embodiment YAML (defines the robot's pose ↔ action transforms).",
+)
+parser.add_argument("--generation_num_trials", type=int, default=None, help="Number of demos to generate.")
+parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
+parser.add_argument("--input_file", type=str, required=True, help="Source dataset HDF5 file.")
+parser.add_argument(
+    "--output_file",
+    type=str,
+    default="./datasets/output_dataset.hdf5",
+    help="Destination HDF5 for generated episodes.",
+)
+parser.add_argument(
+    "--pause_subtask",
+    action="store_true",
+    help="Pause after every subtask for interactive debugging.",
+)
+
+AppLauncher.add_app_launcher_args(parser)
+args_cli = parser.parse_args()
+
+app_launcher = AppLauncher(args_cli)
+simulation_app = app_launcher.app
+
+"""Rest everything follows."""
+
+import asyncio  # noqa: E402
+import gymnasium as gym  # noqa: E402
+import numpy as np  # noqa: E402
+import random  # noqa: E402
+import sys  # noqa: E402
+import torch  # noqa: E402
+import traceback  # noqa: E402
+
+import isaaclab_mimic.envs  # noqa: F401, E402
+import isaaclab_tasks  # noqa: F401, E402
+from isaaclab.envs import ManagerBasedRLMimicEnv  # noqa: E402
+from isaaclab_mimic.datagen.generation import env_loop, setup_env_config  # noqa: E402
+from isaaclab_mimic.datagen.utils import get_env_name_from_dataset, setup_output_paths  # noqa: E402
+
+from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
+from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
+from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
+from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
+
+
+async def run_data_generator(
+    env: ManagerBasedRLMimicEnv,
+    env_id: int,
+    env_reset_queue: asyncio.Queue,
+    env_action_queue: asyncio.Queue,
+    data_generator: DataGenerator,
+    success_term,
+    pause_subtask: bool,
+    stats: dict,
+) -> None:
+    """Repeatedly call ``data_generator.generate`` and tally outcomes into ``stats``."""
+    while True:
+        try:
+            result = await data_generator.generate(
+                env_id=env_id,
+                success_term=success_term,
+                env_reset_queue=env_reset_queue,
+                env_action_queue=env_action_queue,
+                pause_subtask=pause_subtask,
+            )
+        except Exception as exc:
+            sys.stderr.write(traceback.format_exc())
+            sys.stderr.flush()
+            raise exc
+
+        if result.success:
+            stats["num_success"] += 1
+        else:
+            stats["num_failures"] += 1
+        stats["num_attempts"] += 1
+
+
+def setup_async_generation(
+    env: ManagerBasedRLMimicEnv,
+    num_envs: int,
+    input_file: str,
+    task_descriptor_yaml: str,
+    embodiment_yaml: str,
+    success_term,
+    algorithm,
+    pause_subtask: bool,
+) -> dict:
+    """Build the Datastream, a single :class:`DataGenerator`, and ``num_envs`` async tasks."""
+    asyncio_event_loop = asyncio.get_event_loop()
+    env_reset_queue: asyncio.Queue = asyncio.Queue()
+    env_action_queue: asyncio.Queue = asyncio.Queue()
+    pool_lock = asyncio.Lock()
+
+    task_descriptor = TaskDescriptor.from_yaml(task_descriptor_yaml)
+    embodiment_adapter = embodiment_adapter_from_yaml(embodiment_yaml)
+    datastream = Datastream(
+        env=env,
+        task_descriptor=task_descriptor,
+        embodiment_adapter=embodiment_adapter,
+        source_dataset_path=input_file,
+        asyncio_lock=pool_lock,
+        uses_start_signals=algorithm.uses_subtask_start_signals,
+    )
+    print(f"Loaded {datastream.num_source_demos} source episodes into the datagen pool")
+
+    data_generator = DataGenerator(datastream=datastream, algorithm=algorithm)
+    stats = {"num_success": 0, "num_failures": 0, "num_attempts": 0}
+
+    tasks = []
+    for env_id in range(num_envs):
+        task = asyncio_event_loop.create_task(
+            run_data_generator(
+                env=env,
+                env_id=env_id,
+                env_reset_queue=env_reset_queue,
+                env_action_queue=env_action_queue,
+                data_generator=data_generator,
+                success_term=success_term,
+                pause_subtask=pause_subtask,
+                stats=stats,
+            )
+        )
+        tasks.append(task)
+
+    return {
+        "tasks": tasks,
+        "event_loop": asyncio_event_loop,
+        "reset_queue": env_reset_queue,
+        "action_queue": env_action_queue,
+        "info_pool": datastream.source_pool,
+        "stats": stats,
+    }
+
+
+def _build_motion_planners(env, num_envs: int, env_name: str) -> dict:
+    """Construct one motion planner per env_id satisfying the SkillGen planner interface.
+
+    The upstream Arena ``CuroboPlanner`` is imported here as a placeholder. When the planner
+    code is ported into this repo (follow-up commit), swap this import for the local one.
+    """
+    from isaaclab_mimic.motion_planners.curobo.curobo_planner import CuroboPlanner
+    from isaaclab_mimic.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
+
+    planners: dict[int, CuroboPlanner] = {}
+    for env_id in range(num_envs):
+        planner_config = CuroboPlannerCfg.from_task_name(env_name)
+        # Visualization is rerun-based; limit to env_id 0 to keep simulation responsive.
+        if env_id != 0:
+            planner_config.visualize_spheres = False
+            planner_config.visualize_plan = False
+        planners[env_id] = CuroboPlanner(
+            env=env,
+            robot=env.scene["robot"],
+            config=planner_config,
+            env_id=env_id,
+        )
+    return planners
+
+
+def _close_motion_planners(planners: dict | None) -> None:
+    if not planners:
+        return
+    for env_id, planner in planners.items():
+        if getattr(planner, "plan_visualizer", None) is not None:
+            print(f"Closing plan visualizer for environment {env_id}")
+            planner.plan_visualizer.close()
+            planner.plan_visualizer = None
+    planners.clear()
+
+
+def main() -> None:
+    output_dir, output_file_name = setup_output_paths(args_cli.output_file)
+    task_name = args_cli.task.split(":")[-1] if args_cli.task else None
+    env_name = task_name or get_env_name_from_dataset(args_cli.input_file)
+
+    env_cfg, success_term = setup_env_config(
+        env_name=env_name,
+        output_dir=output_dir,
+        output_file_name=output_file_name,
+        num_envs=args_cli.num_envs,
+        device=args_cli.device,
+        generation_num_trials=args_cli.generation_num_trials,
+    )
+
+    env = gym.make(env_name, cfg=env_cfg).unwrapped
+    if not isinstance(env, ManagerBasedRLMimicEnv):
+        raise ValueError(f"Env {env_name!r} is not a ManagerBasedRLMimicEnv")
+
+    # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
+    motion_planners: dict | None = None
+    alg_kwargs: dict = {}
+    if args_cli.alg == "skillgen":
+        motion_planners = _build_motion_planners(env, args_cli.num_envs, env_name)
+        alg_kwargs["motion_planners"] = motion_planners
+    algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
+
+    # Mirror the algorithm's start-signal expectation onto the upstream env config so anything
+    # downstream that still reads ``env.cfg.datagen_config.use_skillgen`` (e.g. the upstream
+    # ``env_loop``) stays consistent. The Datastream constructed below uses the algorithm's flag
+    # directly via ``uses_start_signals=algorithm.uses_subtask_start_signals``.
+    env_cfg.datagen_config.use_skillgen = algorithm.uses_subtask_start_signals
+
+    random.seed(env.cfg.datagen_config.seed)
+    np.random.seed(env.cfg.datagen_config.seed)
+    torch.manual_seed(env.cfg.datagen_config.seed)
+
+    env.reset()
+
+    try:
+        async_components = setup_async_generation(
+            env=env,
+            num_envs=args_cli.num_envs,
+            input_file=args_cli.input_file,
+            task_descriptor_yaml=args_cli.task_descriptor,
+            embodiment_yaml=args_cli.embodiment,
+            success_term=success_term,
+            algorithm=algorithm,
+            pause_subtask=args_cli.pause_subtask,
+        )
+
+        data_gen_tasks = asyncio.ensure_future(asyncio.gather(*async_components["tasks"]))
+        try:
+            env_loop(
+                env,
+                async_components["reset_queue"],
+                async_components["action_queue"],
+                async_components["info_pool"],
+                async_components["event_loop"],
+            )
+        except asyncio.CancelledError:
+            print("Async tasks cancelled.")
+        finally:
+            data_gen_tasks.cancel()
+            try:
+                async_components["event_loop"].run_until_complete(data_gen_tasks)
+            except asyncio.CancelledError:
+                print("Remaining async tasks cleaned up.")
+            except Exception as exc:
+                print(f"Error cleaning up async tasks: {exc}")
+            _close_motion_planners(motion_planners)
+    finally:
+        env.close()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nInterrupted; exiting.")
+    simulation_app.close()
