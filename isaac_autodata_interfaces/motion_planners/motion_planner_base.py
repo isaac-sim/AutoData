@@ -17,8 +17,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     # Defer Isaac Lab imports to type-checking time so this module can be imported in
     # sim-free contexts (e.g. unit tests that exercise only config or version detection).
-    from isaaclab.assets import Articulation
-    from isaaclab.envs.manager_based_env import ManagerBasedEnv
+    from isaac_autodata_interfaces.datastream.datastream import Datastream
 
 
 class MotionPlannerBase(ABC):
@@ -28,37 +27,51 @@ class MotionPlannerBase(ABC):
     It focuses on the essential functionality that users interact with, while leaving
     implementation details to specific planner backends.
 
+    Planners read all world state (robot joint configuration, obstacle poses, the collision
+    geometry source) through the :class:`Datastream` facade rather than touching the env or
+    robot articulation directly, so a backend stays agnostic to the simulator wiring.
+
     The core workflow is:
-    1. Initialize planner with environment and robot
-    2. Call update_world_and_plan_motion() to plan to a target
-    3. Execute plan using has_next_waypoint() and get_next_waypoint_ee_pose()
+    1. Initialize planner with a Datastream and an env index.
+    2. Call update_world_and_plan_motion() to plan to a target.
+    3. Execute plan using has_next_waypoint() and get_next_waypoint_ee_pose().
 
     Example:
         >>> from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner
         >>> from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
         >>> config = CuroboPlannerCfg.franka_config()
-        >>> planner = CuroboPlanner(env, robot, config)
+        >>> planner = CuroboPlanner(datastream, config, env_id=0)
         >>> success = planner.update_world_and_plan_motion(target_pose)
         >>> if success:
         >>>     while planner.has_next_waypoint():
         >>>         action = planner.get_next_waypoint_ee_pose()
-        >>>         obs, info = env.step(action)
     """
 
     def __init__(
-        self, env: ManagerBasedEnv, robot: Articulation, env_id: int = 0, debug: bool = False, **kwargs
+        self,
+        datastream: Datastream,
+        env_id: int = 0,
+        debug: bool = False,
+        robot_asset_name: str = "robot",
+        **kwargs,
     ) -> None:
         """Initialize the motion planner.
 
         Args:
-            env: The environment instance
-            robot: Robot articulation to plan motions for
-            env_id: Environment ID (0 to num_envs-1)
-            debug: Whether to print detailed debugging information
-            **kwargs: Additional planner-specific arguments
+            datastream: Composed read facade over the env, task descriptor, embodiment adapter,
+                and source pool. The sole entry point for world state.
+            env_id: Environment ID (0 to num_envs-1).
+            debug: Whether to print detailed debugging information.
+            robot_asset_name: Scene key of the robot articulation, used to derive the raw-handle
+                escape hatches below.
+            **kwargs: Additional planner-specific arguments.
         """
-        self.env = env
-        self.robot = robot
+        self.datastream = datastream
+        # Raw-handle escape hatches for backends not yet fully migrated to Datastream reads
+        # (the v1 cuRobo backend still extracts geometry / mutates joints via these). New
+        # backends read exclusively through ``self.datastream`` and ignore these.
+        self.env = datastream.get_env()
+        self.robot = self.env.scene[robot_asset_name]
         self.env_id = env_id
         self.debug = debug
 

@@ -70,19 +70,19 @@ class CuroboV2PlannerCfg:
     hand_link_names: list[str] = field(default_factory=list)
     attached_object_link_name: str = "attached_object"
 
-    # Scene
+    # Scene. Collision geometry is extracted from the live USD stage at construction (see
+    # :meth:`CuroboV2Planner._initialize_static_world`); there is no hardcoded geometry.
     scene_model: str | None = None
+    # Substrings of live scene object names whose obstacles are treated as fixed furniture and
+    # never pose-synced (e.g. a welded table). Objects not listed here but present in the live
+    # scene are synced every plan.
     static_objects: list[str] = field(default_factory=list)
-    world_ignore_substrings: list[str] = field(default_factory=lambda: ["/World/defaultGroundPlane", "/curobo"])
-
-    # Static collision geometry to register at planner construction time. Each entry is
-    # ``(name, dims_xyz_meters, pose_xyz_quatwxyz)``.
-    static_cuboids: list[tuple[str, list[float], list[float]]] = field(default_factory=list)
-
-    # Dynamic objects whose pose is read from the live Isaac Lab scene each tick. The cube's
-    # dimensions stay fixed; only the pose updates. Keys are scene entity names; values are
-    # the cuboid edge lengths in meters [x, y, z].
-    dynamic_object_dims: dict[str, list[float]] = field(default_factory=dict)
+    # Substrings of USD prim paths to drop during obstacle extraction (robot, ground plane, and
+    # cuRobo's own debug prims). The env's robot prim is excluded automatically via the
+    # extraction's reference frame, but listing it here is harmless and explicit.
+    world_ignore_substrings: list[str] = field(
+        default_factory=lambda: ["/World/defaultGroundPlane", "/curobo", "/Robot"]
+    )
 
     # Planner params
     num_ik_seeds: int = 32
@@ -105,9 +105,12 @@ class CuroboV2PlannerCfg:
     # Attachment sphere fitting. ``surface_sphere_radius`` is the inflation applied to each
     # fitted sphere (meters); ``sphere_fit_type`` is the algorithm name. Valid values are the
     # member names of :class:`curobo._src.geom.sphere_fit.types.SphereFitType`: ``"SURFACE"``,
-    # ``"VOXEL"``, ``"MORPHIT"``.
+    # ``"VOXEL"``, ``"MORPHIT"``. ``attached_object_num_spheres`` caps the number of spheres fit
+    # to the grasped object; it must not exceed the ``attached_object`` link's sphere allocation
+    # in the robot YAML (``extra_collision_spheres``, 4 for the stock Franka), or the attach fails.
     surface_sphere_radius: float = 0.005
     sphere_fit_type: str = "SURFACE"
+    attached_object_num_spheres: int = 4
 
     # Approach / retreat / contact configuration. The planner uses :meth:`MotionPlanner.plan_grasp`
     # to produce three phases: approach (from current EEF to a pose offset from the goal),
@@ -146,24 +149,14 @@ class CuroboV2PlannerCfg:
     def franka_stack_cube_config(cls) -> CuroboV2PlannerCfg:
         """cuRobo v2 config tuned for the Franka cube-stack task.
 
-        Registers the table as a static cuboid and the three 4-cm stack cubes as dynamic
-        objects whose poses sync from the live Isaac Lab scene at every planning call.
+        Collision geometry (table + cubes) is extracted from the live USD stage at construction;
+        the cubes are then pose-synced from the live scene every plan, while the table — declared
+        static — is left at its extracted pose. The gripper links are collision-disabled during
+        the contact phases so the fingers can close on a cube.
         """
         cfg = cls.franka_config()
         cfg.static_objects = ["table"]
         cfg.optimizer_collision_activation_distance = 0.01
-        # Table is centered at the actual env spawn ``pos=[0.5, 0, 0]`` with the
-        # ``rot=[0, 0, 0.707, 0.707]`` (90 deg about Z) that the stack-task USD uses.
-        # The 0.04 m thickness is the band just under z=0 (the cube-resting plane); we keep
-        # it tight so the planner doesn't reserve volume the real robot can reach into.
-        cfg.static_cuboids = [
-            ("table", [1.2, 0.6, 0.04], [0.5, 0.0, -0.02, 0.7071068, 0.0, 0.0, 0.7071068]),
-        ]
-        cfg.dynamic_object_dims = {
-            "cube_1": [0.04, 0.04, 0.04],
-            "cube_2": [0.04, 0.04, 0.04],
-            "cube_3": [0.04, 0.04, 0.04],
-        }
         cfg.contact_disable_collision_links = list(cfg.hand_link_names)
         return cfg
 

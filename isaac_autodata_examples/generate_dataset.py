@@ -116,6 +116,7 @@ from isaaclab_mimic.datagen.generation import env_loop, setup_env_config  # noqa
 from isaaclab_mimic.datagen.utils import get_env_name_from_dataset, setup_output_paths  # noqa: E402
 
 from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
+from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
@@ -164,22 +165,18 @@ async def run_data_generator(
         )
 
 
-def setup_async_generation(
+def build_datastream(
     env: ManagerBasedRLMimicEnv,
-    num_envs: int,
     input_file: str,
     task_descriptor_yaml: str,
     embodiment_yaml: str,
-    success_term,
-    algorithm,
-    pause_subtask: bool,
-) -> dict:
-    """Build the Datastream, a single :class:`DataGenerator`, and ``num_envs`` async tasks."""
-    asyncio_event_loop = asyncio.get_event_loop()
-    env_reset_queue: asyncio.Queue = asyncio.Queue()
-    env_action_queue: asyncio.Queue = asyncio.Queue()
-    pool_lock = asyncio.Lock()
+    uses_start_signals: bool,
+) -> Datastream:
+    """Compose the read facade (task + embodiment + source pool) over the live env.
 
+    Built before the motion planners so the planners can read all world state through it. The
+    pool lock is created up front and shared with the async generation tasks.
+    """
     task_descriptor = TaskDescriptor.from_yaml(task_descriptor_yaml)
     embodiment_adapter = embodiment_adapter_from_yaml(embodiment_yaml)
     datastream = Datastream(
@@ -187,10 +184,25 @@ def setup_async_generation(
         task_descriptor=task_descriptor,
         embodiment_adapter=embodiment_adapter,
         source_dataset_path=input_file,
-        asyncio_lock=pool_lock,
-        uses_start_signals=algorithm.uses_subtask_start_signals,
+        asyncio_lock=asyncio.Lock(),
+        uses_start_signals=uses_start_signals,
     )
     print(f"Loaded {datastream.num_source_demos} source episodes into the datagen pool")
+    return datastream
+
+
+def setup_async_generation(
+    datastream: Datastream,
+    num_envs: int,
+    success_term,
+    algorithm,
+    pause_subtask: bool,
+) -> dict:
+    """Build a single :class:`DataGenerator` over ``datastream`` and ``num_envs`` async tasks."""
+    asyncio_event_loop = asyncio.get_event_loop()
+    env_reset_queue: asyncio.Queue = asyncio.Queue()
+    env_action_queue: asyncio.Queue = asyncio.Queue()
+    env = datastream.get_env()
 
     data_generator = DataGenerator(datastream=datastream, algorithm=algorithm)
     stats = {"num_success": 0, "num_failures": 0, "num_attempts": 0}
@@ -221,13 +233,13 @@ def setup_async_generation(
     }
 
 
-def _build_motion_planners(env, num_envs: int, env_name: str, curobo_version: str = "auto") -> dict:
+def _build_motion_planners(datastream, num_envs: int, env_name: str, curobo_version: str = "auto") -> dict:
     """Construct one motion planner per env_id satisfying the SkillGen planner interface.
 
     Dispatches between the v1 backend (:mod:`isaac_autodata_interfaces.motion_planners.curobo`)
     and the v2 backend (:mod:`isaac_autodata_interfaces.motion_planners.curobo_v2`) via
     :func:`isaac_autodata_interfaces.motion_planners.get_curobo_planner_classes`. Both backends
-    satisfy the protocol declared in ``docs/agents/phase-2-datagenerator/data_generator.md``.
+    read all world state through the shared :class:`Datastream`.
     """
     from isaac_autodata_interfaces.motion_planners import detect_curobo_version, get_curobo_planner_classes
 
@@ -243,8 +255,7 @@ def _build_motion_planners(env, num_envs: int, env_name: str, curobo_version: st
             planner_config.visualize_spheres = False
             planner_config.visualize_plan = False
         planners[env_id] = planner_cls(
-            env=env,
-            robot=env.scene["robot"],
+            datastream=datastream,
             config=planner_config,
             env_id=env_id,
         )
@@ -280,21 +291,12 @@ def main() -> None:
     if not isinstance(env, ManagerBasedRLMimicEnv):
         raise ValueError(f"Env {env_name!r} is not a ManagerBasedRLMimicEnv")
 
-    # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
-    motion_planners: dict | None = None
-    alg_kwargs: dict = {}
-    if args_cli.alg == "skillgen":
-        motion_planners = _build_motion_planners(
-            env, args_cli.num_envs, env_name, curobo_version=args_cli.curobo_version
-        )
-        alg_kwargs["motion_planners"] = motion_planners
-    algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
-
-    # Mirror the algorithm's start-signal expectation onto the upstream env config so anything
-    # downstream that still reads ``env.cfg.datagen_config.use_skillgen`` (e.g. the upstream
-    # ``env_loop``) stays consistent. The Datastream constructed below uses the algorithm's flag
-    # directly via ``uses_start_signals=algorithm.uses_subtask_start_signals``.
-    env_cfg.datagen_config.use_skillgen = algorithm.uses_subtask_start_signals
+    # The algorithm's start-signal expectation is a class attribute, so we can read it before
+    # instantiating (SkillGen can only be instantiated once the planners exist, and the planners
+    # need the Datastream, which needs this flag). Mirror it onto the upstream env config so
+    # anything downstream that still reads ``env.cfg.datagen_config.use_skillgen`` stays consistent.
+    alg_cls = REGISTERED_ALGORITHMS[args_cli.alg]
+    env_cfg.datagen_config.use_skillgen = alg_cls.uses_subtask_start_signals
 
     random.seed(env.cfg.datagen_config.seed)
     np.random.seed(env.cfg.datagen_config.seed)
@@ -302,13 +304,29 @@ def main() -> None:
 
     env.reset()
 
+    # Build the read facade first; the motion planners read all world state through it.
+    datastream = build_datastream(
+        env=env,
+        input_file=args_cli.input_file,
+        task_descriptor_yaml=args_cli.task_descriptor,
+        embodiment_yaml=args_cli.embodiment,
+        uses_start_signals=alg_cls.uses_subtask_start_signals,
+    )
+
+    # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
+    motion_planners: dict | None = None
+    alg_kwargs: dict = {}
+    if args_cli.alg == "skillgen":
+        motion_planners = _build_motion_planners(
+            datastream, args_cli.num_envs, env_name, curobo_version=args_cli.curobo_version
+        )
+        alg_kwargs["motion_planners"] = motion_planners
+    algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
+
     try:
         async_components = setup_async_generation(
-            env=env,
+            datastream=datastream,
             num_envs=args_cli.num_envs,
-            input_file=args_cli.input_file,
-            task_descriptor_yaml=args_cli.task_descriptor,
-            embodiment_yaml=args_cli.embodiment,
             success_term=success_term,
             algorithm=algorithm,
             pause_subtask=args_cli.pause_subtask,

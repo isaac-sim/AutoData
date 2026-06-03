@@ -15,18 +15,20 @@ Implements :class:`MotionPlannerBase` against cuRobo v2's redesigned public API
 consumed by the SkillGen algorithm match the v1 backend so
 :mod:`isaac_autodata_core.algorithms.SkillGen` can use either backend without modification.
 
-Feature surface implemented here:
+Feature surface implemented here (parity with the v1 backend):
 
-* Single goal-pose planning via :meth:`MotionPlanner.plan_pose`.
-* Per-call scene synchronization: poses of dynamic obstacles declared in
-  :attr:`CuroboV2PlannerCfg.dynamic_object_dims` are read from the live Isaac Lab scene each
-  call and pushed into the planner's collision world via :meth:`MotionPlanner.update_world`.
-* Object attachment / detachment via :attr:`MotionPlanner.attachment_manager`.
-* Joint-state ordering between the live articulation and the planner's internal order.
+* Static collision geometry is extracted once from the live USD stage via cuRobo's
+  :class:`UsdSceneParser`, scoped to the env subtree and expressed relative to the robot base.
+  Geometry is read through the :class:`Datastream` facade — the planner never touches the env
+  or robot articulation directly.
+* Per-plan obstacle pose synchronization: each dynamic obstacle's current (env-relative) pose
+  is read from :meth:`Datastream.get_object_poses` and pushed into the collision world via
+  :meth:`SceneCollisionChecker.update_obstacle_pose`. Static obstacles are skipped.
+* Object attachment / detachment via the v2 :class:`AttachmentManager`.
+* Three-phase planning (retreat → approach → goal) mirroring the v1 contact flow.
 * Quaternion convention bridge: Isaac Lab uses ``(x, y, z, w)``; cuRobo internals use
   ``(w, x, y, z)``. Conversion is localized to the cuRobo boundary.
-* Trajectory extraction: each interpolated joint waypoint is mapped to a 4x4 EEF pose
-  through :meth:`MotionPlanner.compute_kinematics`.
+* Active-vs-full DoF handling for robots with locked joints (e.g. Franka's fingers).
 
 Plan visualization is not yet hooked up; :attr:`CuroboV2PlannerCfg.visualize_plan` is accepted
 for API parity but unused.
@@ -35,14 +37,14 @@ for API parity but unused.
 from __future__ import annotations
 
 import logging
+import numpy as np
 import torch
 from typing import TYPE_CHECKING, Any
 
-import warp as wp
-
-# Sphere-fit algorithm enum used by the attachment manager. Lives under ``_src``; safe to
-# import directly since the public ``curobo.motion_planner.MotionPlanner`` uses it natively.
+# Sphere-fit enum + USD scene parser live under ``_src``; safe to import directly since the
+# public ``curobo.motion_planner.MotionPlanner`` uses them natively.
 from curobo._src.geom.sphere_fit.types import SphereFitType
+from curobo._src.util.usd_scene_parser import UsdSceneParser
 from curobo.motion_planner import MotionPlanner, MotionPlannerCfg
 from curobo.scene import Cuboid, Scene
 from curobo.types import GoalToolPose, JointState, Pose
@@ -50,26 +52,15 @@ from isaac_autodata_interfaces.motion_planners.curobo_v2.curobo_v2_planner_cfg i
 from isaac_autodata_interfaces.motion_planners.motion_planner_base import MotionPlannerBase
 
 if TYPE_CHECKING:
-    from isaaclab.assets import Articulation
-    from isaaclab.envs.manager_based_env import ManagerBasedEnv
-
-
-def _as_torch(arr):
-    """Materialize a torch view of a warp-or-tensor handle.
-
-    Recent Isaac Lab releases expose articulation-data properties as :class:`warp.array`;
-    warp arrays do not support Python-style indexing, so callers must convert before slicing.
-    This helper is a no-op for tensors.
-    """
-    return wp.to_torch(arr) if isinstance(arr, wp.array) else arr
+    from isaac_autodata_interfaces.datastream.datastream import Datastream
 
 
 class CuroboV2Planner(MotionPlannerBase):
     """cuRobo v2 backend implementing :class:`MotionPlannerBase`.
 
     Args:
-        env: The Isaac Lab environment instance the robot lives in.
-        robot: Robot articulation handle.
+        datastream: Read facade over the env, task, and embodiment. All world state (collision
+            geometry source, object poses, joint configuration) is read through it.
         config: Backend-specific configuration; see :class:`CuroboV2PlannerCfg`.
         env_id: Index of the env this planner instance serves in a vectorized setup.
         debug: Whether to print detailed debug information during planning.
@@ -77,15 +68,18 @@ class CuroboV2Planner(MotionPlannerBase):
 
     _LOGGER = logging.getLogger("CuroboV2Planner")
 
+    # Each per-env planner owns its own single-world MotionPlanner (multi_env=False), so every
+    # collision-world operation (registration, pose sync, attachment) targets env slot 0.
+    _COLLISION_ENV_IDX = 0
+
     def __init__(
         self,
-        env: ManagerBasedEnv,
-        robot: Articulation,
+        datastream: Datastream,
         config: CuroboV2PlannerCfg,
         env_id: int = 0,
         debug: bool = False,
     ) -> None:
-        super().__init__(env=env, robot=robot, env_id=env_id, debug=debug)
+        super().__init__(datastream=datastream, env_id=env_id, debug=debug)
         self.config = config
 
         self._LOGGER.info("Constructing cuRobo v2 MotionPlannerCfg for %r", config.robot_name)
@@ -115,10 +109,21 @@ class CuroboV2Planner(MotionPlannerBase):
             self._active_joint_names,
         )
 
-        # Register every obstacle (static + dynamic at their current poses) ONCE up front,
-        # then per-call updates only touch dynamic obstacle poses. Mirrors v1's pattern.
-        self._registered_dynamic_objects: list[str] = []
-        self._register_scene_obstacles()
+        # Extract static collision geometry from the USD stage ONCE up front (mirrors v1).
+        # ``_object_mapping`` maps Isaac scene object names -> cuRobo obstacle names; the
+        # per-plan sync iterates it to push current poses. ``_static_object_substrings`` names
+        # obstacles that should never be pose-synced (treated as fixed furniture).
+        self._object_mapping: dict[str, str] = {}
+        self._world_obstacle_names: list[str] = []
+        self._static_object_substrings: list[str] = [s.lower() for s in self.config.static_objects]
+        self._verified_obstacle_sync: bool = False
+        # cuRobo name -> owning collision-data array (cuboids/meshes/voxels). Resolved lazily to
+        # route obstacle pose/enable updates around an upstream dispatcher bug (see
+        # :meth:`_obstacle_storage`). The cuRobo obstacle name of the currently attached object,
+        # tracked so we can re-enable it on detach.
+        self._obstacle_storage_cache: dict[str, Any] = {}
+        self._attached_curobo_name: str | None = None
+        self._initialize_static_world()
 
     def _compute_active_joint_names(self) -> list[str]:
         """Return planner joint names minus any joints listed under ``lock_joints``."""
@@ -154,9 +159,8 @@ class CuroboV2Planner(MotionPlannerBase):
             target_pose: Target end-effector pose as a 4x4 transformation matrix [m, rad]
                 in the same frame as the planner's robot base.
             expected_attached_object: Name of an object that should be considered attached to
-                the gripper during planning. Resolved against the dynamic obstacle names in
-                :attr:`CuroboV2PlannerCfg.dynamic_object_dims`. ``None`` releases any prior
-                attachment.
+                the gripper during planning. Resolved against the obstacles discovered from the
+                USD stage at construction. ``None`` releases any prior attachment.
             env_id: Vectorized environment index.
             step_size: Retiming step size [rad]. Accepted for protocol parity; the v2 planner
                 returns an interpolated trajectory at its own configured dt and does not
@@ -179,7 +183,7 @@ class CuroboV2Planner(MotionPlannerBase):
 
             # 1. Sync dynamic obstacle poses from the live scene. Per-obstacle update (no
             # scene rebuild) — preserves attachment state and prior obstacle-disable flags.
-            self._sync_dynamic_obstacle_poses()
+            self._sync_obstacle_poses()
 
             # 2. Read current joint state in the planner's expected order.
             current_state = self._get_current_joint_state(env_id=env_id)
@@ -444,14 +448,18 @@ class CuroboV2Planner(MotionPlannerBase):
     # World / scene sync
     # ------------------------------------------------------------------
 
-    def _register_scene_obstacles(self) -> None:
-        """One-time scene registration at construction.
+    def _initialize_static_world(self) -> None:
+        """Extract static collision geometry from the USD stage once, at construction.
 
-        Builds a :class:`Scene` from the cfg's static cuboids plus the *current* dynamic
-        obstacle poses, then calls :meth:`MotionPlanner.update_world` once. After this, the
-        scene-collision instance is stable: subsequent plan calls only push per-obstacle pose
-        updates via :meth:`_sync_dynamic_obstacle_poses` (mirrors v1's update cadence and
-        avoids wiping attachment / enable state between plans).
+        Mirrors the v1 backend: cuRobo's :class:`UsdSceneParser` traverses the env subtree
+        (``only_paths=[env_prim]``), expresses everything relative to the robot base
+        (``reference_prim_path=robot_prim``), and drops the ignore-listed prims (robot, ground
+        plane, cuRobo debug prims). All stage / prim-path access goes through the Datastream so
+        the planner stays agnostic to the simulator wiring.
+
+        The resulting collision world is loaded once; subsequent plans only push per-obstacle
+        pose updates via :meth:`_sync_obstacle_poses`, keeping the scene-collision instance
+        stable (so attachment / obstacle-disable state survives between plans).
         """
         if getattr(self.motion_planner, "scene_collision_checker", None) is None:
             self._LOGGER.warning(
@@ -460,102 +468,165 @@ class CuroboV2Planner(MotionPlannerBase):
             )
             return
 
-        cuboids: list[Cuboid] = []
-        registered_dynamic: list[str] = []
+        env_prim = self.datastream.get_env_prim_path(self.env_id)
+        robot_prim = self.datastream.get_robot_prim_path(self.env_id)
+        ignore = list(self.config.world_ignore_substrings)
 
-        # Static obstacles from cfg.
-        for name, dims, pose in self.config.static_cuboids:
-            cuboids.append(Cuboid(name=name, dims=list(dims), pose=list(pose)))
+        parser = UsdSceneParser()
+        parser.load_stage(self.datastream.get_usd_stage())
+        scene = parser.get_obstacles_from_stage(
+            only_paths=[env_prim],
+            reference_prim_path=robot_prim,
+            ignore_substring=ignore,
+        )
+        # Represent extracted obstacles as oriented bounding boxes (OBBs). The Isaac cubes are
+        # USD Mesh prims; cuRobo v2's mesh-SDF collision path mishandles them (spurious collisions
+        # across the whole workspace) and its pose-update dispatcher can't address meshes by name.
+        # An OBB is exact for boxes, fast, and conservative (safe) for any other extracted mesh.
+        scene = self._scene_as_cuboids(scene)
+        self.motion_planner.update_world(scene)
 
-        # Dynamic obstacles: read each one's pose now so the registered Scene is consistent
-        # with the live state at init time. Subsequent calls only refresh poses, not dims.
-        for name, dims in self.config.dynamic_object_dims.items():
-            pose = self._read_object_pose_wxyz(name)
-            if pose is None:
-                self._LOGGER.warning(
-                    "Dynamic object %r not found in scene at init; obstacle not registered.",
-                    name,
-                )
-                continue
-            cuboids.append(Cuboid(name=name, dims=list(dims), pose=pose))
-            registered_dynamic.append(name)
+        # Each per-env planner owns a single-world MotionPlanner (multi_env=False), so every
+        # collision operation targets env slot 0 within this planner; ``self.env_id`` selects
+        # which Isaac env to *read* state from, not a cuRobo collision slot.
+        checker = self.motion_planner.scene_collision_checker
+        self._world_obstacle_names = list(checker.get_obstacle_names(env_idx=self._COLLISION_ENV_IDX))
+        self._object_mapping = self._discover_object_mapping(self._world_obstacle_names)
 
-        scene_cfg = Scene(cuboid=cuboids) if cuboids else Scene()
-        self.motion_planner.update_world(scene_cfg)
-        self._registered_dynamic_objects = registered_dynamic
-        # Print the pose we just registered for each obstacle so the user can sanity-check
-        # against the Isaac Lab scene without instrumenting the run.
-        for c in cuboids:
-            print(
-                f"[CuroboV2Planner] registered obstacle {c.name:<12s} "
-                f"dims={[round(v, 4) for v in c.dims]} "
-                f"pose(xyz,wxyz)={[round(v, 4) for v in c.pose]}",
-                flush=True,
-            )
         print(
-            f"[CuroboV2Planner] Registered {len(cuboids)} obstacles "
-            f"({len(self.config.static_cuboids)} static + {len(registered_dynamic)} dynamic) "
-            "with the collision checker.",
+            f"[CuroboV2Planner] env={self.env_id} extracted {len(self._world_obstacle_names)} "
+            f"obstacles from {env_prim} (ref={robot_prim}): {self._world_obstacle_names}",
             flush=True,
         )
-        # Flag so we only readback-verify on the first sync to keep logs quiet.
-        self._verified_obstacle_sync: bool = False
+        print(
+            f"[CuroboV2Planner] env={self.env_id} mapped {len(self._object_mapping)} dynamic "
+            f"scene objects: {self._object_mapping}",
+            flush=True,
+        )
 
-    def _sync_dynamic_obstacle_poses(self) -> None:
-        """Per-plan-call: push the current pose of every dynamic obstacle to the checker.
+    def _scene_as_cuboids(self, scene) -> Scene:
+        """Return a cuboid-only :class:`Scene`, approximating each extracted mesh by its OBB.
 
-        Uses :meth:`SceneCollisionChecker.update_obstacle_pose` per-obstacle so the
-        scene-collision instance stays stable (preserves any prior ``enable_obstacle`` flags
-        set by :class:`AttachmentManager`).
+        cuRobo cuboid (OBB) collision is exact for boxes, fast, and — crucially — robust where
+        v2's mesh path is not (mesh-SDF false positives and an un-addressable pose-update path).
+        Real :class:`Cuboid` obstacles pass through unchanged; each :class:`Mesh` becomes a
+        cuboid sized to its vertex axis-aligned bounding box, posed at the box center in the
+        mesh's frame. The approximation is conservative (encloses the mesh), hence collision-safe.
+        """
+        cuboids: list[Cuboid] = list(scene.cuboid or [])
+        for mesh in scene.mesh or []:
+            verts = np.asarray(mesh.vertices, dtype=np.float64)
+            if verts.size == 0:
+                continue
+            scale = mesh.scale
+            if scale is not None:
+                verts = verts * np.asarray(scale, dtype=np.float64).reshape(1, -1)
+            lo, hi = verts.min(axis=0), verts.max(axis=0)
+            dims = (hi - lo).tolist()
+            center_local = ((lo + hi) / 2.0).tolist()
+            # Compose the mesh's frame with the local box-center offset to get the cuboid pose.
+            mesh_pose = Pose.from_list(list(mesh.pose), self.motion_planner.device_cfg)
+            center_offset = self._make_pose(position_xyz=torch.tensor([center_local]))
+            cuboid_pose = mesh_pose.multiply(center_offset).tolist()
+            cuboids.append(Cuboid(name=str(mesh.name), dims=dims, pose=cuboid_pose))
+        return Scene(cuboid=cuboids)
+
+    def _discover_object_mapping(self, world_obstacle_names: list[str]) -> dict[str, str]:
+        """Map live scene object names -> cuRobo obstacle names by normalized substring match.
+
+        cuRobo names obstacles by their USD prim path (e.g. ``/World/envs/env_0/Cube_1/...``)
+        while the Datastream keys objects by short name (``cube_1``). Mirrors the v1 discovery.
+        Only objects that appear in :meth:`Datastream.get_object_poses` (i.e. live rigid bodies)
+        are mappable; static furniture extracted from USD has no entry and is never pose-synced.
+        """
+        scene_object_names = list(self.datastream.get_object_poses(env_ids=[self.env_id]).keys())
+        mapping: dict[str, str] = {}
+        for obj_name in scene_object_names:
+            key = obj_name.lower().replace("_", "")
+            for path in world_obstacle_names:
+                if key in str(path).lower().replace("_", ""):
+                    mapping[obj_name] = path
+                    break
+        return mapping
+
+    def _sync_obstacle_poses(self) -> None:
+        """Per-plan-call: push the current (env-relative) pose of every dynamic obstacle.
+
+        Reads poses through :meth:`Datastream.get_object_poses` (env-origin-relative 4x4
+        matrices — the robot-base frame for a fixed-base robot at the env origin) and updates
+        each mapped obstacle via :meth:`SceneCollisionChecker.update_obstacle_pose`. Obstacles
+        whose name matches :attr:`_static_object_substrings` are skipped.
         """
         checker = getattr(self.motion_planner, "scene_collision_checker", None)
-        if checker is None:
+        if checker is None or not self._object_mapping:
             return
 
-        verify = not getattr(self, "_verified_obstacle_sync", True)
-        for name in self._registered_dynamic_objects:
-            pose_wxyz = self._read_object_pose_wxyz(name)
-            if pose_wxyz is None:
+        import isaaclab.utils.math as PoseUtils  # deferred so the module imports sim-free
+
+        object_poses = self.datastream.get_object_poses(env_ids=[self.env_id])
+        verify = not self._verified_obstacle_sync
+        for obj_name, curobo_name in self._object_mapping.items():
+            if any(s in obj_name.lower() for s in self._static_object_substrings):
                 continue
-            position = torch.tensor([pose_wxyz[:3]])
-            quaternion = torch.tensor([pose_wxyz[3:]])
-            checker.update_obstacle_pose(
-                name=name,
-                w_obj_pose=self._make_pose(position_xyz=position, quaternion_wxyz=quaternion),
-                env_idx=self.env_id,
+            pose_mat = object_poses.get(obj_name)
+            if pose_mat is None:
+                continue
+            pos_xyz, rot_mat = PoseUtils.unmake_pose(pose_mat[0])
+            quat_xyzw = PoseUtils.quat_from_matrix(rot_mat)
+            quat_wxyz = torch.roll(quat_xyzw, shifts=1, dims=-1)
+            self._set_obstacle_pose(
+                curobo_name,
+                self._make_pose(
+                    position_xyz=pos_xyz.unsqueeze(0),
+                    quaternion_wxyz=quat_wxyz.unsqueeze(0),
+                ),
             )
             if verify:
+                p = pos_xyz.tolist()
                 print(
-                    f"[CuroboV2Planner] first-sync {name:<12s} "
-                    f"xyz=({pose_wxyz[0]:+.4f},{pose_wxyz[1]:+.4f},{pose_wxyz[2]:+.4f}) "
-                    f"wxyz=({pose_wxyz[3]:+.4f},{pose_wxyz[4]:+.4f},{pose_wxyz[5]:+.4f},{pose_wxyz[6]:+.4f})",
+                    f"[CuroboV2Planner] env={self.env_id} first-sync {obj_name:<10s} "
+                    f"-> {curobo_name.split('/')[-1]}  xyz=({p[0]:+.4f},{p[1]:+.4f},{p[2]:+.4f})",
                     flush=True,
                 )
-        if verify:
-            self._verified_obstacle_sync = True
+        self._verified_obstacle_sync = True
 
-    def _read_object_pose_wxyz(self, name: str) -> list[float] | None:
-        """Read a rigid object's world pose from the env and return it as ``[x, y, z, qw, qx, qy, qz]``.
+    # ------------------------------------------------------------------
+    # Obstacle update routing (works around an upstream cuRobo dispatcher bug)
+    # ------------------------------------------------------------------
+    # ``SceneCollisionChecker.update_obstacle_pose`` / ``enable_obstacle`` probe the cuboid list
+    # first; its index lookup raises ``ValueError`` (which the dispatcher does not catch) before
+    # ever reaching the mesh list, so a *mesh* obstacle (e.g. an Isaac cube spawned as a USD Mesh)
+    # can never be updated through the public API. We resolve the owning collision-data array once
+    # and call its typed ``update_pose`` / ``set_enabled`` directly.
 
-        Returns ``None`` if the named entity isn't in the scene.
-        """
-        scene = self.env.scene
-        if name not in (scene.keys() if hasattr(scene, "keys") else []):
-            return None
-        obj = scene[name]
-        pos = _as_torch(obj.data.root_pos_w)[self.env_id]
-        quat_xyzw = _as_torch(obj.data.root_quat_w)[self.env_id]
-        # Convert obs convention (xyzw) → cuRobo pose convention (xyz, wxyz).
-        quat_wxyz = torch.roll(quat_xyzw, shifts=1, dims=-1)
-        return [
-            float(pos[0]),
-            float(pos[1]),
-            float(pos[2]),
-            float(quat_wxyz[0]),
-            float(quat_wxyz[1]),
-            float(quat_wxyz[2]),
-            float(quat_wxyz[3]),
-        ]
+    def _obstacle_storage(self, curobo_name: str):
+        """Return the collision-data array (cuboids/meshes/voxels) that owns ``curobo_name``."""
+        cached = self._obstacle_storage_cache.get(curobo_name)
+        if cached is not None:
+            return cached
+        data = self.motion_planner.scene_collision_checker.data
+        for attr in ("cuboids", "meshes", "voxels"):
+            arr = getattr(data, attr, None)
+            if arr is not None and curobo_name in arr.get_names(self._COLLISION_ENV_IDX):
+                self._obstacle_storage_cache[curobo_name] = arr
+                return arr
+        return None
+
+    def _set_obstacle_pose(self, curobo_name: str, w_obj_pose: Pose) -> None:
+        """Update one obstacle's pose, routed to its owning collision-data array."""
+        arr = self._obstacle_storage(curobo_name)
+        if arr is None:
+            self._LOGGER.warning("Obstacle %r not found in collision world; skipping pose sync.", curobo_name)
+            return
+        arr.update_pose(curobo_name, w_obj_pose=w_obj_pose, env_idx=self._COLLISION_ENV_IDX)
+
+    def _set_obstacle_enabled(self, curobo_name: str, enabled: bool) -> None:
+        """Enable/disable one obstacle for collision, routed to its owning collision-data array."""
+        arr = self._obstacle_storage(curobo_name)
+        if arr is None:
+            self._LOGGER.warning("Obstacle %r not found in collision world; skipping enable=%s.", curobo_name, enabled)
+            return
+        arr.set_enabled(curobo_name, enabled, self._COLLISION_ENV_IDX)
 
     # ------------------------------------------------------------------
     # Attachment / detachment
@@ -587,37 +658,66 @@ class CuroboV2Planner(MotionPlannerBase):
         if expected == self._currently_attached:
             return
 
+        # Detach any prior object: reset its link spheres and re-enable its world collision.
+        # ``enable_obstacle_names=None`` skips cuRobo's own re-enable path (which hits the mesh
+        # dispatcher bug); we re-enable via the type-correct routing instead.
         if self._currently_attached is not None:
-            self._attachment_manager().detach(link_name=self.config.attached_object_link_name)
+            self._attachment_manager().detach(
+                link_name=self.config.attached_object_link_name,
+                enable_obstacle_names=None,
+            )
+            if self._attached_curobo_name is not None:
+                self._set_obstacle_enabled(self._attached_curobo_name, True)
             self._currently_attached = None
+            self._attached_curobo_name = None
 
         if expected is None:
             return
 
-        if expected not in self.config.dynamic_object_dims:
+        curobo_name = self._object_mapping.get(expected)
+        if curobo_name is None:
             self._LOGGER.warning(
-                "Attachment requested for %r but it is not registered in dynamic_object_dims; "
-                "planning without attachment.",
+                "Attachment requested for %r but it was not discovered in the extracted "
+                "collision world; planning without attachment.",
                 expected,
             )
             return
 
+        checker = self.motion_planner.scene_collision_checker
+        obstacle = checker.scene_model.get_obstacle(curobo_name) if checker.scene_model is not None else None
+        if obstacle is None:
+            self._LOGGER.warning(
+                "Attached object %r (%s) not found in scene_model; planning without attachment.",
+                expected,
+                curobo_name,
+            )
+            return
+
         try:
-            self._attachment_manager().attach_from_scene(
+            # Use attach(...) with ``disable_obstacle_names=None`` rather than attach_from_scene:
+            # the latter's auto-disable hits the same mesh-dispatcher bug. We disable the carried
+            # obstacle's world collision ourselves via the type-correct routing below, so the held
+            # cube doesn't double-count as both an attached sphere set and a world obstacle.
+            self._attachment_manager().attach(
                 joint_states=current_state,
-                obstacle_names=[expected],
+                obstacles=[obstacle],
                 link_name=self.config.attached_object_link_name,
+                num_spheres=self.config.attached_object_num_spheres,
                 surface_radius=self.config.surface_sphere_radius,
                 sphere_fit_type=self._resolve_sphere_fit_type(),
+                disable_obstacle_names=None,
             )
+            self._set_obstacle_enabled(curobo_name, False)
             self._currently_attached = expected
+            self._attached_curobo_name = curobo_name
         except Exception as exc:  # noqa: BLE001  (attachment is best-effort)
             self._LOGGER.warning(
-                "attach_from_scene(%r) failed: %s — planning without attachment.",
+                "attach(%r) failed: %s — planning without attachment.",
                 expected,
                 exc,
             )
             self._currently_attached = None
+            self._attached_curobo_name = None
 
     def _resolve_sphere_fit_type(self) -> SphereFitType:
         """Translate the cfg's string into a v2 :class:`SphereFitType` enum value."""
@@ -646,13 +746,13 @@ class CuroboV2Planner(MotionPlannerBase):
         Franka's 9 joints including the two locked fingers) would fail a downstream concat
         with ``Expected size N but got size active_dof``.
         """
-        joint_pos_isaac = _as_torch(self.robot.data.joint_pos)[env_id]
+        joint_pos_isaac = self.datastream.get_robot_joint_positions(env_ids=[env_id])[0]
         position = (
             joint_pos_isaac.unsqueeze(0)
             .to(device=self.motion_planner.device_cfg.device, dtype=torch.float32)
             .contiguous()
         )
-        state = JointState.from_position(position, joint_names=list(self.robot.data.joint_names))
+        state = JointState.from_position(position, joint_names=self.datastream.get_robot_joint_names())
         reordered = state.reorder(self._active_joint_names)
         # ``reorder`` may produce a permuted view; rebuild with a contiguous tensor so
         # downstream CUDA ops (which require element-stride contiguity) don't reject it.

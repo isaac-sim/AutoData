@@ -8,17 +8,15 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+from __future__ import annotations
+
 import logging
 import numpy as np
 import torch
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import isaaclab.utils.math as PoseUtils
 import warp as wp
-from isaaclab.assets import Articulation
-from isaaclab.envs.manager_based_env import ManagerBasedEnv
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.sim.spawners.materials import PreviewSurfaceCfg
 from isaaclab.sim.spawners.meshes import MeshSphereCfg, spawn_mesh_sphere
 
@@ -35,6 +33,10 @@ from curobo.util_file import load_yaml
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
 from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
 from isaac_autodata_interfaces.motion_planners.motion_planner_base import MotionPlannerBase
+from isaac_autodata_utils import pose_math as PoseUtils
+
+if TYPE_CHECKING:
+    from isaac_autodata_interfaces.datastream.datastream import Datastream
 
 
 class PlannerLogger:
@@ -144,8 +146,7 @@ class CuroboPlanner(MotionPlannerBase):
 
     def __init__(
         self,
-        env: ManagerBasedEnv,
-        robot: Articulation,
+        datastream: Datastream,
         config: CuroboPlannerCfg,
         task_name: str | None = None,
         env_id: int = 0,
@@ -161,8 +162,8 @@ class CuroboPlanner(MotionPlannerBase):
         regardless of Isaac Lab's device configuration.
 
         Args:
-            env: The Isaac Lab environment instance containing the robot and scene
-            robot: Robot articulation to plan motions for
+            datastream: Read facade over the env, task, and embodiment. World state (collision
+                geometry source, object poses, joint configuration) is read through it.
             config: Configuration object containing planner parameters and settings
             task_name: Task name for auto-configuration
             env_id: Environment ID for multi-environment setups (0 to num_envs-1)
@@ -174,8 +175,9 @@ class CuroboPlanner(MotionPlannerBase):
         Raises:
             ValueError: If ``robot_config_file`` is not provided
         """
-        # Initialize base class
-        super().__init__(env=env, robot=robot, env_id=env_id, debug=config.debug_planner)
+        # Initialize base class. The base derives the raw env/robot escape-hatch handles from
+        # the datastream; the v1 backend still uses those for USD extraction and joint mutation.
+        super().__init__(datastream=datastream, env_id=env_id, debug=config.debug_planner)
 
         # Initialize planner logger with debug level based on config
         log_level = logging.DEBUG if config.debug_planner else logging.INFO
@@ -195,7 +197,9 @@ class CuroboPlanner(MotionPlannerBase):
         if self.visualize_plan:
             from isaac_autodata_interfaces.motion_planners.curobo.plan_visualizer import PlanVisualizer
 
-            # Use env-local base translation for multi-env rendering consistency
+            # Debug-visualization only (gated by ``visualize_plan``, off by default). Reads the
+            # raw env/robot handles directly to compute an env-local render offset; not part of
+            # the planning pipeline, which reads exclusively through ``self.datastream``.
             env_origin = self.env.scene.env_origins[env_id, :3]
             base_translation = (wp.to_torch(self.robot.data.root_pos_w)[env_id, :3] - env_origin).detach().cpu().numpy()
             self.plan_visualizer = PlanVisualizer(
@@ -275,9 +279,10 @@ class CuroboPlanner(MotionPlannerBase):
             time_dilation_factor=self.config.time_dilation_factor,
         )
 
-        # Create USD helper
+        # Create USD helper. The collision-geometry source (USD stage) is read through the
+        # Datastream so the planner never reaches into ``env.scene`` directly.
         self.usd_helper: UsdHelper = UsdHelper()
-        self.usd_helper.load_stage(env.scene.stage)
+        self.usd_helper.load_stage(self.datastream.get_usd_stage())
 
         # Initialize planning state
         self._current_plan: JointState | None = None
@@ -336,7 +341,7 @@ class CuroboPlanner(MotionPlannerBase):
         Returns:
             Tensor converted to environment's device while preserving dtype
         """
-        return tensor.to(device=self.env.device, dtype=tensor.dtype)
+        return tensor.to(device=self.datastream.device, dtype=tensor.dtype)
 
     # =====================================================================================
     # INITIALIZATION AND CONFIGURATION
@@ -350,8 +355,10 @@ class CuroboPlanner(MotionPlannerBase):
         that don't change during the simulation. Dynamic objects are synchronized separately
         in update_world() to maintain performance.
         """
-        env_prim_path = f"/World/envs/env_{self.env_id}"
-        robot_prim_path = self.config.robot_prim_path or f"{env_prim_path}/Robot"
+        # Prim scoping for obstacle extraction comes from the Datastream (collision-world source),
+        # not from direct env access.
+        env_prim_path = self.datastream.get_env_prim_path(self.env_id)
+        robot_prim_path = self.config.robot_prim_path or self.datastream.get_robot_prim_path(self.env_id)
 
         ignore_list = self.config.world_ignore_substrings or [
             f"{env_prim_path}/Robot",
@@ -611,80 +618,61 @@ class CuroboPlanner(MotionPlannerBase):
         The method updates both the world model and the collision checker to ensure
         consistency across all cuRobo components.
         """
-        # Get cached object mappings and world model
+        # Get cached object mappings and world model. Object poses are read through the
+        # Datastream in env-relative frame (env origin already subtracted) — the same
+        # robot-relative frame cuRobo's collision world is built in.
         object_mappings = self._get_object_mappings()
         world_model = self.motion_gen.world_coll_checker.world_model
-        rigid_objects = self.env.scene.rigid_objects
+        object_poses = self.datastream.get_object_poses(env_ids=[self.env_id])
+        static_objects = getattr(self.config, "static_objects", [])
+
+        def _is_static(name: str) -> bool:
+            return any(static_name in name.lower() for static_name in static_objects)
 
         updated_count = 0
 
         for object_name, object_path in object_mappings.items():
-            if object_name not in rigid_objects:
+            if object_name not in object_poses or _is_static(object_name):
                 continue
-
-            # Skip static mesh objects - they should not be dynamically updated
-            static_objects = getattr(self.config, "static_objects", [])
-            if any(static_name in object_name.lower() for static_name in static_objects):
-                self.logger.debug(f"SYNC: Skipping static object {object_name}")
-                continue
-
-            # Get current pose from Lab (may be on CPU or CUDA depending on --device flag)
-            obj = rigid_objects[object_name]
-            env_origin = self.env.scene.env_origins[self.env_id]
-            current_pos_raw = wp.to_torch(obj.data.root_pos_w)[self.env_id] - env_origin
-            current_quat_raw = wp.to_torch(obj.data.root_quat_w)[self.env_id]  # (x, y, z, w)
-
-            # Convert to cuRobo device and extract float values for pose list
-            current_pos = self._to_curobo_device(current_pos_raw)
-            current_quat = self._to_curobo_device(current_quat_raw)
-
-            # Convert to cuRobo pose format [pos_x, pos_y, pos_z, qw, qx, qy, qz]
-            # Isaac Lab quaternion format: (x, y, z, w) -> cuRobo format: (w, x, y, z)
-            pose_list = [
-                float(current_pos[0].item()),
-                float(current_pos[1].item()),
-                float(current_pos[2].item()),
-                float(current_quat[3].item()),  # w
-                float(current_quat[0].item()),  # x
-                float(current_quat[1].item()),  # y
-                float(current_quat[2].item()),  # z
-            ]
-
-            # Update object pose in cuRobo's world model
+            pose_list = self._object_pose_to_curobo_list(object_poses[object_name][0])
             if self._update_object_in_world_model(world_model, object_name, object_path, pose_list):
                 updated_count += 1
 
         self.logger.debug(f"SYNC: Updated {updated_count} object poses in cuRobo world model")
 
-        # Sync object poses with collision checker
+        # Sync object poses with collision checker. This preserves static mesh objects unlike
+        # load_collision_model which rebuilds everything.
         if updated_count > 0:
-            # Update individual obstacle poses in collision checker
-            # This preserves static mesh objects unlike load_collision_model which rebuilds everything
             for object_name, object_path in object_mappings.items():
-                if object_name not in rigid_objects:
+                if object_name not in object_poses or _is_static(object_name):
                     continue
-
-                # Skip static mesh objects - they should not be dynamically updated
-                static_objects = getattr(self.config, "static_objects", [])
-                if any(static_name in object_name.lower() for static_name in static_objects):
-                    continue
-
-                # Get current pose and update in collision checker
-                obj = rigid_objects[object_name]
-                env_origin = self.env.scene.env_origins[self.env_id]
-                current_pos_raw = wp.to_torch(obj.data.root_pos_w)[self.env_id] - env_origin
-                current_quat_raw = wp.to_torch(obj.data.root_quat_w)[self.env_id]
-
-                current_pos = self._to_curobo_device(current_pos_raw)
-                current_quat = self._to_curobo_device(current_quat_raw)
-
-                # Create cuRobo pose and update collision checker directly
-                curobo_pose = self._make_pose(position=current_pos, quaternion=current_quat)
+                pose_list = self._object_pose_to_curobo_list(object_poses[object_name][0])
+                # pose_list quaternion is already cuRobo (w, x, y, z) order.
+                curobo_pose = self._make_pose(position=pose_list[:3], quaternion=pose_list[3:], quat_is_xyzw=False)
                 self.motion_gen.world_coll_checker.update_obstacle_pose(  # type: ignore
                     object_path, curobo_pose, update_cpu_reference=True
                 )
 
             self.logger.debug(f"Updated {updated_count} object poses in collision checker")
+
+    def _object_pose_to_curobo_list(self, pose_mat: torch.Tensor) -> list[float]:
+        """Decompose a 4x4 env-relative pose into cuRobo's ``[x, y, z, qw, qx, qy, qz]`` list.
+
+        The input matrix comes from :meth:`Datastream.get_object_poses` (env-relative frame).
+        Our :mod:`pose_math` uses the ``(x, y, z, w)`` quaternion convention; cuRobo wants
+        ``(w, x, y, z)``, so we reorder here.
+        """
+        pos, rot = PoseUtils.unmake_pose(pose_mat)
+        quat_xyzw = PoseUtils.quat_from_matrix(rot)
+        return [
+            float(pos[0]),
+            float(pos[1]),
+            float(pos[2]),
+            float(quat_xyzw[3]),  # w
+            float(quat_xyzw[0]),  # x
+            float(quat_xyzw[1]),  # y
+            float(quat_xyzw[2]),  # z
+        ]
 
     def _get_object_mappings(self) -> dict[str, str]:
         """Get object mappings with caching for performance optimization.
@@ -697,29 +685,29 @@ class CuroboPlanner(MotionPlannerBase):
         """
         if self._cached_object_mappings is None:
             world_model = self.motion_gen.world_coll_checker.world_model
-            rigid_objects = self.env.scene.rigid_objects
-            self._cached_object_mappings = self._discover_object_mappings(world_model, rigid_objects)
+            object_names = list(self.datastream.get_object_poses(env_ids=[self.env_id]).keys())
+            self._cached_object_mappings = self._discover_object_mappings(world_model, object_names)
             self.logger.debug(f"Computed and cached object mappings: {len(self._cached_object_mappings)} objects")
 
         return self._cached_object_mappings
 
-    def _discover_object_mappings(self, world_model, rigid_objects) -> dict[str, str]:
-        """Build mapping between Isaac Lab object names and cuRobo world paths.
+    def _discover_object_mappings(self, world_model, object_names: list[str]) -> dict[str, str]:
+        """Build mapping between scene object names and cuRobo world paths.
 
-        Automatically discovers the correspondence between Isaac Lab's rigid object names
-        and their full USD paths in cuRobo's world model. This mapping is essential for
-        pose synchronization and attachment operations, as cuRobo uses full USD paths
-        while Isaac Lab uses short object names.
+        Automatically discovers the correspondence between the live scene's object names
+        (from the Datastream) and their full USD paths in cuRobo's world model. This mapping
+        is essential for pose synchronization and attachment operations, as cuRobo uses full
+        USD paths while the scene uses short object names.
 
         Args:
             world_model: cuRobo's collision world model containing primitive objects
-            rigid_objects: Isaac Lab's rigid objects dictionary
+            object_names: Live scene object names (keys of :meth:`Datastream.get_object_poses`)
 
         Returns:
-            Dictionary mapping Isaac Lab object names to their corresponding USD paths
+            Dictionary mapping scene object names to their corresponding USD paths
         """
         mappings = {}
-        env_prefix = f"/World/envs/env_{self.env_id}/"
+        env_prefix = f"{self.datastream.get_env_prim_path(self.env_id)}/"
         world_object_paths = []
 
         # Collect all primitive objects from cuRobo world model
@@ -729,8 +717,8 @@ class CuroboPlanner(MotionPlannerBase):
                 if primitive.name and env_prefix in str(primitive.name):
                     world_object_paths.append(str(primitive.name))
 
-        # Match Isaac Lab object names to world paths
-        for object_name in rigid_objects.keys():
+        # Match scene object names to world paths
+        for object_name in object_names:
             # Direct name matching
             for path in world_object_paths:
                 if object_name.lower().replace("_", "") in path.lower().replace("_", ""):
@@ -935,8 +923,8 @@ class CuroboPlanner(MotionPlannerBase):
             `self.motion_gen.kinematics.joint_names`, with position from the robot
             and zero velocity/acceleration.
         """
-        # Fetch joint position (shape: [1, num_joints])
-        joint_pos_raw: torch.Tensor = wp.to_torch(self.robot.data.joint_pos)[self.env_id, :].unsqueeze(0)
+        # Fetch joint position (shape: [1, num_joints]) and names through the Datastream.
+        joint_pos_raw: torch.Tensor = self.datastream.get_robot_joint_positions(env_ids=[self.env_id])
         joint_vel_raw: torch.Tensor = torch.zeros_like(joint_pos_raw)
         joint_acc_raw: torch.Tensor = torch.zeros_like(joint_pos_raw)
 
@@ -949,7 +937,7 @@ class CuroboPlanner(MotionPlannerBase):
             position=joint_pos,
             velocity=joint_vel,
             acceleration=joint_acc,
-            joint_names=self.robot.data.joint_names,
+            joint_names=self.datastream.get_robot_joint_names(),
             tensor_args=self.tensor_args,
         )
         return cu_js.get_ordered_joint_state(self.motion_gen.kinematics.joint_names)
@@ -1260,7 +1248,7 @@ class CuroboPlanner(MotionPlannerBase):
 
                 self._current_plan = self.motion_gen.get_full_js(self._current_plan)
                 common_js_names: list[str] = [
-                    x for x in self.robot.data.joint_names if x in self._current_plan.joint_names
+                    x for x in self.datastream.get_robot_joint_names() if x in self._current_plan.joint_names
                 ]
                 self._current_plan = self._current_plan.get_ordered_joint_state(common_js_names)
                 self._plan_index = 0
@@ -1577,12 +1565,18 @@ class CuroboPlanner(MotionPlannerBase):
         if self.frame_counter % self.sphere_update_freq != 0:
             return
 
+        # Debug-visualization only (gated by ``visualize_spheres``, off by default). This path
+        # briefly *mutates* joint targets to render collision spheres, so it uses the raw
+        # ``self.robot`` handle directly — the Datastream is a read facade and intentionally does
+        # not expose actuation. Not part of the planning pipeline.
         original_joints: torch.Tensor = wp.to_torch(self.robot.data.joint_pos)[self.env_id].clone()
 
         try:
             # Ensure joint positions are on environment device for robot commands
             env_joint_positions = (
-                self._to_env_device(joint_positions) if joint_positions.device != self.env.device else joint_positions
+                self._to_env_device(joint_positions)
+                if joint_positions.device != self.datastream.device
+                else joint_positions
             )
             self.robot.set_joint_position_target(env_joint_positions.view(1, -1), env_ids=[self.env_id])
             self._update_sphere_visualization(force_update=False)
@@ -1791,7 +1785,7 @@ class CuroboPlanner(MotionPlannerBase):
         gripper_closed = expected_attached_object is not None
         self._set_gripper_state(gripper_closed)
         current_attached = self.get_attached_objects()
-        gripper_pos = wp.to_torch(self.robot.data.joint_pos)[env_id, -2:]
+        gripper_pos = self.datastream.get_robot_joint_positions(env_ids=[env_id])[0, -2:]
 
         self.logger.debug(f"Current attached objects: {current_attached}")
 
@@ -1808,28 +1802,14 @@ class CuroboPlanner(MotionPlannerBase):
 
                 self.logger.debug(f"Object path: {expected_path}")
 
-                # Debug object poses
-                rigid_objects = self.env.scene.rigid_objects
-                if expected_attached_object in rigid_objects:
-                    obj = rigid_objects[expected_attached_object]
-                    origin = self.env.scene.env_origins[env_id]
-                    obj_pos = wp.to_torch(obj.data.root_pos_w)[env_id] - origin
-                    self.logger.debug(f"Isaac Lab object position: {obj_pos}")
-
-                    # Debug end-effector position
-                    ee_frame_cfg = SceneEntityCfg("ee_frame")
-                    ee_frame = self.env.scene[ee_frame_cfg.name]
-                    ee_pos = wp.to_torch(ee_frame.data.target_pos_w)[env_id, 0, :] - origin
-                    self.logger.debug(f"End-effector position: {ee_pos}")
-
-                    # Debug distance
-                    distance = torch.linalg.vector_norm(obj_pos - ee_pos).item()
-                    self.logger.debug(f"Distance EE to object: {distance:.4f}")
-
-                    # Debug gripper state
-                    gripper_open_val = self.config.grasp_gripper_open_val
-                    self.logger.debug(f"Gripper positions: {gripper_pos}")
-                    self.logger.debug(f"Gripper open val: {gripper_open_val}")
+                # Debug object pose (read through the Datastream, env-relative frame).
+                object_poses = self.datastream.get_object_poses(env_ids=[env_id])
+                if expected_attached_object in object_poses:
+                    obj_pos = object_poses[expected_attached_object][0][:3, 3]
+                    self.logger.debug(f"Object position (env-relative): {obj_pos}")
+                    self.logger.debug(
+                        f"Gripper positions: {gripper_pos}; open val: {self.config.grasp_gripper_open_val}"
+                    )
 
                 is_grasped = self._check_object_grasped(gripper_pos, expected_attached_object)
 

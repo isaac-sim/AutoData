@@ -1,3 +1,8 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # Copyright (c) 2026, The Isaac Auto Data Project Developers.
 # All rights reserved.
 #
@@ -79,7 +84,7 @@ class Datastream:
                 "Either use the same env for the embodiment adapter and the Datastream, or leave "
                 "the embodiment adapter env unset before creating the Datastream."
             )
-        
+
         # Ensure that task descriptor and embodiment adapter declare the same EEFs.
         task_eefs = set(task_descriptor.get_eef_names())
         adapter_eefs = set(embodiment_adapter.get_eef_names())
@@ -171,7 +176,7 @@ class Datastream:
 
     def get_subtask_algo_params(self, eef_name: str) -> list[SubtaskAlgoParams]:
         """Return per-subtask algorithm parameters for the EEF, in subtask order."""
-        
+
         return self.task_descriptor.get_subtask_algo_params(eef_name)
 
     def get_subtask_descriptions(self, eef_name: str) -> list[str]:
@@ -187,6 +192,21 @@ class Datastream:
         """Read the current pose of the given EEF from the embodiment adapter."""
 
         return self.embodiment_adapter.get_eef_poses(env_ids=env_ids)[eef_name]
+
+    def get_robot_joint_positions(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
+        """Read the robot's current joint positions [rad] via the embodiment adapter.
+
+        Returns a tensor of shape ``(len(env_ids), num_dof)`` in the articulation's native joint
+        order (see :meth:`get_robot_joint_names`). Consumed by motion planners as a planning
+        start state.
+        """
+
+        return self.embodiment_adapter.get_joint_positions(env_ids=env_ids)
+
+    def get_robot_joint_names(self) -> list[str]:
+        """Return the robot articulation's joint names, ordered to match :meth:`get_robot_joint_positions`."""
+
+        return self.embodiment_adapter.get_joint_names()
 
     def target_eef_pose_to_action(
         self,
@@ -219,16 +239,28 @@ class Datastream:
     # ------------------------------------------------------------------
 
     def get_object_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
-        """Get all rigid object poses from the environment."""
+        """Get all rigid object poses from the environment as env-relative 4x4 matrices.
+
+        Reads each rigid object's root pose directly from its cached articulation data rather
+        than snapshotting the whole scene via ``env.scene.get_state()`` (which also gathers every
+        articulation's joint state and velocities). The env-relative position is
+        ``root_pos_w - env_origin`` — exactly what ``get_state(is_relative=True)`` computes — and
+        the orientation is unchanged by the env-origin translation. Returns a map
+        ``object_name -> (len(env_ids), 4, 4)``.
+        """
+        import warp as wp
+
+        def _as_torch(arr):
+            return wp.to_torch(arr) if isinstance(arr, wp.array) else arr
 
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
-
-        rigid_object_states = self.env.scene.get_state(is_relative=True)["rigid_object"]
-        object_pose_matrix = dict()
-        for obj_name, obj_state in rigid_object_states.items():
-            object_pose_matrix[obj_name] = pose_math.make_pose(
-                obj_state["root_pose"][index, :3], pose_math.matrix_from_quat(obj_state["root_pose"][index, 3:7])
-            )
+        scene = self.env.scene
+        env_origins = scene.env_origins[index]
+        object_pose_matrix: dict[str, torch.Tensor] = {}
+        for obj_name, obj in scene.rigid_objects.items():
+            pos_rel = _as_torch(obj.data.root_pos_w)[index] - env_origins
+            quat = _as_torch(obj.data.root_quat_w)[index]
+            object_pose_matrix[obj_name] = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
         return object_pose_matrix
 
     def get_scene_state(self, is_relative: bool = True) -> dict:
@@ -242,13 +274,51 @@ class Datastream:
         return self.env.scene.get_state(is_relative=is_relative)
 
     # ------------------------------------------------------------------
+    # Collision-world source
+    # ------------------------------------------------------------------
+    # Motion planners build their collision world from the live scene. The Datastream is the
+    # single owner of that simulator-facing access so the planners stay backend-agnostic: a
+    # cuRobo planner feeds the stage + prim scoping below into its own USD parser, while
+    # per-step obstacle pose sync goes through :meth:`get_object_poses` (env-relative frame).
+
+    def get_usd_stage(self) -> Any:
+        """Return the live USD stage backing the scene.
+
+        This is the sanctioned collision-geometry source for motion planners that extract
+        obstacles via a USD parser. Planners scope extraction with :meth:`get_env_prim_path`
+        and :meth:`get_robot_prim_path`.
+        """
+
+        return self.env.scene.stage
+
+    def get_env_prim_path(self, env_id: int) -> str:
+        """Return the root USD prim path of the given environment's subtree (e.g. ``/World/envs/env_0``)."""
+
+        return f"/World/envs/env_{env_id}"
+
+    def get_robot_prim_path(self, env_id: int) -> str:
+        """Return the USD prim path of the robot articulation root for the given environment.
+
+        Used as the reference frame for obstacle extraction (obstacles are expressed relative to
+        the robot base, which sits at the environment origin for a fixed-base robot). Derived from
+        the live articulation when available, falling back to the standard ``{env}/Robot`` layout.
+        """
+
+        robot_name = getattr(self.embodiment_adapter, "robot_asset_name", "robot")
+        try:
+            prim_paths = self.env.scene[robot_name].root_physx_view.prim_paths
+            return prim_paths[env_id]
+        except (KeyError, AttributeError, IndexError):
+            return f"{self.get_env_prim_path(env_id)}/Robot"
+
+    # ------------------------------------------------------------------
     # Source-demo pool access
     # ------------------------------------------------------------------
 
     @property
     def source_pool(self) -> DataGenInfoPool:
         """Get the source-demo pool."""
-        
+
         return self._pool
 
     @property
@@ -276,5 +346,5 @@ class Datastream:
 
     async def add_episode(self, episode: EpisodeData) -> None:
         """Add an episode to the source-demo pool."""
-        
+
         await self._pool.add_episode(episode)
