@@ -3,7 +3,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-
 from __future__ import annotations
 
 import yaml
@@ -27,8 +26,7 @@ class TaskDescriptor:
         subtasks: Per-end-effector ordered subtask lists. Keys are eef names;
             each value is the ordered sequence of :class:`Subtask` for that eef.
         constraints: Cross-subtask coordination/sequential constraints (multi-eef tasks).
-        generation_policy: Cross-cutting generation flags (source-demo selection scope, first-pose
-            anchoring, interpolation source). Defaults match upstream MimicEnvCfg.datagen_config.
+        generation_policy: Data generation policy parameters.
     """
 
     name: str = MISSING
@@ -140,7 +138,18 @@ class TaskDescriptor:
                 coordination_scheme_rot_noise_scale: <float>
                 coordination_synchronize_start: <bool>
               - ...
-            generation_policy:                  # optional; defaults match upstream Mimic
+            generation_policy:                  # optional; full parity with MimicEnvCfg.datagen_config
+              name: <str>
+              seed: <int>
+              num_trials: <int>
+              guarantee_success: <bool>
+              keep_failed: <bool>
+              max_num_failures: <int>
+              source_dataset_path: <str>
+              generation_path: <str>
+              task_name: <str>
+              use_skillgen: <bool>
+              use_navigation_controller: <bool>
               select_src_per_subtask: <bool>
               select_src_per_arm: <bool>
               transform_first_robot_pose: <bool>

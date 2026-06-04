@@ -3,23 +3,25 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Task descriptor for the Isaac Lab Mimic Franka Cube Stack task.
-#
-# Mirrors:
-#   submodules/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_mimic/
-#   isaaclab_mimic/envs/franka_stack_ik_rel_mimic_env_cfg.py
-#
-# Notes on what does NOT round-trip from MimicEnvCfg:
-#   - `datagen_config` (name, generation_num_trials, seed, max_num_failures,
-#     generation_select_src_per_subtask, etc.) is pipeline-level config that
-#     lives outside TaskDescriptor.
-#   - `next_subtask_description` from the original config is not modeled by
-#     the current Subtask dataclass; the prompts have been folded into the
-#     subtask's own `description` field where useful.
-
-name: demo_src_stack_isaac_lab_task_D0
+name: franka_cube_stack
 description: Stack red, green, and blue cubes into a single tower.
-algo: dexmimicgen
+algo: mimicgen
+
+generation_policy:
+  name: franka_cube_stack
+  seed: 1
+  num_trials: 10
+  guarantee_success: true
+  keep_failed: false
+  source_dataset_path: null
+  generation_path: null
+  task_name: null
+  use_skillgen: false
+  use_navigation_controller: false
+  select_src_per_subtask: true
+  select_src_per_arm: false
+  transform_first_robot_pose: false
+  interpolate_from_last_target_pose: true
 
 subtasks:
   franka:

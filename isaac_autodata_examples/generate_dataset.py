@@ -91,21 +91,22 @@ import random  # noqa: E402
 import sys  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
-
-import isaaclab_mimic.envs  # noqa: F401, E402
-import isaaclab_tasks  # noqa: F401, E402
-from isaaclab.envs import ManagerBasedRLMimicEnv  # noqa: E402
-from isaaclab_mimic.datagen.generation import env_loop, setup_env_config  # noqa: E402
-from isaaclab_mimic.datagen.utils import get_env_name_from_dataset, setup_output_paths  # noqa: E402
+from typing import Any  # noqa: E402
 
 from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
+from isaac_autodata_interfaces.env import (  # noqa: E402
+    env_loop,
+    get_env_name_from_dataset,
+    setup_env_config,
+    setup_output_paths,
+)
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
 
 async def run_data_generator(
-    env: ManagerBasedRLMimicEnv,
+    env: Any,
     env_id: int,
     env_reset_queue: asyncio.Queue,
     env_action_queue: asyncio.Queue,
@@ -137,10 +138,10 @@ async def run_data_generator(
 
 
 def setup_async_generation(
-    env: ManagerBasedRLMimicEnv,
+    env: Any,
     num_envs: int,
     input_file: str,
-    task_descriptor_yaml: str,
+    task_descriptor: TaskDescriptor,
     embodiment_yaml: str,
     success_term,
     algorithm,
@@ -152,7 +153,6 @@ def setup_async_generation(
     env_action_queue: asyncio.Queue = asyncio.Queue()
     pool_lock = asyncio.Lock()
 
-    task_descriptor = TaskDescriptor.from_yaml(task_descriptor_yaml)
     embodiment_adapter = embodiment_adapter_from_yaml(embodiment_yaml)
     datastream = Datastream(
         env=env,
@@ -160,7 +160,7 @@ def setup_async_generation(
         embodiment_adapter=embodiment_adapter,
         source_dataset_path=input_file,
         asyncio_lock=pool_lock,
-        uses_start_signals=algorithm.uses_subtask_start_signals,
+        uses_start_signals=task_descriptor.get_generation_policy().use_skillgen,
     )
     print(f"Loaded {datastream.num_source_demos} source episodes into the datagen pool")
 
@@ -231,8 +231,19 @@ def _close_motion_planners(planners: dict | None) -> None:
 
 def main() -> None:
     output_dir, output_file_name = setup_output_paths(args_cli.output_file)
-    task_name = args_cli.task.split(":")[-1] if args_cli.task else None
-    env_name = task_name or get_env_name_from_dataset(args_cli.input_file)
+    # The task name, if provided, overrides the environment name recorded in the dataset.
+    if args_cli.task:
+        env_name = args_cli.task.split(":")[-1]
+    else:
+        env_name = get_env_name_from_dataset(args_cli.input_file)
+
+    # The task descriptor's GenerationPolicy is the source for generation policy parameters.
+    task_descriptor = TaskDescriptor.from_yaml(args_cli.task_descriptor)
+    generation_policy_params = task_descriptor.get_generation_policy()
+
+    # The CLI --generation_num_trials, when given, overrides the descriptor's num_trials.
+    if args_cli.generation_num_trials is not None:
+        generation_policy_params.num_trials = args_cli.generation_num_trials
 
     env_cfg, success_term = setup_env_config(
         env_name=env_name,
@@ -240,12 +251,10 @@ def main() -> None:
         output_file_name=output_file_name,
         num_envs=args_cli.num_envs,
         device=args_cli.device,
-        generation_num_trials=args_cli.generation_num_trials,
+        generation_policy_params=generation_policy_params,
     )
 
     env = gym.make(env_name, cfg=env_cfg).unwrapped
-    if not isinstance(env, ManagerBasedRLMimicEnv):
-        raise ValueError(f"Env {env_name!r} is not a ManagerBasedRLMimicEnv")
 
     # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
     motion_planners: dict | None = None
@@ -255,15 +264,11 @@ def main() -> None:
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 
-    # Mirror the algorithm's start-signal expectation onto the upstream env config so anything
-    # downstream that still reads ``env.cfg.datagen_config.use_skillgen`` (e.g. the upstream
-    # ``env_loop``) stays consistent. The Datastream constructed below uses the algorithm's flag
-    # directly via ``uses_start_signals=algorithm.uses_subtask_start_signals``.
-    env_cfg.datagen_config.use_skillgen = algorithm.uses_subtask_start_signals
+    generation_policy_params.use_skillgen = algorithm.uses_subtask_start_signals
 
-    random.seed(env.cfg.datagen_config.seed)
-    np.random.seed(env.cfg.datagen_config.seed)
-    torch.manual_seed(env.cfg.datagen_config.seed)
+    random.seed(generation_policy_params.seed)
+    np.random.seed(generation_policy_params.seed)
+    torch.manual_seed(generation_policy_params.seed)
 
     env.reset()
 
@@ -272,7 +277,7 @@ def main() -> None:
             env=env,
             num_envs=args_cli.num_envs,
             input_file=args_cli.input_file,
-            task_descriptor_yaml=args_cli.task_descriptor,
+            task_descriptor=task_descriptor,
             embodiment_yaml=args_cli.embodiment,
             success_term=success_term,
             algorithm=algorithm,
@@ -285,8 +290,9 @@ def main() -> None:
                 env,
                 async_components["reset_queue"],
                 async_components["action_queue"],
-                async_components["info_pool"],
                 async_components["event_loop"],
+                generation_policy_params=generation_policy_params,
+                stats=async_components["stats"],
             )
         except asyncio.CancelledError:
             print("Async tasks cancelled.")
