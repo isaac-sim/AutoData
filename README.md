@@ -47,12 +47,12 @@ Prerequisites: `conda` and [`uv`](https://docs.astral.sh/uv/) must be on your PA
 ./installer.sh -c
 ```
 
-This creates a conda env named `isaac_auto_data` with Python 3.12.
+This creates a conda env named `isaac_autodata` with Python 3.12.
 
 ### 2. Install everything into the env
 
 ```bash
-conda activate isaac_auto_data
+conda activate isaac_autodata
 ./installer.sh -i
 ```
 

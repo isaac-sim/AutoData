@@ -281,22 +281,24 @@ class MultiWaypoint:
         success_term: TerminationTermCfg,
         env_id: int = 0,
         env_action_queue: asyncio.Queue | None = None,
-    ) -> dict:
+    ) -> bool:
         """Issue one env step from the assembled multi-EEF action.
 
         Action encoding is routed through the embodiment adapter (via Datastream). Env-side
-        controller ops (``env.step``, ``env.obs_buf``, ``env.scene.get_state``) are reached
-        through the Datastream ``get_env()`` escape hatch — by design, they stay on env.
+        controller ops (``env.step``, ``env.scene.get_state``) are reached through the Datastream
+        ``get_env()`` escape hatch — by design, they stay on env.
 
         Args:
             datastream: Composed datastream; provides action encoding and env access.
             success_term: Termination term used to check task success after the step.
             env_id: Vectorized env index.
             env_action_queue: If given, action is enqueued for the simulator-side loop instead of
-                stepped here; the result observation is read from ``env.obs_buf``.
+                stepped here.
+
+        Returns:
+            Whether the task succeeded after this step.
         """
         env = datastream.get_env()
-        state = datastream.get_scene_state(is_relative=True)
 
         target_eef_pose_dict = {name: w.pose for name, w in self.waypoints.items()}
         gripper_action_dict = {name: w.gripper_action for name, w in self.waypoints.items()}
@@ -313,12 +315,9 @@ class MultiWaypoint:
             play_action = play_action.unsqueeze(0)
 
         if env_action_queue is None:
-            obs, _, _, _, _ = env.step(play_action)
+            env.step(play_action)
         else:
             await env_action_queue.put((env_id, play_action[0]))
             await env_action_queue.join()
-            obs = env.obs_buf
 
-        success = bool(success_term.func(env, **success_term.params)[env_id])
-
-        return dict(states=[state], observations=[obs], actions=[play_action], success=success)
+        return bool(success_term.func(env, **success_term.params)[env_id])
