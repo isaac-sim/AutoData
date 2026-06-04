@@ -151,7 +151,6 @@ def setup_async_generation(
     asyncio_event_loop = asyncio.get_event_loop()
     env_reset_queue: asyncio.Queue = asyncio.Queue()
     env_action_queue: asyncio.Queue = asyncio.Queue()
-    pool_lock = asyncio.Lock()
 
     embodiment_adapter = embodiment_adapter_from_yaml(embodiment_yaml)
     datastream = Datastream(
@@ -159,7 +158,6 @@ def setup_async_generation(
         task_descriptor=task_descriptor,
         embodiment_adapter=embodiment_adapter,
         source_dataset_path=input_file,
-        asyncio_lock=pool_lock,
         uses_start_signals=task_descriptor.get_generation_policy().use_skillgen,
     )
     print(f"Loaded {datastream.num_source_demos} source episodes into the datagen pool")
@@ -293,6 +291,7 @@ def main() -> None:
                 async_components["event_loop"],
                 generation_policy_params=generation_policy_params,
                 stats=async_components["stats"],
+                data_gen_tasks=data_gen_tasks,
             )
         except asyncio.CancelledError:
             print("Async tasks cancelled.")

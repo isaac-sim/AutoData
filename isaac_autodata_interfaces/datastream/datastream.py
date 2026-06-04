@@ -48,8 +48,9 @@ class Datastream:
                 with ``source_dataset_path``.
             source_dataset_path: HDF5 path to load source demos from. Mutually exclusive with
                 ``source_pool``.
-            asyncio_lock: Lock guarding concurrent pool growth across async env tasks. A fresh lock
-                is created when not supplied and the pool is built here.
+            asyncio_lock: (Optional) Lock guarding concurrent pool growth across async env tasks.
+                Pass ``None`` (the default) for static pools that are fully loaded before
+                generation starts (no locking overhead is incurred).
             select_demo_keys: (Optional) Subset of episode keys to load when reading from HDF5.
             uses_start_signals: (For SkillGen) Whether the algorithm reads subtask start signals.
         """
@@ -102,7 +103,7 @@ class Datastream:
                 device=env.device,
                 uses_start_signals=uses_start_signals,
                 select_demo_keys=select_demo_keys,
-                asyncio_lock=asyncio_lock if asyncio_lock is not None else asyncio.Lock(),
+                asyncio_lock=asyncio_lock,
             )
 
     @property
@@ -221,14 +222,19 @@ class Datastream:
     def get_object_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
         """Get all rigid object poses from the environment."""
 
-        index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
+        import warp as wp
 
-        rigid_object_states = self.env.scene.get_state(is_relative=True)["rigid_object"]
-        object_pose_matrix = dict()
-        for obj_name, obj_state in rigid_object_states.items():
-            object_pose_matrix[obj_name] = pose_math.make_pose(
-                obj_state["root_pose"][index, :3], pose_math.matrix_from_quat(obj_state["root_pose"][index, 3:7])
-            )
+        def _as_torch(arr):
+            return wp.to_torch(arr) if isinstance(arr, wp.array) else arr
+
+        index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
+        scene = self.env.scene
+        env_origins = scene.env_origins[index]
+        object_pose_matrix: dict[str, torch.Tensor] = {}
+        for obj_name, obj in scene.rigid_objects.items():
+            pos_rel = _as_torch(obj.data.root_pos_w)[index] - env_origins
+            quat = _as_torch(obj.data.root_quat_w)[index]
+            object_pose_matrix[obj_name] = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
         return object_pose_matrix
 
     def get_scene_state(self, is_relative: bool = True) -> dict:

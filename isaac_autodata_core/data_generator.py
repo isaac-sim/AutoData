@@ -12,6 +12,7 @@ algorithms plug in without editing this file.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import numpy as np
 import torch
 from copy import deepcopy
@@ -36,24 +37,29 @@ from isaac_autodata_interfaces.tasks.subtask_constraint_spec import (
 )
 
 
+@contextlib.asynccontextmanager
+async def _optional_lock(lock: asyncio.Lock | None):
+    """Async context manager that acquires lock only when it is not None."""
+
+    if lock is not None:
+        async with lock:
+            yield
+    else:
+        yield
+
+
 @dataclass(frozen=True)
 class GenerationResult:
     """Output of one :meth:`DataGenerator.generate` invocation."""
 
     initial_state: dict
-    states: list
-    observations: list
-    actions: torch.Tensor | list[torch.Tensor]
     success: bool
 
 
 @dataclass
 class _GenerationBuffers:
-    """Per-call accumulator for simulator outputs."""
+    """Per-call success accumulator."""
 
-    states: list = field(default_factory=list)
-    observations: list = field(default_factory=list)
-    actions: list[torch.Tensor] = field(default_factory=list)
     success: bool = False
 
 
@@ -524,9 +530,9 @@ class DataGenerator:
         prev_pool_size = 0
 
         while True:
+            await asyncio.sleep(0)
             pool_lock = self.src_demo_datagen_info_pool.asyncio_lock
-            assert pool_lock is not None
-            async with pool_lock:
+            async with _optional_lock(pool_lock):
                 randomized_subtask_boundaries, prev_pool_size = self._maybe_refresh_randomized_subtask_boundaries(
                     randomized_subtask_boundaries=randomized_subtask_boundaries,
                     prev_pool_size=prev_pool_size,
@@ -548,13 +554,7 @@ class DataGenerator:
                     )
                     if result is None:
                         # Planning failure (e.g. SkillGen motion planner). Abort with no success.
-                        return GenerationResult(
-                            initial_state=initial_state,
-                            states=buffers.states,
-                            observations=buffers.observations,
-                            actions=buffers.actions,
-                            success=False,
-                        )
+                        return GenerationResult(initial_state=initial_state, success=False)
                     next_trajectory, _is_motion_plan = result
                     eef_state.current_trajectory = next_trajectory
                     eef_state.subtask_step_index = 0
@@ -565,13 +565,15 @@ class DataGenerator:
             )
             multi_waypoint = MultiWaypoint(eef_waypoints)
 
-            exec_results = await multi_waypoint.execute(
+            await asyncio.sleep(0)
+
+            exec_success = await multi_waypoint.execute(
                 datastream=self.datastream,
                 success_term=success_term,
                 env_id=env_id,
                 env_action_queue=env_action_queue,
             )
-            self._update_execution_buffers(exec_results, buffers)
+            buffers.success = buffers.success or exec_success
             self._advance_subtask_progress(
                 eef_states=eef_states,
                 runtime_constraints=runtime_constraints,
@@ -580,9 +582,6 @@ class DataGenerator:
 
             if self._all_subtasks_completed(eef_states):
                 break
-
-        actions: torch.Tensor | list[torch.Tensor]
-        actions = torch.cat(buffers.actions, dim=0) if buffers.actions else buffers.actions
 
         # Recorder lifecycle stays on env by design (see datastream-context.md): Datastream is a
         # read facade, controller-side mutation is reached through the get_env() escape hatch.
@@ -596,9 +595,6 @@ class DataGenerator:
 
         return GenerationResult(
             initial_state=initial_state,
-            states=buffers.states,
-            observations=buffers.observations,
-            actions=actions,
             success=buffers.success,
         )
 
@@ -728,14 +724,6 @@ class DataGenerator:
         if not constraint["fulfilled"] and step_index >= len(eef_state.current_trajectory) - synchronous_steps:
             return True
         return False
-
-    def _update_execution_buffers(self, exec_results: dict, buffers: _GenerationBuffers) -> None:
-        if len(exec_results["states"]) == 0:
-            return
-        buffers.states.extend(exec_results["states"])
-        buffers.observations.extend(exec_results["observations"])
-        buffers.actions.extend(exec_results["actions"])
-        buffers.success = buffers.success or exec_results["success"]
 
     def _advance_subtask_progress(
         self,
