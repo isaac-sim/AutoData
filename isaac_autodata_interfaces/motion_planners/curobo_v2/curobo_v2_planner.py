@@ -37,7 +37,6 @@ for API parity but unused.
 from __future__ import annotations
 
 import logging
-import numpy as np
 import torch
 from typing import TYPE_CHECKING, Any
 
@@ -46,7 +45,6 @@ from typing import TYPE_CHECKING, Any
 from curobo._src.geom.sphere_fit.types import SphereFitType
 from curobo._src.util.usd_scene_parser import UsdSceneParser
 from curobo.motion_planner import MotionPlanner, MotionPlannerCfg
-from curobo.scene import Cuboid, Scene
 from curobo.types import GoalToolPose, JointState, Pose
 from isaac_autodata_interfaces.motion_planners.curobo_v2.curobo_v2_planner_cfg import CuroboV2PlannerCfg
 from isaac_autodata_interfaces.motion_planners.motion_planner_base import MotionPlannerBase
@@ -479,11 +477,13 @@ class CuroboV2Planner(MotionPlannerBase):
             reference_prim_path=robot_prim,
             ignore_substring=ignore,
         )
-        # Represent extracted obstacles as oriented bounding boxes (OBBs). The Isaac cubes are
-        # USD Mesh prims; cuRobo v2's mesh-SDF collision path mishandles them (spurious collisions
-        # across the whole workspace) and its pose-update dispatcher can't address meshes by name.
-        # An OBB is exact for boxes, fast, and conservative (safe) for any other extracted mesh.
-        scene = self._scene_as_cuboids(scene)
+        # Process every obstacle as a collision-ready mesh (the parser triangulates quad/polygon
+        # faces), exactly like the v1 backend — no geometry approximation, so concave obstacles
+        # such as a hollow sorting bin are represented faithfully and the gripper can reach inside.
+        # Dynamic obstacles are pose-synced each plan via :meth:`_set_obstacle_pose` (which routes
+        # the update to the owning mesh array, working around cuRobo v2's update_obstacle_pose
+        # dispatcher); static obstacles are loaded once and left fixed.
+        scene = scene.get_collision_check_world()
         self.motion_planner.update_world(scene)
 
         # Each per-env planner owns a single-world MotionPlanner (multi_env=False), so every
@@ -498,38 +498,17 @@ class CuroboV2Planner(MotionPlannerBase):
             f"obstacles from {env_prim} (ref={robot_prim}): {self._world_obstacle_names}",
             flush=True,
         )
+        dynamic = {k: v for k, v in self._object_mapping.items() if not self._is_static_object(k)}
+        static = {k: v for k, v in self._object_mapping.items() if self._is_static_object(k)}
         print(
-            f"[CuroboV2Planner] env={self.env_id} mapped {len(self._object_mapping)} dynamic "
-            f"scene objects: {self._object_mapping}",
+            f"[CuroboV2Planner] env={self.env_id} dynamic (pose-synced) objects: {list(dynamic)}; "
+            f"static (fixed) objects: {list(static)}",
             flush=True,
         )
 
-    def _scene_as_cuboids(self, scene) -> Scene:
-        """Return a cuboid-only :class:`Scene`, approximating each extracted mesh by its OBB.
-
-        cuRobo cuboid (OBB) collision is exact for boxes, fast, and — crucially — robust where
-        v2's mesh path is not (mesh-SDF false positives and an un-addressable pose-update path).
-        Real :class:`Cuboid` obstacles pass through unchanged; each :class:`Mesh` becomes a
-        cuboid sized to its vertex axis-aligned bounding box, posed at the box center in the
-        mesh's frame. The approximation is conservative (encloses the mesh), hence collision-safe.
-        """
-        cuboids: list[Cuboid] = list(scene.cuboid or [])
-        for mesh in scene.mesh or []:
-            verts = np.asarray(mesh.vertices, dtype=np.float64)
-            if verts.size == 0:
-                continue
-            scale = mesh.scale
-            if scale is not None:
-                verts = verts * np.asarray(scale, dtype=np.float64).reshape(1, -1)
-            lo, hi = verts.min(axis=0), verts.max(axis=0)
-            dims = (hi - lo).tolist()
-            center_local = ((lo + hi) / 2.0).tolist()
-            # Compose the mesh's frame with the local box-center offset to get the cuboid pose.
-            mesh_pose = Pose.from_list(list(mesh.pose), self.motion_planner.device_cfg)
-            center_offset = self._make_pose(position_xyz=torch.tensor([center_local]))
-            cuboid_pose = mesh_pose.multiply(center_offset).tolist()
-            cuboids.append(Cuboid(name=str(mesh.name), dims=dims, pose=cuboid_pose))
-        return Scene(cuboid=cuboids)
+    def _is_static_object(self, name: str) -> bool:
+        """True if ``name`` matches a configured static-obstacle substring (never pose-synced)."""
+        return any(s in name.lower() for s in self._static_object_substrings)
 
     def _discover_object_mapping(self, world_obstacle_names: list[str]) -> dict[str, str]:
         """Map live scene object names -> cuRobo obstacle names by normalized substring match.

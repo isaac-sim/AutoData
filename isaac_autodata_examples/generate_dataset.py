@@ -82,6 +82,16 @@ parser.add_argument(
     help="Pause after every subtask for interactive debugging.",
 )
 parser.add_argument(
+    "--generation_guarantee",
+    action=argparse.BooleanOptionalAction,
+    default=None,
+    help=(
+        "Override datagen generation_guarantee. Default (unset) keeps the env config value "
+        "(True = retry until --generation_num_trials successes). Pass --no-generation_guarantee "
+        "to stop after --generation_num_trials attempts regardless of success (faster debugging)."
+    ),
+)
+parser.add_argument(
     "--curobo_version",
     type=str,
     choices=["v1", "v2", "auto"],
@@ -109,6 +119,7 @@ import sys  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
 
+import isaaclab_mimic.datagen.generation as _upstream_generation  # noqa: E402
 import isaaclab_mimic.envs  # noqa: F401, E402
 import isaaclab_tasks  # noqa: F401, E402
 from isaaclab.envs import ManagerBasedRLMimicEnv  # noqa: E402
@@ -157,6 +168,15 @@ async def run_data_generator(
         else:
             stats["num_failures"] += 1
         stats["num_attempts"] += 1
+
+        # Drive the upstream env_loop's termination. ``env_loop`` checks the module-level
+        # counters in ``isaaclab_mimic.datagen.generation`` (not our local ``stats``) against
+        # ``generation_num_trials``; without updating them the loop never terminates and runs
+        # until the process is killed. Mirror our tally onto those globals so a run stops as
+        # soon as the target is reached (successes if generation_guarantee, else attempts).
+        _upstream_generation.num_success = stats["num_success"]
+        _upstream_generation.num_failures = stats["num_failures"]
+        _upstream_generation.num_attempts = stats["num_attempts"]
         print(
             f"[TRIAL] env={env_id}  outcome={'SUCCESS' if result.success else 'FAIL'}  "
             f"running: {stats['num_success']}/{stats['num_attempts']} "
@@ -297,6 +317,8 @@ def main() -> None:
     # anything downstream that still reads ``env.cfg.datagen_config.use_skillgen`` stays consistent.
     alg_cls = REGISTERED_ALGORITHMS[args_cli.alg]
     env_cfg.datagen_config.use_skillgen = alg_cls.uses_subtask_start_signals
+    if args_cli.generation_guarantee is not None:
+        env_cfg.datagen_config.generation_guarantee = args_cli.generation_guarantee
 
     random.seed(env.cfg.datagen_config.seed)
     np.random.seed(env.cfg.datagen_config.seed)

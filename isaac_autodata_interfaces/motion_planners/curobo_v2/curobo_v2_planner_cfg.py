@@ -156,8 +156,32 @@ class CuroboV2PlannerCfg:
         """
         cfg = cls.franka_config()
         cfg.static_objects = ["table"]
+        # Mirror the v1 franka_stack_cube_config tuning.
         cfg.optimizer_collision_activation_distance = 0.01
+        cfg.approach_distance = 0.05
+        cfg.retreat_distance = 0.05
+        cfg.surface_sphere_radius = 0.01
+        cfg.collision_cache = {"obb": 150, "mesh": 150}
         cfg.contact_disable_collision_links = list(cfg.hand_link_names)
+        return cfg
+
+    @classmethod
+    def franka_bin_stack_cube_config(cls) -> CuroboV2PlannerCfg:
+        """cuRobo v2 config for the Franka *bin* cube-stack task (obstacle avoidance).
+
+        Mirrors the v1 ``franka_stack_cube_bin_config`` tuning: the bin is declared static (loaded
+        once, not pose-synced), the collision-activation margin is widened and the retreat lengthened
+        to keep clear of the bin walls, and the gripper closes slightly more on contact. All
+        obstacles (bin + cubes) are modeled as their real meshes, so the planner avoids the concave
+        bin walls while the gripper reaches *inside* to stack.
+        """
+        cfg = cls.franka_stack_cube_config()
+        cfg.static_objects = ["blue_sorting_bin", "bin", "table"]
+        cfg.optimizer_collision_activation_distance = 0.02
+        cfg.approach_distance = 0.05
+        cfg.retreat_distance = 0.07
+        cfg.surface_sphere_radius = 0.01
+        cfg.gripper_closed_positions = {"panda_finger_joint1": 0.024, "panda_finger_joint2": 0.024}
         return cfg
 
     @classmethod
@@ -174,6 +198,8 @@ class CuroboV2PlannerCfg:
             A configuration appropriate for the requested task.
         """
         lower = task_name.lower()
+        if "bin" in lower:
+            return cls.franka_bin_stack_cube_config()
         if "stack-cube" in lower:
             return cls.franka_stack_cube_config()
         return cls.franka_config()
