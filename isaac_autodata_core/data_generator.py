@@ -583,8 +583,8 @@ class DataGenerator:
             if self._all_subtasks_completed(eef_states):
                 break
 
-        # Recorder lifecycle stays on env by design (see datastream-context.md): Datastream is a
-        # read facade, controller-side mutation is reached through the get_env() escape hatch.
+        # Recorder lifecycle stays on env by design: the Datastream is
+        # a read interface; controller-side mutation is reached through the get_env() escape hatch.
         env = self.datastream.get_env()
         env.recorder_manager.set_success_to_episodes(
             env_id_tensor,
@@ -608,8 +608,8 @@ class DataGenerator:
         env_reset_queue: asyncio.Queue,
     ) -> tuple[torch.Tensor, dict]:
         env_id_tensor = torch.tensor([env_id], dtype=torch.int64, device=self.datastream.device)
-        # Recorder + reset queue stay on env (see datastream-context.md). The initial scene state
-        # snapshot is read through the Datastream facade.
+        # Recorder + reset queue stay on env. The initial scene state
+        # snapshot is read through the Datastream interface.
         self.datastream.get_env().recorder_manager.reset(env_ids=env_id_tensor)
         await env_reset_queue.put(env_id)
         await env_reset_queue.join()

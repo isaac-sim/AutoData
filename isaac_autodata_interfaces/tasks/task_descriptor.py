@@ -80,6 +80,36 @@ class TaskDescriptor:
         assert eef_name in self.subtasks, f"Unknown eef name: {eef_name}"
         return [st.description for st in self.subtasks[eef_name]]
 
+    def get_expected_attached_object(self, eef_name: str, subtask_index: int) -> str | None:
+        """Return the object the EEF is expected to carry during a subtask, or ``None``.
+
+        SkillGen plans collision-aware transit while the gripper holds a grasped object, so it
+        needs the identity of the carried object for each subtask. A *stack* subtask is treated as
+        carrying the object grasped in the immediately preceding *grasp* subtask; subtasks are
+        classified by the ``"grasp"`` / ``"stack"`` substrings in their termination-signal names,
+        so the result is derived purely from the descriptor's subtask metadata.
+
+        Args:
+            eef_name: End-effector to query.
+            subtask_index: Index of the subtask whose carried object is requested.
+
+        Returns:
+            The held object's reference name, or ``None`` when the subtask carries nothing (a
+            grasp/approach subtask, an out-of-range index, or an unknown eef).
+        """
+
+        if eef_name not in self.subtasks:
+            return None
+        subtasks = self.subtasks[eef_name]
+        if not 0 <= subtask_index < len(subtasks):
+            return None
+        current = subtasks[subtask_index]
+        if "stack" in current.subtask_term_signal.lower() and subtask_index > 0:
+            prev = subtasks[subtask_index - 1]
+            if "grasp" in prev.subtask_term_signal.lower():
+                return prev.object_ref or None
+        return None
+
     def get_subtask_algo_params(self, eef_name: str) -> list[SubtaskAlgoParams]:
         """Return subtask algorithm parameters for the given eef, in subtask order."""
 

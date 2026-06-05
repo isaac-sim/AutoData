@@ -1,0 +1,76 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: franka_cube_stack_skillgen
+description: Stack red, green, and blue cubes into a single tower (SkillGen).
+algo: skillgen
+
+generation_policy:
+  name: franka_cube_stack_skillgen
+  seed: 1
+  num_trials: 10
+  guarantee_success: true
+  keep_failed: false
+  source_dataset_path: null
+  generation_path: null
+  task_name: null
+  use_skillgen: true
+  use_navigation_controller: false
+  select_src_per_subtask: true
+  select_src_per_arm: false
+  transform_first_robot_pose: false
+  interpolate_from_last_target_pose: true
+
+subtasks:
+  franka:
+    - object_ref: cube_2
+      description: Grasp red cube.
+      subtask_term_signal: grasp_1
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [0, 0]
+      action_noise: 0.03
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
+
+    - object_ref: cube_1
+      description: Stack red cube on top of blue cube.
+      subtask_term_signal: stack_1
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [0, 0]
+      action_noise: 0.03
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
+
+    - object_ref: cube_3
+      description: Grasp green cube.
+      subtask_term_signal: grasp_2
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [0, 0]
+      action_noise: 0.03
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
+
+    # Final subtask: SkillGen *does* need a term signal here (unlike MimicGen), so the
+    # planner knows when the last skill segment finishes.
+    - object_ref: cube_2
+      description: Stack green cube on top of red cube.
+      subtask_term_signal: stack_2
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      subtask_term_offset_range: [0, 0]
+      action_noise: 0.03
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
