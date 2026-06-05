@@ -152,6 +152,7 @@ activemq-data/
 .envrc
 .venv
 env/
+!isaac_autodata_interfaces/env/
 venv/
 ENV/
 env.bak/
