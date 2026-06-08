@@ -232,15 +232,12 @@ class SkillGen(GenerationAlgorithm):
         target_pose = subtask_traj[0].pose
         target_gripper_action = subtask_traj[0].gripper_action
 
-        # SkillGen needs a piece of env-specific state (`get_expected_attached_object`) that does
-        # not fit cleanly into TaskDescriptor or EmbodimentAdapter. This is the legitimate use of
-        # the Datastream get_env() escape hatch; treat it as a localized coupling.
-        env = data_generator.datastream.get_env()
-        expected_attached_object = None
-        if hasattr(env, "get_expected_attached_object"):
-            expected_attached_object = env.get_expected_attached_object(
-                eef_name, eef_state.current_subtask_index, env.cfg
-            )
+        # Which object (if any) the EEF carries during this subtask, so the planner can attach it
+        # to the robot's collision model before planning transit. Derived from the task
+        # descriptor's subtask metadata via the Datastream interface.
+        expected_attached_object = data_generator.datastream.get_expected_attached_object(
+            eef_name, eef_state.current_subtask_index
+        )
 
         planner = self.motion_planners[env_id]
         planning_success = planner.update_world_and_plan_motion(

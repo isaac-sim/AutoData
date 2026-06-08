@@ -44,6 +44,12 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
         obs_group: Observation-buffer group name under which the pose obs
             keys live. Defaults to ``"policy"`` to match Isaac Lab's
             standard observation manager.
+        eef_offset: Translation [m] from the robot's kinematic control link
+            (the frame a motion planner plans, e.g. the wrist/hand) to the EEF
+            frame the pose observation reports, expressed in the control link's
+            frame. The adapter reports poses in the control-link frame so the
+            whole pipeline (planner targets, recorded skill targets, delta-pose
+            actions) shares one frame. Defaults to no offset.
     """
 
     name: str
@@ -52,6 +58,7 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
     pose_obs_keys: PoseObsKeys
     gripper_action_dim: int
     obs_group: str = "policy"
+    eef_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def __post_init__(self) -> None:
         assert self.name, "name must be a non-empty string"
@@ -61,6 +68,7 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
             self.pose_obs_keys, PoseObsKeys
         ), f"pose_obs_keys must be a PoseObsKeys instance, got {type(self.pose_obs_keys).__name__}"
         assert self.obs_group, "obs_group must be a non-empty string"
+        assert len(self.eef_offset) == 3, f"eef_offset must have 3 elements, got {len(self.eef_offset)}"
 
     def get_eef_names(self) -> tuple[str, ...]:
         return (self.eef_name,)
@@ -70,7 +78,21 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
         obs = self.env.obs_buf[self.obs_group]
         rot = pose_math.matrix_from_quat(obs[self.pose_obs_keys.quat][index])
-        return {self.eef_name: pose_math.make_pose(obs[self.pose_obs_keys.pos][index], rot)}
+        pose = pose_math.make_pose(obs[self.pose_obs_keys.pos][index], rot)
+        return {self.eef_name: self._observed_to_control_link(pose)}
+
+    def _observed_to_control_link(self, pose: torch.Tensor) -> torch.Tensor:
+        """Shift an observed EEF pose back to the kinematic control-link frame.
+
+        The observed EEF sits :attr:`eef_offset` ahead of the control link, so the control-link
+        pose is ``pose @ translate(-eef_offset)``. Identity when no offset is configured.
+        """
+
+        if not any(self.eef_offset):
+            return pose
+        transform = torch.eye(4, dtype=pose.dtype, device=pose.device)
+        transform[:3, 3] = -torch.tensor(self.eef_offset, dtype=pose.dtype, device=pose.device)
+        return pose @ transform
 
     @abstractmethod
     def action_to_target_eef_pose(self, action: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -214,9 +236,11 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
             action_layout:
               gripper_dim: <int>              # required
               clip_pose_action_to_unit: <bool># optional, default true
+            eef_offset: [<float>, <float>, <float>]  # optional, default [0, 0, 0]
         """
         pose_obs_keys_data = data["pose_obs_keys"]
         layout = data.get("action_layout", {})
+        eef_offset = data.get("eef_offset", (0.0, 0.0, 0.0))
         return cls(
             name=data["name"],
             description=data.get("description", ""),
@@ -225,4 +249,5 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
             gripper_action_dim=int(layout["gripper_dim"]),
             obs_group=str(data.get("obs_group", "policy")),
             clip_pose_action_to_unit=bool(layout.get("clip_pose_action_to_unit", True)),
+            eef_offset=tuple(float(v) for v in eef_offset),
         )

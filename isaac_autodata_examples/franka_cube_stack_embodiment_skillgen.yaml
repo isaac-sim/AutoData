@@ -1,0 +1,39 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Embodiment descriptor for SkillGen cube-stack generation on the generic IK-Rel task
+# (Isaac-Stack-Cube-Franka-IK-Rel-v0). Identical to franka_cube_stack_embodiment.yaml except for
+# eef_offset: the SkillGen source dataset is annotated in the panda_hand frame (cuRobo's planning
+# link), while the generic task reports the inter-fingertip frame, so the adapter must shift the
+# reported pose back to panda_hand.
+#
+# Action vector layout (7-D):
+#   [0..3)   delta position
+#   [3..6)   delta rotation (compact axis-angle, axis * angle in radians)
+#   [6..7)   gripper actuation
+#
+# The pose part is the delta from the current EEF pose to the target,
+# clipped to [-1, 1] after noise.
+
+type: delta_pose_ik_single_arm
+name: franka_panda
+description: Franka 7-DOF arm with parallel gripper, delta-pose IK control (SkillGen frame).
+
+eef_name: franka
+
+pose_obs_keys:
+  pos: eef_pos
+  quat: eef_quat
+
+action_layout:
+  gripper_dim: 1
+  clip_pose_action_to_unit: true
+
+# Translation [m] from the robot's kinematic control link to the EEF frame the adapter should
+# report, i.e. (env-reported EEF frame) - (source-dataset annotation frame). On the generic IK-Rel
+# task the env reports the inter-fingertip "end_effector" frame (+0.1034 m along the hand's
+# approach axis) while the SkillGen dataset is annotated in the panda_hand frame, so the adapter
+# shifts reports back to panda_hand to keep planned transits and recorded skill segments aligned.
+eef_offset: [0.0, 0.0, 0.1034]
