@@ -3,11 +3,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Copyright (c) 2026, The Isaac Auto Data Project Developers.
-# All rights reserved.
-#
-# SPDX-License-Identifier: Apache-2.0
-
 """cuRobo v1 backend for the SkillGen motion planner.
 
 Imports the planner lazily so the configuration dataclass can be loaded in sim-free
