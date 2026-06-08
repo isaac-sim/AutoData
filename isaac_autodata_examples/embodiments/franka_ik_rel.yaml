@@ -3,15 +3,14 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Embodiment descriptor for the Franka Cube Stack task.
+# Embodiment descriptor for the Franka (IK, Relative-pose).
 #
 # Action vector layout (7-D):
 #   [0..3)   delta position
 #   [3..6)   delta rotation (compact axis-angle, axis * angle in radians)
 #   [6..7)   gripper actuation
 #
-# The pose part is the delta from the current EEF pose to the target,
-# clipped to [-1, 1] after noise.
+# The pose part is the delta from the current EEF pose to the target.
 
 type: delta_pose_ik_single_arm
 name: franka_panda
