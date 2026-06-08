@@ -27,9 +27,9 @@ action_layout:
   gripper_dim: 1
   clip_pose_action_to_unit: true
 
-# Translation [m] from the robot's kinematic control link (panda_hand, the frame the cuRobo
-# motion planner plans) to the EEF frame the stack task reports via eef_pos/eef_quat (the
-# inter-fingertip "end_effector" frame, +0.1034 m along the hand's approach axis). The adapter
-# reports poses in the control-link frame so motion-planned transits and recorded skill segments
-# share one frame; set to [0, 0, 0] for tasks whose observation already reports the control link.
-eef_offset: [0.0, 0.0, 0.1034]
+# Translation [m] from the robot's kinematic control link to the EEF frame the adapter should
+# report, i.e. (env-reported EEF frame) - (source-dataset annotation frame). The base IK-Rel
+# tasks report the inter-fingertip "end_effector" frame and the MimicGen dataset is annotated in
+# that same frame, so no shift is needed. SkillGen's cube-stack dataset is annotated in the
+# panda_hand frame, so it needs [0, 0, 0.1034] — use franka_cube_stack_embodiment_skillgen.yaml.
+eef_offset: [0.0, 0.0, 0.0]
