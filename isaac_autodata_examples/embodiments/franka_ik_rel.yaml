@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Embodiment descriptor for the Franka Cube Stack task.
+# Embodiment descriptor for the Franka (IK, Relative-pose).
 #
 # Action vector layout (7-D):
 #   [0..3)   delta position
