@@ -94,6 +94,7 @@ import traceback  # noqa: E402
 from typing import Any  # noqa: E402
 
 from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
+from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.env import (  # noqa: E402
@@ -137,21 +138,16 @@ async def run_data_generator(
         stats["num_attempts"] += 1
 
 
-def setup_async_generation(
+def build_datastream(
     env: Any,
-    num_envs: int,
     input_file: str,
     task_descriptor: TaskDescriptor,
     embodiment_yaml: str,
-    success_term,
-    algorithm,
-    pause_subtask: bool,
-) -> dict:
-    """Build the Datastream, a single :class:`DataGenerator`, and ``num_envs`` async tasks."""
-    asyncio_event_loop = asyncio.get_event_loop()
-    env_reset_queue: asyncio.Queue = asyncio.Queue()
-    env_action_queue: asyncio.Queue = asyncio.Queue()
+) -> Datastream:
+    """Compose the read interface (task + embodiment + source pool) over the live env.
 
+    Built before the motion planners so the planners can read all world state through it.
+    """
     embodiment_adapter = embodiment_adapter_from_yaml(embodiment_yaml)
     datastream = Datastream(
         env=env,
@@ -161,6 +157,21 @@ def setup_async_generation(
         uses_start_signals=task_descriptor.get_generation_policy().use_skillgen,
     )
     print(f"Loaded {datastream.num_source_demos} source episodes into the datagen pool")
+    return datastream
+
+
+def setup_async_generation(
+    datastream: Datastream,
+    num_envs: int,
+    success_term,
+    algorithm,
+    pause_subtask: bool,
+) -> dict:
+    """Build a single :class:`DataGenerator` over ``datastream`` and ``num_envs`` async tasks."""
+    asyncio_event_loop = asyncio.get_event_loop()
+    env_reset_queue: asyncio.Queue = asyncio.Queue()
+    env_action_queue: asyncio.Queue = asyncio.Queue()
+    env = datastream.get_env()
 
     data_generator = DataGenerator(datastream=datastream, algorithm=algorithm)
     stats = {"num_success": 0, "num_failures": 0, "num_attempts": 0}
@@ -191,14 +202,14 @@ def setup_async_generation(
     }
 
 
-def _build_motion_planners(env, num_envs: int, env_name: str) -> dict:
-    """Construct one motion planner per env_id satisfying the SkillGen planner interface.
+def _build_motion_planners(datastream, num_envs: int, env_name: str) -> dict:
+    """Construct one cuRobo v1 motion planner per env_id satisfying the SkillGen interface.
 
-    The upstream Arena ``CuroboPlanner`` is imported here as a placeholder. When the planner
-    code is ported into this repo (follow-up commit), swap this import for the local one.
+    Planners read all world state (collision-geometry source, object poses, joint configuration)
+    through the shared :class:`Datastream`, so they never touch the env/robot handles directly.
     """
-    from isaaclab_mimic.motion_planners.curobo.curobo_planner import CuroboPlanner
-    from isaaclab_mimic.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
+    from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner
+    from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
 
     planners: dict[int, CuroboPlanner] = {}
     for env_id in range(num_envs):
@@ -208,8 +219,7 @@ def _build_motion_planners(env, num_envs: int, env_name: str) -> dict:
             planner_config.visualize_spheres = False
             planner_config.visualize_plan = False
         planners[env_id] = CuroboPlanner(
-            env=env,
-            robot=env.scene["robot"],
+            datastream=datastream,
             config=planner_config,
             env_id=env_id,
         )
@@ -243,6 +253,12 @@ def main() -> None:
     if args_cli.generation_num_trials is not None:
         generation_policy_params.num_trials = args_cli.generation_num_trials
 
+    # The algorithm's start-signal expectation is a class attribute, so we resolve it before
+    # instantiating (the Datastream needs it, and SkillGen can only be instantiated once the
+    # planners exist, which in turn need the Datastream).
+    alg_cls = REGISTERED_ALGORITHMS[args_cli.alg]
+    generation_policy_params.use_skillgen = alg_cls.uses_subtask_start_signals
+
     env_cfg, success_term = setup_env_config(
         env_name=env_name,
         output_dir=output_dir,
@@ -254,29 +270,32 @@ def main() -> None:
 
     env = gym.make(env_name, cfg=env_cfg).unwrapped
 
-    # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
-    motion_planners: dict | None = None
-    alg_kwargs: dict = {}
-    if args_cli.alg == "skillgen":
-        motion_planners = _build_motion_planners(env, args_cli.num_envs, env_name)
-        alg_kwargs["motion_planners"] = motion_planners
-    algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
-
-    generation_policy_params.use_skillgen = algorithm.uses_subtask_start_signals
-
     random.seed(generation_policy_params.seed)
     np.random.seed(generation_policy_params.seed)
     torch.manual_seed(generation_policy_params.seed)
 
     env.reset()
 
+    # Build the Datastream first; the motion planners read all world state through it.
+    datastream = build_datastream(
+        env=env,
+        input_file=args_cli.input_file,
+        task_descriptor=task_descriptor,
+        embodiment_yaml=args_cli.embodiment,
+    )
+
+    # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
+    motion_planners: dict | None = None
+    alg_kwargs: dict = {}
+    if args_cli.alg == "skillgen":
+        motion_planners = _build_motion_planners(datastream, args_cli.num_envs, env_name)
+        alg_kwargs["motion_planners"] = motion_planners
+    algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
+
     try:
         async_components = setup_async_generation(
-            env=env,
+            datastream=datastream,
             num_envs=args_cli.num_envs,
-            input_file=args_cli.input_file,
-            task_descriptor=task_descriptor,
-            embodiment_yaml=args_cli.embodiment,
             success_term=success_term,
             algorithm=algorithm,
             pause_subtask=args_cli.pause_subtask,

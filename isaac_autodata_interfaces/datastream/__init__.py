@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""The :class:`Datastream` facade.
+"""The :class:`Datastream` interface.
 
 A single object the data generator reads the world through, composing the task descriptor
 (subtask semantics), the embodiment adapter (kinematics), and the live env (scene), and owning the

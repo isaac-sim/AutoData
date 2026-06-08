@@ -19,6 +19,7 @@ from isaac_autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConst
 from isaac_autodata_interfaces.tasks.subtask_spec import Subtask, SubtaskAlgoParams
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor
 from isaac_autodata_utils import pose_math
+from isaac_autodata_utils.tensor_utils import as_torch
 
 
 class Datastream:
@@ -180,6 +181,15 @@ class Datastream:
 
         return self.task_descriptor.get_subtask_descriptions(eef_name)
 
+    def get_expected_attached_object(self, eef_name: str, subtask_index: int) -> str | None:
+        """Return the object the EEF is expected to carry during a subtask, or ``None``.
+
+        Delegates to :meth:`TaskDescriptor.get_expected_attached_object`. SkillGen reads this to
+        attach the carried object to the planner's collision model before planning transit motion.
+        """
+
+        return self.task_descriptor.get_expected_attached_object(eef_name, subtask_index)
+
     # ------------------------------------------------------------------
     # Embodiment queries
     # ------------------------------------------------------------------
@@ -188,6 +198,21 @@ class Datastream:
         """Read the current pose of the given EEF from the embodiment adapter."""
 
         return self.embodiment_adapter.get_eef_poses(env_ids=env_ids)[eef_name]
+
+    def get_robot_joint_positions(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
+        """Read the robot's current joint positions [rad] via the embodiment adapter.
+
+        Returns a tensor of shape ``(len(env_ids), num_dof)`` in the articulation's native joint
+        order (see :meth:`get_robot_joint_names`). Consumed by motion planners as a planning
+        start state.
+        """
+
+        return self.embodiment_adapter.get_joint_positions(env_ids=env_ids)
+
+    def get_robot_joint_names(self) -> list[str]:
+        """Return the robot articulation's joint names, ordered to match :meth:`get_robot_joint_positions`."""
+
+        return self.embodiment_adapter.get_joint_names()
 
     def target_eef_pose_to_action(
         self,
@@ -222,18 +247,13 @@ class Datastream:
     def get_object_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
         """Get all rigid object poses from the environment."""
 
-        import warp as wp
-
-        def _as_torch(arr):
-            return wp.to_torch(arr) if isinstance(arr, wp.array) else arr
-
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
         scene = self.env.scene
         env_origins = scene.env_origins[index]
         object_pose_matrix: dict[str, torch.Tensor] = {}
         for obj_name, obj in scene.rigid_objects.items():
-            pos_rel = _as_torch(obj.data.root_pos_w)[index] - env_origins
-            quat = _as_torch(obj.data.root_quat_w)[index]
+            pos_rel = as_torch(obj.data.root_pos_w)[index] - env_origins
+            quat = as_torch(obj.data.root_quat_w)[index]
             object_pose_matrix[obj_name] = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
         return object_pose_matrix
 
@@ -246,6 +266,44 @@ class Datastream:
         """
 
         return self.env.scene.get_state(is_relative=is_relative)
+
+    # ------------------------------------------------------------------
+    # Collision-world source
+    # ------------------------------------------------------------------
+    # Motion planners build their collision world from the live scene. The Datastream is the
+    # single owner of that simulator-facing access so the planners stay backend-agnostic: a
+    # cuRobo planner feeds the stage + prim scoping below into its own USD parser, and per-step
+    # obstacle pose sync goes through :meth:`get_object_poses` (env-relative frame).
+
+    def get_usd_stage(self) -> Any:
+        """Return the live USD stage backing the scene.
+
+        Sanctioned collision-geometry source for motion planners that extract obstacles via a USD
+        parser. Planners scope extraction with :meth:`get_env_prim_path` and
+        :meth:`get_robot_prim_path`.
+        """
+
+        return self.env.scene.stage
+
+    def get_env_prim_path(self, env_id: int) -> str:
+        """Return the root USD prim path of the given environment's subtree (e.g. ``/World/envs/env_0``)."""
+
+        return f"/World/envs/env_{env_id}"
+
+    def get_robot_prim_path(self, env_id: int) -> str:
+        """Return the USD prim path of the robot articulation root for the given environment.
+
+        Used as the reference frame for obstacle extraction (obstacles are expressed relative to
+        the robot base, which sits at the environment origin for a fixed-base robot). Derived from
+        the live articulation when available, falling back to the standard ``{env}/Robot`` layout.
+        """
+
+        robot_name = getattr(self.embodiment_adapter, "robot_asset_name", "robot")
+        try:
+            prim_paths = self.env.scene[robot_name].root_physx_view.prim_paths
+            return prim_paths[env_id]
+        except (KeyError, AttributeError, IndexError):
+            return f"{self.get_env_prim_path(env_id)}/Robot"
 
     # ------------------------------------------------------------------
     # Source-demo pool access

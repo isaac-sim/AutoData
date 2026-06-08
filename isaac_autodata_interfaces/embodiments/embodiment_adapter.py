@@ -21,6 +21,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any
 
+from isaac_autodata_utils.tensor_utils import as_torch
+
 
 class EmbodimentAdapter(ABC):
     """Abstract base class for embodiment adapters.
@@ -31,9 +33,12 @@ class EmbodimentAdapter(ABC):
 
     Attributes:
         env: Live env handle, bound post-construction via :meth:`bind_env`. ``None`` until bound.
+        robot_asset_name: Scene key of the robot articulation this embodiment drives. Used by
+            joint-state queries. Subclasses may override (e.g. expose it as a config field).
     """
 
     env: Any = None
+    robot_asset_name: str = "robot"
 
     def bind_env(self, env: Any) -> None:
         """Attach the env after construction.
@@ -43,6 +48,31 @@ class EmbodimentAdapter(ABC):
 
         assert self.env is None, "env already bound"
         self.env = env
+
+    # ------------------------------------------------------------------
+    # Joint-state queries (robot-kinematics state)
+    # ------------------------------------------------------------------
+    # The embodiment adapter is the framework's single owner of a specific robot's kinematics,
+    # so consumers that need the raw joint configuration (e.g. a motion planner's start state)
+    # read it here rather than reaching into the env's articulation directly.
+
+    def get_joint_positions(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
+        """Read the robot's current joint positions [rad] from the live env.
+
+        Returns a tensor of shape ``(len(env_ids), num_dof)`` in the articulation's native joint
+        order (see :meth:`get_joint_names`).
+        """
+
+        assert self.env is not None, "Call bind_env(env) before reading state."
+        index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
+        robot = self.env.scene[self.robot_asset_name]
+        return as_torch(robot.data.joint_pos)[index]
+
+    def get_joint_names(self) -> list[str]:
+        """Return the robot articulation's joint names, ordered to match :meth:`get_joint_positions`."""
+
+        assert self.env is not None, "Call bind_env(env) before reading state."
+        return list(self.env.scene[self.robot_asset_name].data.joint_names)
 
     @abstractmethod
     def get_eef_names(self) -> tuple[str, ...]:
