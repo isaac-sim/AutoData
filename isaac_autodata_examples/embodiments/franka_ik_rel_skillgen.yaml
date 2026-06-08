@@ -19,7 +19,7 @@
 
 type: delta_pose_ik_single_arm
 name: franka_panda
-description: Franka 7-DOF arm with parallel gripper, delta-pose IK control.
+description: Franka 7-DOF arm with parallel gripper, delta-pose IK control (SkillGen frame).
 
 eef_name: franka
 
