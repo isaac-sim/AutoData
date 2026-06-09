@@ -85,3 +85,10 @@ reportPrivateUsage = "warning"
 skip = '*.usd,*.svg,*.png,_isaac_sim*,*.bib,*.css,*/_build'
 quiet-level = 0
 ignore-words-list = 'reacher'
+
+[tool.pytest.ini_options]
+# Scope default collection to the AutoData test suite (keeps pytest out of submodules).
+testpaths = ["isaac_autodata_tests"]
+markers = [
+    "with_subprocess: test launches the data-generation CLI as an Isaac Sim child process",
+]
