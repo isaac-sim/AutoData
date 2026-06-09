@@ -1,0 +1,84 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+ARG BASE_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.0-dev2
+FROM ${BASE_IMAGE}
+
+USER root
+
+ARG WORKDIR=/workspaces/isaac_autodata
+ENV WORKDIR=${WORKDIR}
+WORKDIR "${WORKDIR}"
+
+ENV TERM=xterm
+# Path to the (nested) Isaac Lab checkout inside the Arena submodule.
+ENV ISAACLAB_PATH=${WORKDIR}/submodules/IsaacLab-Arena/submodules/IsaacLab
+
+# Hide conflicting Vulkan files, if needed.
+RUN if [ -e "/usr/share/vulkan" ] && [ -e "/etc/vulkan" ]; then \
+      mv /usr/share/vulkan /usr/share/vulkan_hidden; \
+    fi
+
+# Install apt packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git \
+      git-lfs \
+      cmake \
+      build-essential \
+      sudo \
+      jq \
+      ffmpeg \
+      python3-pip \
+  && rm -rf /var/lib/apt/lists/*
+
+#######################################
+# Install IsaacLab & IsaacLab - Arena
+#######################################
+# Copy the Arena submodule once as it carries the nested IsaacLab checkout.
+# The .dockerignore drops Arena's other nested submodules (e.g. Isaac-GR00T)
+# which AutoData does not use.
+COPY submodules/IsaacLab-Arena ${WORKDIR}/submodules/IsaacLab-Arena
+
+# --- IsaacLab ---
+# Symlink Isaac Sim to IsaacLab.
+RUN ln -s /isaac-sim/ ${ISAACLAB_PATH}/_isaac_sim
+# Install IsaacLab dependencies.
+RUN for DIR in ${ISAACLAB_PATH}/source/isaaclab*/; do /isaac-sim/python.sh -m pip install --no-deps -e "$DIR"; done
+# The non-root runtime user (created by the entrypoint) needs to write Kit logs/caches under /isaac-sim.
+RUN chmod 777 -R /isaac-sim/kit/ && chmod a+x /isaac-sim
+# Ensure the visualizer extension is present so "--viz kit" works.
+RUN /isaac-sim/python.sh -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_visualizers
+RUN ${ISAACLAB_PATH}/isaaclab.sh -i
+# Pin daqp for Pink IK (matches installer.sh).
+RUN /isaac-sim/python.sh -m pip install --force-reinstall daqp==0.8.5
+
+# --- IsaacLab - Arena ---
+RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
+
+################################
+# Isaac Auto Data
+################################
+# Copy the package sources + packaging metadata (exclude submodules installed above).
+COPY setup.py pyproject.toml README.md ${WORKDIR}/
+COPY isaac_autodata_core ${WORKDIR}/isaac_autodata_core
+COPY isaac_autodata_interfaces ${WORKDIR}/isaac_autodata_interfaces
+COPY isaac_autodata_utils ${WORKDIR}/isaac_autodata_utils
+COPY isaac_autodata_examples ${WORKDIR}/isaac_autodata_examples
+COPY isaac_autodata_tests ${WORKDIR}/isaac_autodata_tests
+RUN /isaac-sim/python.sh -m pip install -e "${WORKDIR}[dev]"
+RUN /isaac-sim/python.sh -m pip install pre-commit
+
+# Set aliases for the shell
+RUN echo "alias python='/isaac-sim/python.sh'" >> /etc/bash.bashrc \
+ && echo "alias pip3='/isaac-sim/python.sh -m pip'" >> /etc/bash.bashrc \
+ && echo "alias pytest='/isaac-sim/python.sh -m pytest'" >> /etc/bash.bashrc \
+ && echo "alias ll='ls -alF --color=auto'" >> /etc/bash.bashrc \
+ && echo "PS1='[Isaac AutoData] \[\e[0;32m\]\u \[\e[0;34m\]\w\[\e[0m\] \$ '" >> /etc/bash.bashrc \
+ && cp /etc/bash.bashrc /root/.bashrc
+
+# Set the entrypoint
+COPY docker/setup/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

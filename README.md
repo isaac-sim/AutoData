@@ -35,7 +35,7 @@ git lfs install
 git lfs pull
 ```
 
-## Installation
+## Installation Option 1 (conda env)
 
 Use `installer.sh` at the repo root. It will create a conda env and install Isaac Sim, Isaac Lab, Arena, and Isaac Auto Data.
 
@@ -65,6 +65,16 @@ You can also combine both steps in one call:
 ```
 
 Run `./installer.sh -h` to see all options.
+
+## Installation Option 2 (docker)
+
+### 1. Build and launch into the docker container (all deps are automatically set up in the container)
+
+```bash
+./docker/run_docker.sh
+```
+
+Use `-R` to force a rebuild. 
 
 ## Verify the installation
 
