@@ -70,6 +70,23 @@ COPY isaac_autodata_tests ${WORKDIR}/isaac_autodata_tests
 RUN /isaac-sim/python.sh -m pip install -e "${WORKDIR}[dev]"
 RUN /isaac-sim/python.sh -m pip install pre-commit
 
+#####################
+# cuRobo (optional)
+#####################
+ARG INSTALL_CUROBO=false
+# Default arch list, run_docker.sh overrides it with the detected compute capability.
+ARG TORCH_CUDA_ARCH_LIST=8.0+PTX
+
+ENV CUDA_HOME=/usr/local/cuda-12.8
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
+COPY docker/setup/install_curobo.sh /tmp/install_curobo.sh
+RUN if [ "$INSTALL_CUROBO" = "true" ]; then \
+      /tmp/install_curobo.sh; \
+    else \
+      echo "Skipping cuRobo install (INSTALL_CUROBO=false. Use run_docker.sh -c to include it)"; \
+    fi && rm -f /tmp/install_curobo.sh
+
 # Set aliases for the shell
 RUN echo "alias python='/isaac-sim/python.sh'" >> /etc/bash.bashrc \
  && echo "alias pip3='/isaac-sim/python.sh -m pip'" >> /etc/bash.bashrc \

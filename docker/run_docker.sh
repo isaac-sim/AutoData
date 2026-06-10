@@ -11,6 +11,31 @@ DOCKER_VERSION_TAG='latest'
 # Override to e.g. nvcr.io/nvidia/isaac-sim:6.0.0 if the -dev2 tag is unavailable to you.
 BASE_IMAGE="${BASE_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.0-dev2}"
 
+INSTALL_CUROBO=false
+CUROBO_VERSION_TAG='curobo'
+
+# Resolve TORCH_CUDA_ARCH_LIST for the cuRobo build. Honour an explicit override if set, else
+# auto-detect the host GPU's compute capability via nvidia-smi (e.g. "12.0" -> "12.0+PTX").
+detect_cuda_arch() {
+    if [ -n "${TORCH_CUDA_ARCH_LIST:-}" ]; then
+        echo "${TORCH_CUDA_ARCH_LIST}"
+        return 0
+    fi
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        echo "error: nvidia-smi not found on host; cannot auto-detect GPU arch." >&2
+        echo "       Set TORCH_CUDA_ARCH_LIST (e.g. export TORCH_CUDA_ARCH_LIST=12.0+PTX) and retry." >&2
+        return 1
+    fi
+    local cc
+    cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 | tr -d '[:space:]')
+    if [ -z "${cc}" ]; then
+        echo "error: could not read compute capability from nvidia-smi." >&2
+        echo "       Set TORCH_CUDA_ARCH_LIST (e.g. export TORCH_CUDA_ARCH_LIST=12.0+PTX) and retry." >&2
+        return 1
+    fi
+    echo "${cc}+PTX"
+}
+
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 REPO_ROOT=$(cd -- "${SCRIPT_DIR}/.." &>/dev/null && pwd)
 
@@ -24,9 +49,10 @@ DATASETS_HOST_MOUNT_DIRECTORY="$HOME/datasets"
 FORCE_REBUILD=false
 NO_CACHE=""
 
-while getopts ":d:rRvh" OPTION; do
+while getopts ":d:crRvh" OPTION; do
     case $OPTION in
         d) DATASETS_HOST_MOUNT_DIRECTORY=$OPTARG ;;
+        c) INSTALL_CUROBO=true ;;
         r) FORCE_REBUILD=true ;;
         R) FORCE_REBUILD=true; NO_CACHE="--no-cache" ;;
         v) set -x ;;
@@ -38,6 +64,7 @@ while getopts ":d:rRvh" OPTION; do
             echo ""
             echo "Options:"
             echo "  -d <dir>  Host datasets directory to mount at /datasets (default \"$DATASETS_HOST_MOUNT_DIRECTORY\")."
+            echo "  -c        Install cuRobo, auto-detects the GPU arch (override with the TORCH_CUDA_ARCH_LIST env var)."
             echo "  -r        Force rebuilding the image."
             echo "  -R        Force rebuilding the image without cache."
             echo "  -v        Verbose (set -x)."
@@ -52,6 +79,11 @@ while getopts ":d:rRvh" OPTION; do
 done
 shift $((OPTIND - 1))
 
+# Set separate tag for cuRobo image.
+if [ "$INSTALL_CUROBO" = "true" ]; then
+    DOCKER_VERSION_TAG="${CUROBO_VERSION_TAG}"
+fi
+
 CONTAINER_NAME="${DOCKER_IMAGE_NAME}-${DOCKER_VERSION_TAG}"
 
 echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BASE_IMAGE})"
@@ -60,11 +92,17 @@ echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BA
 if [ "$(docker images -q "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ]; then
     echo "Image ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} already exists. Use -r to force a rebuild."
 else
+    BUILD_ARGS=("--build-arg" "WORKDIR=${WORKDIR}" "--build-arg" "BASE_IMAGE=${BASE_IMAGE}")
+    if [ "$INSTALL_CUROBO" = "true" ]; then
+        # Detect the host GPU arch so cuRobo's kernels are compiled for it.
+        ARCH_LIST=$(detect_cuda_arch) || exit 1
+        echo "cuRobo enabled — building for TORCH_CUDA_ARCH_LIST=${ARCH_LIST}"
+        BUILD_ARGS+=("--build-arg" "INSTALL_CUROBO=true" "--build-arg" "TORCH_CUDA_ARCH_LIST=${ARCH_LIST}")
+    fi
     docker build --pull \
         $NO_CACHE \
         --progress=plain \
-        --build-arg WORKDIR="${WORKDIR}" \
-        --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+        "${BUILD_ARGS[@]}" \
         -t "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" \
         --file "${SCRIPT_DIR}/Dockerfile.isaac_autodata" \
         "${REPO_ROOT}"
