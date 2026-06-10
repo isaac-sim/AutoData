@@ -3,7 +3,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-import h5py
 import os
 import tempfile
 
@@ -11,21 +10,10 @@ import pytest
 
 from isaac_autodata_tests.utils.constants import TestPaths
 from isaac_autodata_tests.utils.subprocess import run_subprocess
+from isaac_autodata_tests.utils.utils import assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
-
-
-def _assert_valid_dataset(output_file: str, min_num_demos: int) -> None:
-    """Assert the run wrote a dataset containing at least min_num_demos entries."""
-
-    assert os.path.exists(output_file), f"Expected output dataset at {output_file}, but it was not created."
-    with h5py.File(output_file, "r") as f:
-        assert "data" in f, f"Output dataset {output_file} has no top-level 'data' group."
-        data_group = f["data"]
-        assert isinstance(data_group, h5py.Group), f"'data' in {output_file} is not an HDF5 group."
-        num_demos = len(data_group.keys())
-    assert num_demos >= min_num_demos, f"Expected at least {min_num_demos} demos, found {num_demos}."
 
 
 def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
@@ -60,7 +48,7 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
         ]
         run_subprocess(args)
 
-        _assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
+        assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
 
 
 @pytest.mark.with_subprocess
