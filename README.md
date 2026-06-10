@@ -74,7 +74,7 @@ Run `./installer.sh -h` to see all options.
 ./docker/run_docker.sh
 ```
 
-Use `-R` to force a rebuild. 
+Use `-R` to force a rebuild.
 
 ## Verify the installation
 
