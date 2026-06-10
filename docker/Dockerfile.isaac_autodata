@@ -57,9 +57,9 @@ RUN /isaac-sim/python.sh -m pip install --force-reinstall daqp==0.8.5
 # --- IsaacLab - Arena ---
 RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
 
-################################
-# Isaac Auto Data
-################################
+##################
+# Isaac AutoData
+##################
 # Copy the package sources + packaging metadata (exclude submodules installed above).
 COPY setup.py pyproject.toml README.md ${WORKDIR}/
 COPY isaac_autodata_core ${WORKDIR}/isaac_autodata_core
