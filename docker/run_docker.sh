@@ -1,0 +1,128 @@
+#!/bin/bash
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+set -e
+
+DOCKER_IMAGE_NAME='isaac_autodata'
+DOCKER_VERSION_TAG='latest'
+# Override to e.g. nvcr.io/nvidia/isaac-sim:6.0.0 if the -dev2 tag is unavailable to you.
+BASE_IMAGE="${BASE_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.0-dev2}"
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+REPO_ROOT=$(cd -- "${SCRIPT_DIR}/.." &>/dev/null && pwd)
+
+# Path the repo is mounted to inside the container (kept in sync with the Dockerfile's WORKDIR).
+WORKDIR="/workspaces/isaac_autodata"
+ISAACLAB_PATH="${WORKDIR}/submodules/IsaacLab-Arena/submodules/IsaacLab"
+
+# Optional host datasets directory mounted at /datasets (in addition to the repo's own datasets/).
+DATASETS_HOST_MOUNT_DIRECTORY="$HOME/datasets"
+
+FORCE_REBUILD=false
+NO_CACHE=""
+
+while getopts ":d:rRvh" OPTION; do
+    case $OPTION in
+        d) DATASETS_HOST_MOUNT_DIRECTORY=$OPTARG ;;
+        r) FORCE_REBUILD=true ;;
+        R) FORCE_REBUILD=true; NO_CACHE="--no-cache" ;;
+        v) set -x ;;
+        h)
+            script_name=$(basename "$0")
+            echo "Build and run the Isaac Auto Data dev container."
+            echo ""
+            echo "Usage: $script_name [options] [command...]"
+            echo ""
+            echo "Options:"
+            echo "  -d <dir>  Host datasets directory to mount at /datasets (default \"$DATASETS_HOST_MOUNT_DIRECTORY\")."
+            echo "  -r        Force rebuilding the image."
+            echo "  -R        Force rebuilding the image without cache."
+            echo "  -v        Verbose (set -x)."
+            echo "  -h        Show this help."
+            echo ""
+            echo "Any trailing arguments are run as a command inside the container, then it exits."
+            exit 0
+            ;;
+        \?) echo "Invalid option: -$OPTARG" >&2; exit 1 ;;
+        :) echo "Option -$OPTARG requires an argument." >&2; exit 1 ;;
+    esac
+done
+shift $((OPTIND - 1))
+
+CONTAINER_NAME="${DOCKER_IMAGE_NAME}-${DOCKER_VERSION_TAG}"
+
+echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BASE_IMAGE})"
+
+# Build the image if it doesn't exist yet, or if a rebuild was requested.
+if [ "$(docker images -q "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ]; then
+    echo "Image ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} already exists. Use -r to force a rebuild."
+else
+    docker build --pull \
+        $NO_CACHE \
+        --progress=plain \
+        --build-arg WORKDIR="${WORKDIR}" \
+        --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+        -t "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" \
+        --file "${SCRIPT_DIR}/Dockerfile.isaac_autodata" \
+        "${REPO_ROOT}"
+fi
+
+# Remove a previously-exited container of the same name so we can recreate it.
+if [ "$(docker ps -a --quiet --filter status=exited --filter "name=^${CONTAINER_NAME}$")" ]; then
+    docker rm "${CONTAINER_NAME}" >/dev/null
+fi
+
+# If it's already running, just attach a shell as the host user.
+if [ "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ]; then
+    echo "Container already running. Attaching."
+    docker exec -it "${CONTAINER_NAME}" su "$(id -un)"
+    exit 0
+fi
+
+add_volume_if_it_exists() {
+    [ -d "$1" ] && echo "-v $1:$2"
+}
+
+# Forward the host SSH agent if available (so git over SSH works in-container).
+SSH_DOCKER_ARGS=()
+if [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "$SSH_AUTH_SOCK" ]; then
+    SSH_DOCKER_ARGS+=("-v" "$SSH_AUTH_SOCK:/ssh-agent" "--env" "SSH_AUTH_SOCK=/ssh-agent")
+fi
+
+DOCKER_RUN_ARGS=(
+    "--name" "${CONTAINER_NAME}"
+    "--privileged"
+    "--ulimit" "memlock=-1"
+    "--ulimit" "stack=-1"
+    "--ipc=host"
+    "--net=host"
+    "--runtime=nvidia"
+    "--gpus=all"
+    # Live-mount the repo: host edits are reflected in the container's editable installs.
+    "-v" "${REPO_ROOT}:${WORKDIR}"
+    $(add_volume_if_it_exists "$DATASETS_HOST_MOUNT_DIRECTORY" /datasets)
+    # Share the host Kit/pip cache to speed up shader warmup and reinstalls across runs.
+    "-v" "$HOME/.cache:/home/$(id -un)/.cache"
+    # X11 passthrough so "--viz kit" can open a window.
+    "-v" "/tmp/.X11-unix:/tmp/.X11-unix:rw"
+    "${SSH_DOCKER_ARGS[@]}"
+    "--env" "DISPLAY=${DISPLAY:-}"
+    "--env" "ACCEPT_EULA=Y"
+    "--env" "PRIVACY_CONSENT=Y"
+    "--env" "ISAACLAB_PATH=${ISAACLAB_PATH}"
+    # Used by the entrypoint to recreate the host user inside the container.
+    "--env" "DOCKER_RUN_USER_ID=$(id -u)"
+    "--env" "DOCKER_RUN_USER_NAME=$(id -un)"
+    "--env" "DOCKER_RUN_GROUP_ID=$(id -g)"
+    "--env" "DOCKER_RUN_GROUP_NAME=$(id -gn)"
+)
+
+# Allow local X11 clients from the container (for the Kit viewer).
+if command -v xhost >/dev/null 2>&1; then
+    xhost +local:docker >/dev/null 2>&1 || true
+fi
+
+docker run "${DOCKER_RUN_ARGS[@]}" --interactive --rm --tty "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" "${@}"
