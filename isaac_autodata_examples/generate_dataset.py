@@ -25,6 +25,10 @@ The ``--alg`` choice selects the :class:`GenerationAlgorithm` plug-in driving th
 * ``skillgen`` — single-arm SkillGen. SkillGen depends on a motion-planner interface; until the
   planner code is ported into this repo, the CLI satisfies that interface with the upstream Arena
   ``CuroboPlanner``.
+* ``schedulestream`` — whole-task TAMP via cuStream2 (cuRoboV2). Instead of transforming source
+  demos, it solves the task from scratch (``solve_tamp``) from a goal derived from the success
+  term and replays the plan. Use the single-subtask descriptor
+  ``tasks/franka_cube_stack_schedulestream.yaml``.
 
 The CLI composes a :class:`Datastream` from the task descriptor YAML, the embodiment YAML, the
 live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
@@ -38,7 +42,7 @@ from isaaclab.app import AppLauncher
 
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in isaac_autodata_core.algorithms.
-_ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
+_ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen", "schedulestream"]
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
@@ -76,6 +80,11 @@ parser.add_argument(
     help="Pause after every subtask for interactive debugging.",
 )
 
+# ScheduleStream tuning/debug knobs (batch, scale_dt, collisions, max_time, profile, hold, animate)
+# live in the task descriptor under the single subtask's `algo_params:` (parsed into
+# ScheduleStreamSubtaskAlgoParams), so they stay out of this shared CLI. See
+# tasks/franka_cube_stack_schedulestream.yaml.
+
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -95,6 +104,10 @@ from typing import Any  # noqa: E402
 
 from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
+
+# Importing this module self-registers the "schedulestream" algorithm (heavy cuStream2 / cuRobo
+# deps inside it are imported lazily, so this import stays cheap until a run selects it).
+import isaac_autodata_core.schedulestream_algorithm  # noqa: E402,F401
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.env import (  # noqa: E402
@@ -284,12 +297,16 @@ def main() -> None:
         embodiment_yaml=args_cli.embodiment,
     )
 
-    # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
+    # SkillGen needs one curobo planner per env. ScheduleStream needs the success term (stripped
+    # from the env by setup_env_config, so only available here); its other tuning lives in the task
+    # descriptor's subtask algo_params. Mimic/DexMimic take no kwargs.
     motion_planners: dict | None = None
     alg_kwargs: dict = {}
     if args_cli.alg == "skillgen":
         motion_planners = _build_motion_planners(datastream, args_cli.num_envs, env_name)
         alg_kwargs["motion_planners"] = motion_planners
+    elif args_cli.alg == "schedulestream":
+        alg_kwargs["success_term"] = success_term
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 
     try:

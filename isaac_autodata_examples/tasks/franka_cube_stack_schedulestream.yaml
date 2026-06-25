@@ -1,0 +1,48 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Task descriptor for the ScheduleStream algorithm on the Franka cube-stack task.
+#
+# ScheduleStream plans the WHOLE task from scratch (custream2.solve_tamp) rather than transforming
+# recorded source-demo subtasks, so a single subtask per EEF is declared: the plug-in solves TAMP
+# once and returns the entire trajectory. The symbolic goal (stack the cubes) is derived from the
+# env's success term, not from these subtasks. A source dataset is still required by the data-gen
+# infrastructure (env name + pool scaffolding) but its demo *content* is not replayed.
+
+name: franka_cube_stack_schedulestream
+description: Stack red, green, and blue cubes into a single tower (ScheduleStream TAMP).
+algo: schedulestream
+
+# Only the fields that differ from GenerationPolicy defaults and matter to ScheduleStream are set.
+# The MimicGen source-demo knobs (select_src_*, transform_first_robot_pose,
+# interpolate_from_last_target_pose), the None-defaults (source_dataset_path, generation_path,
+# task_name, keep_failed, use_navigation_controller) and use_skillgen (overwritten from the
+# algorithm class in main()) are all omitted.
+generation_policy:
+  seed: 0
+  num_trials: 1
+  # guarantee_success: false -> env_loop stops on num_ATTEMPTS >= num_trials (not successes), so a
+  # failing/erroring attempt does NOT retry forever. The run script also forces this via
+  # --no-guarantee_success. Flip back to true for real data generation (retry until num_trials
+  # successful demos are collected).
+  guarantee_success: false
+
+subtasks:
+  franka:
+    # Single, whole-task subtask. ScheduleStream plans the whole task itself, so the MimicGen
+    # subtask-transformation fields (object_ref, selection_strategy, action_noise,
+    # num_interpolation_steps, num_fixed_steps, apply_noise_during_interpolation,
+    # subtask_term_offset_range) are unused and omitted — their defaults apply (and the terminal
+    # subtask's default term offset of [0, 0] is what the data-gen validation requires).
+    - description: Plan and execute the full cube-stacking task with ScheduleStream.
+      # ScheduleStream solver/debug config (ScheduleStreamSubtaskAlgoParams). ScheduleStream plans
+      # the whole task in one shot, so these task-wide knobs live on its single subtask instead of
+      # the shared CLI. Read at runtime via datastream.get_subtask_algo_params().
+      algo_params:
+        collisions: true
+        max_time: 60.0
+        profile: false
+        hold: null      # set to an int (e.g. 100) to skip TAMP and hold the current config
+        animate: false

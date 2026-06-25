@@ -35,6 +35,30 @@ class DexMimicGenSubtaskAlgoParams(SubtaskAlgoParams):
 
 
 @dataclass
+class ScheduleStreamSubtaskAlgoParams(SubtaskAlgoParams):
+    """ScheduleStream solver/debug config.
+
+    ScheduleStream plans the whole task in one shot from its single subtask, so these task-wide
+    knobs live on that subtask's ``algo_params`` (read via ``get_subtask_algo_params``) instead of
+    cluttering the shared CLI / :class:`GenerationPolicy`. Set them under ``algo_params:`` in the
+    task descriptor's subtask.
+
+    Args:
+        collisions: Plan with collision checking enabled.
+        max_time: ``solve_tamp`` wall-clock budget, in seconds.
+        profile: Profile world creation and ``solve_tamp`` separately.
+        hold: If not ``None``, skip TAMP and hold the current configuration for this many steps.
+        animate: Animate the plan in the cuStream2 viewer before executing (blocking).
+    """
+
+    collisions: bool = True
+    max_time: float = 60.0
+    profile: bool = False
+    hold: int | None = None
+    animate: bool = False
+
+
+@dataclass
 class SkillGenSubtaskAlgoParams(SubtaskAlgoParams):
     """SkillGen-specific subtask parameters.
 
@@ -96,6 +120,7 @@ ALGO_PARAMS_REGISTRY: dict[str, type[SubtaskAlgoParams]] = {
     "mimicgen": MimicGenSubtaskAlgoParams,
     "dexmimicgen": DexMimicGenSubtaskAlgoParams,
     "skillgen": SkillGenSubtaskAlgoParams,
+    "schedulestream": ScheduleStreamSubtaskAlgoParams,
 }
 """Maps the ``algo:`` discriminator in a YAML task config to the
 corresponding :class:`SubtaskAlgoParams` subclass.
