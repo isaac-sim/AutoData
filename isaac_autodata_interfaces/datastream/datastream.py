@@ -217,15 +217,15 @@ class Datastream:
     def target_eef_pose_to_action(
         self,
         target_eef_pose_dict: dict[str, torch.Tensor],
-        gripper_action_dict: dict[str, torch.Tensor],
+        passthrough_action_dict: dict[str, torch.Tensor],
         action_noise_dict: dict[str, float] | None = None,
         env_id: int = 0,
     ) -> torch.Tensor:
-        """Convert target EEF poses to an env action."""
+        """Convert target EEF poses and passthrough actions to an env action."""
 
         return self.embodiment_adapter.target_eef_pose_to_action(
             target_eef_pose_dict=target_eef_pose_dict,
-            gripper_action_dict=gripper_action_dict,
+            passthrough_action_dict=passthrough_action_dict,
             action_noise_dict=action_noise_dict,
             env_id=env_id,
         )
@@ -235,10 +235,10 @@ class Datastream:
 
         return self.embodiment_adapter.action_to_target_eef_pose(action)
 
-    def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Extract gripper actions from an env action."""
+    def actions_to_passthrough_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Extract passthrough actions (eef grippers + any non-eef channels) from an env action."""
 
-        return self.embodiment_adapter.actions_to_gripper_actions(actions)
+        return self.embodiment_adapter.actions_to_passthrough_actions(actions)
 
     # ------------------------------------------------------------------
     # Other runtime queries

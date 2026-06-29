@@ -112,16 +112,21 @@ class EmbodimentAdapter(ABC):
     def target_eef_pose_to_action(
         self,
         target_eef_pose_dict: dict[str, torch.Tensor],
-        gripper_action_dict: dict[str, torch.Tensor],
+        passthrough_action_dict: dict[str, torch.Tensor],
         action_noise_dict: dict[str, float] | None = None,
         env_id: int = 0,
     ) -> torch.Tensor:
-        """Forward: convert per-EEF target poses + gripper actions into an env action.
+        """Forward: convert per-EEF target poses + passthrough actions into an env action.
+
+        Passthrough actions are the non-pose action dimensions copied verbatim from the
+        source demo (e.g. eef grippers/hands, mobile base command, etc.).
 
         Args:
             target_eef_pose_dict: Map ``eef_name → target pose [m, m, m]`` of
                 shape ``(4, 4)``.
-            gripper_action_dict: Map ``eef_name → gripper action tensor``.
+            passthrough_action_dict: Map ``channel_name → passthrough action tensor``.
+                Channel names are the eef names plus any non-eef passthrough channels the embodiment
+                declares.
             action_noise_dict: Map ``eef_name → action noise scale``. ``None``
                 means no noise.
             env_id: Environment index to compute the action for.
@@ -131,12 +136,15 @@ class EmbodimentAdapter(ABC):
         """
 
     @abstractmethod
-    def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Extract gripper-actuation slices from a sequence of env actions.
+    def actions_to_passthrough_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Extract passthrough-action slices from a sequence of env actions.
+
+        Inverse of the passthrough half of :meth:`target_eef_pose_to_action`. Pulls every
+        passthrough channel out of the action so the generator can replay them verbatim.
 
         Args:
             actions: Action tensor of shape ``(num_envs, num_steps, action_dim)``.
 
         Returns:
-            Map ``eef_name → gripper action tensor``.
+            Map ``channel_name → passthrough action tensor``.
         """

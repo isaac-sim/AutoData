@@ -230,7 +230,7 @@ class SkillGen(GenerationAlgorithm):
         )
 
         target_pose = subtask_traj[0].pose
-        target_gripper_action = subtask_traj[0].gripper_action
+        target_passthrough_action = subtask_traj[0].passthrough_action
 
         # Which object (if any) the EEF carries during this subtask, so the planner can attach it
         # to the robot's collision model before planning transit. Derived from the task
@@ -250,7 +250,7 @@ class SkillGen(GenerationAlgorithm):
         if not planning_success:
             return None
 
-        mp_waypoints = self._convert_planned_trajectory_to_waypoints(planner, target_gripper_action)
+        mp_waypoints = self._convert_planned_trajectory_to_waypoints(planner, target_passthrough_action)
 
         # Stash the skill segment so the follow-up call merges it from the MP end pose.
         eef_state.pending_subtask_trajectory = subtask_traj
@@ -260,9 +260,9 @@ class SkillGen(GenerationAlgorithm):
     @staticmethod
     def _convert_planned_trajectory_to_waypoints(
         motion_planner: Any,
-        gripper_action,
+        passthrough_action: dict,
     ) -> list[Waypoint]:
-        """Wrap each planner pose into a :class:`Waypoint` with the supplied gripper action.
+        """Wrap each planner pose into a :class:`Waypoint` with the supplied passthrough channels.
 
         Reads ``motion_planner.config.motion_noise_scale`` if present; defaults to 0.0.
         """
@@ -270,6 +270,6 @@ class SkillGen(GenerationAlgorithm):
 
         motion_noise_scale = getattr(motion_planner.config, "motion_noise_scale", 0.0)
         return [
-            Waypoint(pose=pose, gripper_action=gripper_action, noise=motion_noise_scale)
+            Waypoint(pose=pose, passthrough_action=passthrough_action, noise=motion_noise_scale)
             for pose in motion_planner.get_planned_poses()
         ]

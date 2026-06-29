@@ -1,0 +1,66 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: g1_pick_place
+description: G1 humanoid picks an object with the right arm and transfers it to a target location.
+algo: dexmimicgen
+
+generation_policy:
+  name: g1_pick_place
+  seed: 1
+  num_trials: 1000
+  guarantee_success: true
+  keep_failed: false
+  source_dataset_path: null
+  generation_path: null
+  task_name: null
+  use_skillgen: false
+  use_navigation_controller: false
+  select_src_per_subtask: false
+  select_src_per_arm: false
+  transform_first_robot_pose: false
+  interpolate_from_last_target_pose: true
+
+subtasks:
+  # Right arm: two subtasks — approach/grasp then transport/place.
+  right:
+    - object_ref: object
+      description: Approach and grasp the object with the right hand.
+      subtask_term_signal: idle_right
+      first_subtask_start_offset_range: [0, 0]
+      subtask_term_offset_range: [0, 0]
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      action_noise: 0.003
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
+
+    # Final subtask: no term signal (end-of-trajectory) and no term offset.
+    - object_ref: object
+      description: Transport and place the object at the target location.
+      subtask_term_offset_range: [0, 0]
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      action_noise: 0.003
+      num_interpolation_steps: 3
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
+
+  # Left arm: single subtask covering the full trajectory.
+  left:
+    # Final subtask: no term signal (end-of-trajectory) and no term offset.
+    - object_ref: object
+      description: Left arm support motion throughout the pick-place task.
+      subtask_term_offset_range: [0, 0]
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs:
+        nn_k: 3
+      action_noise: 0.003
+      num_interpolation_steps: 0
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false

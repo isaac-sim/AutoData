@@ -27,7 +27,9 @@ class DatagenInfo:
         subtask_term_signals: ``{subtask_name: [T]}`` binary completion flag per step.
         subtask_start_signals: ``{subtask_name: [T]}`` binary start flag per step; required by SkillGen.
         target_eef_pose: ``{eef_name: [T, 4, 4]}`` controller target poses [m, rad].
-        gripper_action: ``{eef_name: [T, D]}`` gripper commands.
+        passthrough_action: ``{channel_name: [T, D]}`` non-pose actions copied verbatim from the
+            source demo, keyed by channel (eef grippers/hands plus any non-eef channel such as a
+            base/locomotion command).
     """
 
     def __init__(
@@ -37,14 +39,14 @@ class DatagenInfo:
         subtask_term_signals: dict[str, Any] | None = None,
         subtask_start_signals: dict[str, Any] | None = None,
         target_eef_pose: dict[str, torch.Tensor] | None = None,
-        gripper_action: dict[str, torch.Tensor] | None = None,
+        passthrough_action: dict[str, torch.Tensor] | None = None,
     ) -> None:
         self.eef_pose = eef_pose
         self.object_poses = dict(object_poses) if object_poses is not None else None
         self.subtask_term_signals = dict(subtask_term_signals) if subtask_term_signals is not None else None
         self.subtask_start_signals = dict(subtask_start_signals) if subtask_start_signals is not None else None
         self.target_eef_pose = target_eef_pose
-        self.gripper_action = gripper_action
+        self.passthrough_action = passthrough_action
 
     def to_dict(self) -> dict[str, Any]:
         """Materialize a dict with only the populated fields."""
@@ -59,6 +61,6 @@ class DatagenInfo:
             out["subtask_term_signals"] = deepcopy(self.subtask_term_signals)
         if self.target_eef_pose is not None:
             out["target_eef_pose"] = self.target_eef_pose
-        if self.gripper_action is not None:
-            out["gripper_action"] = self.gripper_action
+        if self.passthrough_action is not None:
+            out["passthrough_action"] = self.passthrough_action
         return out
