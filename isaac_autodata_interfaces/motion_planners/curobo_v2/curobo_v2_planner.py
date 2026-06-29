@@ -36,7 +36,9 @@ for API parity but unused.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import numpy as np
 import torch
 from typing import TYPE_CHECKING, Any
 
@@ -45,6 +47,7 @@ from typing import TYPE_CHECKING, Any
 from curobo._src.geom.sphere_fit.types import SphereFitType
 from curobo._src.util.usd_scene_parser import UsdSceneParser
 from curobo.motion_planner import MotionPlanner, MotionPlannerCfg
+from curobo.scene import Cuboid, Scene
 from curobo.types import GoalToolPose, JointState, Pose
 from isaac_autodata_interfaces.motion_planners.curobo_v2.curobo_v2_planner_cfg import CuroboV2PlannerCfg
 from isaac_autodata_interfaces.motion_planners.motion_planner_base import MotionPlannerBase
@@ -91,6 +94,8 @@ class CuroboV2Planner(MotionPlannerBase):
         # Per-plan state.
         self._planned_joint_trajectory: JointState | None = None
         self._waypoint_index: int = 0
+        # TEMP DIAGNOSTIC: gate the one-shot collision-world dump (see _debug_dump_collision_world).
+        self._debug_dumped: bool = False
         # Track the currently attached object so we can detach cleanly between subtasks.
         self._currently_attached: str | None = None
 
@@ -122,6 +127,23 @@ class CuroboV2Planner(MotionPlannerBase):
         self._obstacle_storage_cache: dict[str, Any] = {}
         self._attached_curobo_name: str | None = None
         self._initialize_static_world()
+
+        # Optional Rerun plan visualization (debug aid; mirrors the v1 backend). Imported lazily so
+        # non-visualized runs never require the rerun-sdk dependency. ``_robot_self_sphere_count``
+        # caches the robot's own active-sphere count (captured when nothing is attached) so we can
+        # peel off the attached-object spheres — which cuRobo appends last — for separate coloring.
+        self.plan_visualizer: Any = None
+        self._robot_self_sphere_count: int | None = None
+        if self.config.visualize_plan:
+            from isaac_autodata_interfaces.motion_planners.curobo_v2.plan_visualizer import PlanVisualizer
+
+            self.plan_visualizer = PlanVisualizer(
+                robot_name=self.config.robot_name or "robot",
+                recording_id=f"curobo_v2_plan_{self.env_id}",
+                save_path=f"curobo_v2_plan_env{self.env_id}.rrd",
+                debug=getattr(self, "debug", False),
+            )
+            self.plan_visualizer.set_motion_planner_reference(self.motion_planner)
 
     def _compute_active_joint_names(self) -> list[str]:
         """Return planner joint names minus any joints listed under ``lock_joints``."""
@@ -189,6 +211,13 @@ class CuroboV2Planner(MotionPlannerBase):
             # 3. Handle attachment state — attach the requested object, or detach any prior one.
             self._update_attachment(expected_attached_object, current_state)
 
+            # TEMP DIAGNOSTIC: one-shot dump of fetched joint state + loaded collision geometry +
+            # whether the current configuration reads as in-collision. Triages why every plan fails.
+            # Remove once the v2 mesh-collision issue is resolved.
+            if not self._debug_dumped:
+                self._debug_dumped = True
+                self._debug_dump_collision_world(current_state)
+
             # 4. Build the goal pose. cuRobo v2 ``Pose`` stores quaternions in (w, x, y, z);
             # Isaac Lab works in (x, y, z, w), so we reorder at this single boundary.
             import isaaclab.utils.math as PoseUtils  # deferred so the module imports sim-free
@@ -216,10 +245,257 @@ class CuroboV2Planner(MotionPlannerBase):
             )
 
         if full_trajectory is None:
+            if self.plan_visualizer is not None:
+                with contextlib.suppress(Exception):
+                    self.plan_visualizer.mark_idle()
             return False
         self._planned_joint_trajectory = full_trajectory
         self._waypoint_index = 0
+        if self.plan_visualizer is not None:
+            try:
+                self._visualize_plan(target_pose=target_pose, current_state=current_state)
+            except Exception as exc:  # noqa: BLE001  (viz must never break planning)
+                self._LOGGER.warning("plan visualization failed: %s", exc)
         return True
+
+    # ------------------------------------------------------------------
+    # TEMP DIAGNOSTIC (remove once v2 mesh-collision is fixed)
+    # ------------------------------------------------------------------
+
+    def _debug_dump_collision_world(self, current_state: JointState) -> None:
+        """One-shot triage dump for the "every plan fails" symptom.
+
+        Prints three independent things so we can tell a fetch problem from a collision-world
+        problem in a single run:
+
+        1. The fetched active joint vector — proves whether sim/USD state reads are sane.
+        2. Each loaded obstacle's geometry (mesh AABB ``dims`` + stored pose, or cuboid dims) —
+           reveals wrong-sized / mis-placed obstacles (e.g. a 5 cm cube loaded as a 1 m mesh).
+        3. Whether the *current* configuration is in collision against that world — if the home
+           pose collides, the world is globally poisoned and no plan (not even a lift) can succeed.
+        """
+        mp = self.motion_planner
+        q = [round(float(x), 4) for x in current_state.position.flatten().tolist()]
+        print(f"[CVDBG] env={self.env_id} fetched active q ({len(q)} dof) = {q}", flush=True)
+        print(f"[CVDBG] active_joint_names = {current_state.joint_names}", flush=True)
+
+        checker = getattr(mp, "scene_collision_checker", None)
+        if checker is None:
+            print("[CVDBG] no scene_collision_checker on planner.", flush=True)
+            return
+
+        # (2) Obstacle geometry actually loaded into the collision world.
+        try:
+            data = checker.data
+            meshes = getattr(data, "meshes", None)
+            cuboids = getattr(data, "cuboids", None)
+            e = self._COLLISION_ENV_IDX
+            n_mesh = int(meshes.count[e].item()) if meshes is not None else 0
+            n_cub = int(cuboids.count[e].item()) if cuboids is not None else 0
+            print(f"[CVDBG] collision world: meshes={n_mesh} cuboids={n_cub}", flush=True)
+            for i in range(n_mesh):
+                name = meshes.names[e][i]
+                dims = [round(float(x), 4) for x in meshes.dims[e, i, :3].tolist()]
+                inv_t = [round(float(x), 4) for x in meshes.inv_pose[e, i, :3].tolist()]
+                en = int(meshes.enable[e, i].item())
+                print(f"[CVDBG]   mesh[{i}] name={name} enabled={en} AABB_dims={dims} inv_pose_t={inv_t}", flush=True)
+            for i in range(n_cub):
+                name = cuboids.names[e][i]
+                dims = [round(float(x), 4) for x in cuboids.dims[e, i, :3].tolist()]
+                print(f"[CVDBG]   cuboid[{i}] name={name} dims={dims}", flush=True)
+            print(
+                f"[CVDBG] checker.max_distance(SDF query) = {getattr(checker.checker, 'max_distance', '?')}", flush=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+
+            print(f"[CVDBG] obstacle-geometry dump FAILED: {exc!r}\n{traceback.format_exc()}", flush=True)
+
+        # (3) Is the *current* configuration in collision against the loaded world?
+        try:
+            from curobo._src.geom.collision.buffer_collision import CollisionBuffer
+
+            dcfg = checker.device_cfg
+            pos = current_state.position
+            if pos.ndim == 2:  # [B, dof] -> [B, 1, dof] so compute_kinematics gets a horizon dim.
+                pos = pos.unsqueeze(1)
+            js = JointState.from_position(pos.contiguous(), joint_names=current_state.joint_names)
+            kin = mp.compute_kinematics(js)
+            spheres = kin.robot_spheres
+            act_val = float(self.config.optimizer_collision_activation_distance)
+            weight = torch.tensor([1.0], device=dcfg.device)
+            act = torch.tensor([act_val], device=dcfg.device)
+            buf = CollisionBuffer.from_shape(spheres.shape, dcfg)
+            coll = checker.get_sphere_collision(
+                state=kin, collision_buffer=buf, weight=weight, activation_distance=act, env_query_idx=None
+            )
+            buf.zero_()
+            dist = checker.get_sphere_distance(
+                state=kin, collision_buffer=buf, weight=weight, activation_distance=act, env_query_idx=None
+            )
+            n_spheres = spheres.shape[-2]
+            n_hit = int((coll.flatten().abs() > 1e-6).sum().item())
+            print(
+                f"[CVDBG] home-state collision (act={act_val}): n_spheres={n_spheres} "
+                f"in_collision={n_hit} max_coll_cost={float(coll.max().item()):.4f} "
+                f"max_dist_cost={float(dist.max().item()):.4f}",
+                flush=True,
+            )
+            print("[CVDBG] >> if in_collision is high for the HOME pose, the mesh world is poisoned.", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+
+            print(f"[CVDBG] collision query FAILED: {exc!r}\n{traceback.format_exc()}", flush=True)
+
+    # ------------------------------------------------------------------
+    # Plan visualization (Rerun; optional, gated by config.visualize_plan)
+    # ------------------------------------------------------------------
+
+    def _visualize_plan(self, target_pose: torch.Tensor, current_state: JointState) -> None:
+        """Push the current plan to the Rerun visualizer: EE path, target, and split spheres.
+
+        Computes the robot's collision spheres at ``current_state`` and splits them into robot-self
+        vs attached-object spheres (the attached ones cuRobo appends last). The end-effector path
+        comes from the just-stored plan, and the obstacle scene from the live collision world.
+        """
+        with torch.inference_mode(False), torch.enable_grad():
+            active_q = current_state.position
+            if active_q.ndim == 1:
+                active_q = active_q.unsqueeze(0)
+            # Split robot-self vs attached-object spheres by the attached link's own sphere indices
+            # (ground truth), not a positional heuristic. ``filter_valid=False`` keeps absolute
+            # indices so they line up with the link index map; we drop inactive (radius<=0) slots.
+            spheres = self.motion_planner.kinematics.get_robot_as_spheres(active_q.contiguous(), filter_valid=False)[0]
+            attached_idx: set[int] = set()
+            try:
+                _idx = self._attachment_manager().kinematics_params.get_sphere_index_from_link_name(
+                    self.config.attached_object_link_name
+                )
+                attached_idx = {int(j) for j in _idx.detach().cpu().tolist()}
+            except Exception:  # noqa: BLE001
+                attached_idx = set()
+            robot_spheres = [s for i, s in enumerate(spheres) if i not in attached_idx and float(s.radius) > 0.0]
+            attached_spheres = [s for i, s in enumerate(spheres) if i in attached_idx and float(s.radius) > 0.0]
+
+            ee_positions = None
+            planned_poses = self.get_planned_poses()
+            if planned_poses:
+                ee_positions = np.array([p.detach().cpu().numpy().reshape(4, 4)[:3, 3] for p in planned_poses])
+            plan_active = self._planned_trajectory_active()
+            world_scene = self._build_world_trimesh_scene()
+
+        self.plan_visualizer.visualize_plan(
+            plan=plan_active,
+            target_pose=target_pose,
+            robot_spheres=robot_spheres,
+            attached_spheres=attached_spheres,
+            ee_positions=ee_positions,
+            world_scene=world_scene,
+        )
+        if ee_positions is not None:
+            self.plan_visualizer.animate_plan(ee_positions)
+        self.plan_visualizer.animate_spheres_along_path(plan=plan_active, robot_sphere_count=len(robot_spheres))
+
+    def _planned_trajectory_active(self) -> JointState:
+        """Return the stored plan reduced to active-DoF positions (for sphere animation)."""
+        traj = self._planned_joint_trajectory
+        full_dof = traj.position.shape[-1]
+        flat = traj.position.reshape(-1, full_dof).contiguous()
+        names = list(traj.joint_names) if traj.joint_names else list(self.motion_planner.joint_names)
+        active = JointState.from_position(flat, joint_names=names).reorder(self._active_joint_names)
+        if not active.position.is_contiguous():
+            active = JointState.from_position(active.position.contiguous(), joint_names=active.joint_names)
+        return active
+
+    def _build_world_trimesh_scene(self):
+        """``trimesh.Scene`` of the real obstacle geometry the planner collides against.
+
+        Geometry (vertices/faces) comes from the cuRobo scene model — the *actual* triangle meshes,
+        so concave shapes (e.g. a hollow sorting bin) render with their true geometry, matching the
+        v1 backend instead of a bounding box. Each mesh is placed at its current world pose,
+        recovered from the live collision data (``inv_pose``-inverse, kept in sync each plan), so
+        dynamic cubes track their motion. Local vertices + current pose reproduce exactly the world
+        geometry cuRobo collides against (its warp mesh is the same local verts + ``inv_pose``).
+        ``Cuboid`` obstacles, if any, fall back to exact boxes. Returns ``None`` on any failure so
+        visualization never breaks planning.
+        """
+        try:
+            import trimesh
+
+            checker = getattr(self.motion_planner, "scene_collision_checker", None)
+            scene_model = getattr(checker, "scene_model", None) if checker is not None else None
+            data = getattr(checker, "data", None) if checker is not None else None
+            if data is None:
+                return None
+
+            # Current world pose + AABB dims per obstacle name, from the synced collision data.
+            e = self._COLLISION_ENV_IDX
+            world_pose: dict[str, Any] = {}
+            world_dims: dict[str, Any] = {}
+            for attr in ("cuboids", "meshes"):
+                arr = getattr(data, attr, None)
+                if arr is None:
+                    continue
+                for i in range(int(arr.count[e].item())):
+                    if int(arr.enable[e, i].item()) == 0:
+                        continue
+                    name = str(arr.names[e][i])
+                    inv_pose = arr.inv_pose[e, i, :7].detach().cpu().numpy()  # [x, y, z, qw, qx, qy, qz]
+                    world_pose[name] = np.linalg.inv(self._pose_vec_to_matrix(inv_pose))
+                    world_dims[name] = arr.dims[e, i, :3].detach().cpu().numpy()
+
+            scene = trimesh.Scene()
+            # Real mesh obstacles (hollow bin, cubes): local vertices/faces from the scene model,
+            # placed at the current synced world pose.
+            for mesh_obs in (getattr(scene_model, "mesh", None) or []) if scene_model is not None else []:
+                name = str(getattr(mesh_obs, "name", ""))
+                verts, faces = getattr(mesh_obs, "vertices", None), getattr(mesh_obs, "faces", None)
+                if verts is None or faces is None:
+                    continue
+                verts = np.asarray(verts, dtype=float).reshape(-1, 3)
+                faces = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
+                if verts.size == 0 or faces.size == 0:
+                    continue
+                scene.add_geometry(
+                    trimesh.Trimesh(vertices=verts, faces=faces, process=False),
+                    node_name=name.replace("/", "_"),
+                    transform=world_pose.get(name, np.eye(4)),
+                )
+            # Cuboid obstacles (rare in mesh mode): exact boxes from their AABB dims.
+            for cub in (getattr(scene_model, "cuboid", None) or []) if scene_model is not None else []:
+                name = str(getattr(cub, "name", ""))
+                dims = world_dims.get(name)
+                if dims is None or float(np.min(dims)) <= 0.0:
+                    continue
+                scene.add_geometry(
+                    trimesh.creation.box(extents=dims.tolist()),
+                    node_name=name.replace("/", "_"),
+                    transform=world_pose.get(name, np.eye(4)),
+                )
+            return scene if len(scene.geometry) else None
+        except Exception as exc:  # noqa: BLE001
+            self._LOGGER.debug("world scene build for visualization failed: %s", exc)
+            return None
+
+    @staticmethod
+    def _pose_vec_to_matrix(pose_vec: np.ndarray) -> np.ndarray:
+        """Convert a ``[x, y, z, qw, qx, qy, qz]`` pose vector to a 4x4 homogeneous matrix."""
+        x, y, z, qw, qx, qy, qz = (float(v) for v in pose_vec[:7])
+        norm = (qw * qw + qx * qx + qy * qy + qz * qz) ** 0.5
+        if norm > 0:
+            qw, qx, qy, qz = qw / norm, qx / norm, qy / norm, qz / norm
+        mat = np.eye(4, dtype=float)
+        mat[0, 0] = 1 - 2 * (qy * qy + qz * qz)
+        mat[0, 1] = 2 * (qx * qy - qz * qw)
+        mat[0, 2] = 2 * (qx * qz + qy * qw)
+        mat[1, 0] = 2 * (qx * qy + qz * qw)
+        mat[1, 1] = 1 - 2 * (qx * qx + qz * qz)
+        mat[1, 2] = 2 * (qy * qz - qx * qw)
+        mat[2, 0] = 2 * (qx * qz - qy * qw)
+        mat[2, 1] = 2 * (qy * qz + qx * qw)
+        mat[2, 2] = 1 - 2 * (qx * qx + qy * qy)
+        mat[:3, 3] = (x, y, z)
+        return mat
 
     def _plan_three_phase(
         self,
@@ -298,26 +574,45 @@ class CuroboV2Planner(MotionPlannerBase):
     ) -> JointState | None:
         """Run :meth:`plan_pose` for one phase, bracketed by contact-mode link toggling."""
         toggled = contact and bool(disable_links)
+        hand_links: list[str] = []
+        saved_attached = None
         if toggled:
-            self.motion_planner.disable_link_collision(disable_links)
+            attach_link = self.config.attached_object_link_name
+            # Hand links: cuRobo's reference-based enable/disable is correct (their reference IS the
+            # robot config). The attached_object link is dynamic — cuRobo's ``enable_link_spheres``
+            # restores radii from the reference config (where attached_object has no spheres), which
+            # would WIPE the fitted attachment after this phase. So we save/disable/restore that
+            # link's spheres ourselves, keeping the held object alive across all phases.
+            hand_links = [link for link in disable_links if link != attach_link]
+            if hand_links:
+                self.motion_planner.disable_link_collision(hand_links)
+            if attach_link in disable_links:
+                saved_attached = self._save_disable_attached_spheres(attach_link)
         try:
             result = self.motion_planner.plan_pose(goal_tool_poses, start_state)
         finally:
             if toggled:
-                self.motion_planner.enable_link_collision(disable_links)
+                if hand_links:
+                    self.motion_planner.enable_link_collision(hand_links)
+                if saved_attached is not None:
+                    self._restore_attached_spheres(*saved_attached)
 
         if result is None or getattr(result, "success", None) is None:
-            self._LOGGER.debug("phase=%s plan_pose returned no result.", name)
+            print(f"[CVDBG] phase={name} FAIL: plan_pose returned no result.", flush=True)
             return None
         if not bool(result.success.any().item()):
-            self._LOGGER.debug("phase=%s plan_pose reported failure across all seeds.", name)
+            print(
+                f"[CVDBG] phase={name} FAIL: all seeds failed. "
+                f"success={getattr(result, 'success', None)} status={getattr(result, 'status', None)}",
+                flush=True,
+            )
             return None
 
         traj = result.interpolated_trajectory
         if traj is None:
             traj = result.js_solution
         if traj is None or traj.position is None:
-            self._LOGGER.debug("phase=%s plan_pose succeeded but trajectory was empty.", name)
+            print(f"[CVDBG] phase={name} FAIL: plan_pose succeeded but trajectory was empty.", flush=True)
             return None
 
         last_tstep = self._extract_last_tstep_from(getattr(result, "interpolated_last_tstep", None))
@@ -325,6 +620,24 @@ class CuroboV2Planner(MotionPlannerBase):
         if trimmed is None or trimmed.position is None or trimmed.position.shape[-2] == 0:
             return None
         return trimmed
+
+    def _save_disable_attached_spheres(self, link_name: str):
+        """Save the attached link's spheres, then disable them by zeroing radii (no fit lost).
+
+        Returns ``(sphere_index, saved_spheres)`` for :meth:`_restore_attached_spheres`. Used
+        instead of cuRobo's ``enable/disable_link_collision`` for the dynamic attached link, whose
+        ``enable_link_spheres`` would restore radii from the (empty) reference config and wipe the
+        attachment.
+        """
+        kp = self._attachment_manager().kinematics_params
+        idx = kp.get_sphere_index_from_link_name(link_name)
+        saved = kp.link_spheres[:, idx, :].clone()
+        kp.link_spheres[:, idx, 3] = -100.0
+        return idx, saved
+
+    def _restore_attached_spheres(self, idx, saved) -> None:
+        """Restore the exact attached-link spheres saved by :meth:`_save_disable_attached_spheres`."""
+        self._attachment_manager().kinematics_params.link_spheres[:, idx, :] = saved
 
     def _eef_pose_from_state(self, state: JointState) -> Pose:
         """Compute the EEF :class:`Pose` for a 2D ``[batch, dof]`` :class:`JointState`."""
@@ -477,13 +790,19 @@ class CuroboV2Planner(MotionPlannerBase):
             reference_prim_path=robot_prim,
             ignore_substring=ignore,
         )
-        # Process every obstacle as a collision-ready mesh (the parser triangulates quad/polygon
-        # faces), exactly like the v1 backend — no geometry approximation, so concave obstacles
-        # such as a hollow sorting bin are represented faithfully and the gripper can reach inside.
-        # Dynamic obstacles are pose-synced each plan via :meth:`_set_obstacle_pose` (which routes
-        # the update to the owning mesh array, working around cuRobo v2's update_obstacle_pose
-        # dispatcher); static obstacles are loaded once and left fixed.
-        scene = scene.get_collision_check_world()
+        # Choose the collision representation. ``"mesh"`` keeps the triangulated USD geometry —
+        # parity with the cuRobo v1 interface — so concave objects (e.g. a sorting bin) are
+        # represented faithfully and the gripper can reach inside; it is the principled default.
+        # ``"obb"`` converts each obstacle to an exact oriented bounding box (analytic SDF, no
+        # mesh query): exact for boxes and slightly cheaper, kept as a fallback for box-only
+        # scenes or debugging. The mesh path relies on the cuRobo v2 mesh-collision fix (PR #682,
+        # >= 0.8.0.post1.dev34), which floors the per-query mesh search distance by the query
+        # sphere's radius; on earlier builds the distance was capped at ``||AABB|| * 0.5`` and
+        # produced false-positive collisions for spheres larger than that cap.
+        if self.config.obstacle_representation == "obb":
+            scene = self._scene_as_cuboids(scene)
+        else:
+            scene = scene.get_collision_check_world()
         self.motion_planner.update_world(scene)
 
         # Each per-env planner owns a single-world MotionPlanner (multi_env=False), so every
@@ -505,6 +824,36 @@ class CuroboV2Planner(MotionPlannerBase):
             f"static (fixed) objects: {list(static)}",
             flush=True,
         )
+
+    def _scene_as_cuboids(self, scene) -> Scene:
+        """Return a cuboid-only :class:`Scene`, representing each extracted mesh by its OBB.
+
+        cuRobo v2 cuboid (OBB) collision is exact for boxes, fast, and — crucially — robust where
+        v2's mesh path is not (its winding-based mesh-SDF sign test yields false positives on the
+        USD-extracted box meshes). Real :class:`Cuboid` obstacles pass through unchanged; each
+        :class:`Mesh` becomes a cuboid sized to its vertex axis-aligned bounding box, posed at the
+        box center in the mesh's frame. For a true box this is exact; for any other mesh it is a
+        conservative enclosure (collision-safe). Genuinely concave geometry (e.g. a bin) is *not*
+        served well by a single OBB and should instead use ``obstacle_representation="mesh"`` with
+        a watertight mesh (or be convex-decomposed) — see :class:`CuroboV2PlannerCfg`.
+        """
+        cuboids: list[Cuboid] = list(scene.cuboid or [])
+        for mesh in scene.mesh or []:
+            verts = np.asarray(mesh.vertices, dtype=np.float64)
+            if verts.size == 0:
+                continue
+            scale = mesh.scale
+            if scale is not None:
+                verts = verts * np.asarray(scale, dtype=np.float64).reshape(1, -1)
+            lo, hi = verts.min(axis=0), verts.max(axis=0)
+            dims = (hi - lo).tolist()
+            center_local = ((lo + hi) / 2.0).tolist()
+            # Compose the mesh's frame with the local box-center offset to get the cuboid pose.
+            mesh_pose = Pose.from_list(list(mesh.pose), self.motion_planner.device_cfg)
+            center_offset = self._make_pose(position_xyz=torch.tensor([center_local]))
+            cuboid_pose = mesh_pose.multiply(center_offset).tolist()
+            cuboids.append(Cuboid(name=str(mesh.name), dims=dims, pose=cuboid_pose))
+        return Scene(cuboid=cuboids)
 
     def _is_static_object(self, name: str) -> bool:
         """True if ``name`` matches a configured static-obstacle substring (never pose-synced)."""
@@ -672,6 +1021,22 @@ class CuroboV2Planner(MotionPlannerBase):
             )
             return
 
+        # Place the attached object at its CURRENT world pose so cuRobo collision-checks the held
+        # object where it actually is. Two cuRobo behaviors interact here:
+        #   * ``fit_spheres`` bakes the obstacle's own pose into the fitted sphere centers
+        #     (``_obstacles_to_trimesh`` -> ``get_trimesh_mesh(transform_with_pose=True)``), and
+        #   * ``attach`` then applies ``world_objects_pose_offset`` on top.
+        # Our scene_model obstacle carries only its stale load-time pose (``_sync_obstacle_poses``
+        # updates the collision arrays, not scene_model). So we pass
+        # ``offset = current_pose · inv(obstacle_pose)``, which cancels the baked stale pose and
+        # lands the spheres exactly at the object's current world pose. (v1 sidesteps this by
+        # attaching the object *by name*, letting cuRobo read the live pose from the world model.)
+        world_pose_offset = None
+        current_world_pose = self._object_world_pose(expected)
+        if current_world_pose is not None:
+            obstacle_pose = Pose.from_list(list(obstacle.pose), self.motion_planner.device_cfg)
+            world_pose_offset = current_world_pose.multiply(obstacle_pose.inverse())
+
         try:
             # Use attach(...) with ``disable_obstacle_names=None`` rather than attach_from_scene:
             # the latter's auto-disable hits the same mesh-dispatcher bug. We disable the carried
@@ -684,11 +1049,13 @@ class CuroboV2Planner(MotionPlannerBase):
                 num_spheres=self.config.attached_object_num_spheres,
                 surface_radius=self.config.surface_sphere_radius,
                 sphere_fit_type=self._resolve_sphere_fit_type(),
+                world_objects_pose_offset=world_pose_offset,
                 disable_obstacle_names=None,
             )
             self._set_obstacle_enabled(curobo_name, False)
             self._currently_attached = expected
             self._attached_curobo_name = curobo_name
+            self._verify_attachment(expected, current_state, current_world_pose)
         except Exception as exc:  # noqa: BLE001  (attachment is best-effort)
             self._LOGGER.warning(
                 "attach(%r) failed: %s — planning without attachment.",
@@ -697,6 +1064,69 @@ class CuroboV2Planner(MotionPlannerBase):
             )
             self._currently_attached = None
             self._attached_curobo_name = None
+
+    def _object_world_pose(self, obj_name: str) -> Pose | None:
+        """Current world (robot-base-frame) pose of a live scene object as a cuRobo :class:`Pose`."""
+        import isaaclab.utils.math as PoseUtils  # deferred so the module imports sim-free
+
+        pose_mat = self.datastream.get_object_poses(env_ids=[self.env_id]).get(obj_name)
+        if pose_mat is None:
+            return None
+        pos_xyz, rot_mat = PoseUtils.unmake_pose(pose_mat[0])
+        quat_xyzw = PoseUtils.quat_from_matrix(rot_mat)
+        quat_wxyz = torch.roll(quat_xyzw, shifts=1, dims=-1)
+        return self._make_pose(position_xyz=pos_xyz.unsqueeze(0), quaternion_wxyz=quat_wxyz.unsqueeze(0))
+
+    def _verify_attachment(self, expected: str, current_state: JointState, object_world_pose: Pose | None) -> None:
+        """Ground-truth check of what cuRobo *actually* sees for the attached object.
+
+        Independent of any visualization: reads the attached-link collision spheres straight from
+        cuRobo's kinematics (FK at the grasp state, via :meth:`get_robot_as_spheres`) using the
+        link's own sphere indices, then compares their world centroid to the gripper (EE) and to
+        the object's world pose. Centroid at the gripper/object ⇒ cuRobo collision-checks the held
+        object in the right place; centroid far away (e.g. near the base) ⇒ the attach offset is
+        wrong. Best-effort; never raises into the planning path.
+        """
+        try:
+            import numpy as _np
+
+            with torch.inference_mode(False), torch.enable_grad():
+                pos = current_state.position
+                if pos.ndim == 1:
+                    pos = pos.unsqueeze(0)
+                ee_xyz = _np.asarray(
+                    self._eef_pose_from_state(current_state).position.flatten()[:3].detach().cpu().tolist()
+                )
+                spheres = self.motion_planner.kinematics.get_robot_as_spheres(pos.contiguous(), filter_valid=False)[0]
+                idx = self._attachment_manager().kinematics_params.get_sphere_index_from_link_name(
+                    self.config.attached_object_link_name
+                )
+                idx_list = [int(j) for j in idx.detach().cpu().tolist()]
+            att = [
+                _np.asarray(spheres[j].position, dtype=float).reshape(-1)
+                for j in idx_list
+                if 0 <= j < len(spheres) and float(spheres[j].radius) > 0.0
+            ]
+            if not att:
+                print(f"[ATTACH-CHK] env={self.env_id} {expected!r}: NO active attached spheres in cuRobo.", flush=True)
+                return
+            cen = _np.mean(att, axis=0)
+            d_ee = float(_np.linalg.norm(cen - ee_xyz))
+            obj = (
+                _np.asarray(object_world_pose.position.flatten()[:3].detach().cpu().tolist())
+                if object_world_pose is not None
+                else None
+            )
+            obj_str = "(%+.3f,%+.3f,%+.3f)" % tuple(obj) if obj is not None else "n/a"
+            print(
+                f"[ATTACH-CHK] env={self.env_id} {expected!r}: {len(att)} attached spheres | "
+                f"centroid=({cen[0]:+.3f},{cen[1]:+.3f},{cen[2]:+.3f}) "
+                f"EE=({ee_xyz[0]:+.3f},{ee_xyz[1]:+.3f},{ee_xyz[2]:+.3f}) obj={obj_str} | "
+                f"centroid->EE={d_ee:.3f}m  {'OK (held at gripper)' if d_ee < 0.2 else 'FAR — attach offset WRONG'}",
+                flush=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[ATTACH-CHK] env={self.env_id} verification failed: {exc!r}", flush=True)
 
     def _resolve_sphere_fit_type(self) -> SphereFitType:
         """Translate the cfg's string into a v2 :class:`SphereFitType` enum value."""

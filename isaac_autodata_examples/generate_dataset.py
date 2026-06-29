@@ -101,6 +101,14 @@ parser.add_argument(
         "MotionPlanner API is importable, otherwise falls back to v1. Ignored unless --alg skillgen."
     ),
 )
+parser.add_argument(
+    "--visualize_plan",
+    action="store_true",
+    help=(
+        "Enable the Rerun motion-plan visualizer (end-effector path, target, robot/attached "
+        "collision spheres, obstacles) for env 0. Requires the rerun-sdk package."
+    ),
+)
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -253,7 +261,9 @@ def setup_async_generation(
     }
 
 
-def _build_motion_planners(datastream, num_envs: int, env_name: str, curobo_version: str = "auto") -> dict:
+def _build_motion_planners(
+    datastream, num_envs: int, env_name: str, curobo_version: str = "auto", visualize_plan: bool = False
+) -> dict:
     """Construct one motion planner per env_id satisfying the SkillGen planner interface.
 
     Dispatches between the v1 backend (:mod:`isaac_autodata_interfaces.motion_planners.curobo`)
@@ -270,10 +280,10 @@ def _build_motion_planners(datastream, num_envs: int, env_name: str, curobo_vers
     planners: dict[int, planner_cls] = {}
     for env_id in range(num_envs):
         planner_config = planner_cfg_cls.from_task_name(env_name)
-        # Visualization is rerun-based; limit to env_id 0 to keep simulation responsive.
+        # Rerun visualization is limited to env_id 0 to keep the simulation responsive.
+        planner_config.visualize_plan = bool(visualize_plan) and env_id == 0
         if env_id != 0:
             planner_config.visualize_spheres = False
-            planner_config.visualize_plan = False
         planners[env_id] = planner_cls(
             datastream=datastream,
             config=planner_config,
@@ -340,7 +350,11 @@ def main() -> None:
     alg_kwargs: dict = {}
     if args_cli.alg == "skillgen":
         motion_planners = _build_motion_planners(
-            datastream, args_cli.num_envs, env_name, curobo_version=args_cli.curobo_version
+            datastream,
+            args_cli.num_envs,
+            env_name,
+            curobo_version=args_cli.curobo_version,
+            visualize_plan=args_cli.visualize_plan,
         )
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)

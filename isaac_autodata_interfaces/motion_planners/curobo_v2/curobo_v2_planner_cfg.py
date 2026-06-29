@@ -54,8 +54,11 @@ class CuroboV2PlannerCfg:
             Consumed by the SkillGen algorithm; not used by cuRobo internally.
         motion_step_size: Joint-space retiming step size in radians [rad]. ``None`` disables
             retiming. Surfaced as :attr:`CuroboV2Planner.step_size` for SkillGen.
-        visualize_spheres: Reserved for future plan-visualization parity with v1; currently unused.
-        visualize_plan: Reserved for future plan-visualization parity with v1; currently unused.
+        visualize_spheres: Reserved for in-sim collision-sphere spawning (v1 parity); not yet
+            implemented for v2. The Rerun visualizer (``visualize_plan``) renders spheres instead.
+        visualize_plan: Enable the Rerun plan visualizer — end-effector path, target pose, robot
+            and attached-object collision spheres, and world obstacles. Limited to env 0; requires
+            the ``rerun-sdk`` package. See :class:`CuroboV2Planner` / ``plan_visualizer``.
     """
 
     # Robot
@@ -83,6 +86,16 @@ class CuroboV2PlannerCfg:
     world_ignore_substrings: list[str] = field(
         default_factory=lambda: ["/World/defaultGroundPlane", "/curobo", "/Robot"]
     )
+    # Collision representation for extracted obstacles:
+    #   "mesh" — keep the triangulated USD mesh (parity with the cuRobo v1 interface). The
+    #            planner avoids the true geometry, so concave objects (e.g. a sorting bin) are
+    #            represented faithfully and the gripper can reach inside. Principled default.
+    #   "obb"  — convert each obstacle to an exact oriented bounding box (analytic SDF). Exact
+    #            for boxes and slightly cheaper; a fallback for box-only scenes or debugging.
+    # "mesh" requires the cuRobo v2 mesh-collision fix (PR #682, >= 0.8.0.post1.dev34): earlier
+    # builds capped the per-query mesh search distance at ||AABB||*0.5, producing false-positive
+    # collisions for query spheres larger than that cap (so a box-as-mesh collided everywhere).
+    obstacle_representation: str = "mesh"
 
     # Planner params
     num_ik_seeds: int = 32
@@ -109,7 +122,7 @@ class CuroboV2PlannerCfg:
     # to the grasped object; it must not exceed the ``attached_object`` link's sphere allocation
     # in the robot YAML (``extra_collision_spheres``, 4 for the stock Franka), or the attach fails.
     surface_sphere_radius: float = 0.005
-    sphere_fit_type: str = "SURFACE"
+    sphere_fit_type: str = "VOXEL"
     attached_object_num_spheres: int = 4
 
     # Approach / retreat / contact configuration. The planner uses :meth:`MotionPlanner.plan_grasp`
@@ -124,7 +137,9 @@ class CuroboV2PlannerCfg:
     approach_in_tool_frame: bool = True
     contact_disable_collision_links: list[str] = field(default_factory=list)
 
-    # Reserved (v1-style visualization)
+    # Visualization. ``visualize_plan`` enables the Rerun plan visualizer (see
+    # :mod:`isaac_autodata_interfaces.motion_planners.curobo_v2.plan_visualizer`). ``visualize_spheres``
+    # (in-sim sphere spawning) is not yet implemented for v2 — the Rerun visualizer renders spheres.
     visualize_spheres: bool = False
     visualize_plan: bool = False
 
