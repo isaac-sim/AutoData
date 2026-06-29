@@ -42,6 +42,9 @@ def run_subprocess(cmd: list[str], env: dict | None = None, timeout_sec: int | N
         sys.stderr.write(f"\n[isaac-autodata] Subprocess timed out after {timeout_sec}s\n")
         sys.stderr.flush()
         raise
+    except BaseException:
+        _kill_process_group(process)
+        raise
 
     print(f"Command completed with return code: {return_code}", flush=True)
     if return_code != 0:
