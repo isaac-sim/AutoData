@@ -7,9 +7,9 @@
 #
 # Action vector layout (32-D):
 #   [0..3)    left EEF position [m]
-#   [3..7)    left EEF quaternion (w, x, y, z)
+#   [3..7)    left EEF quaternion (x, y, z, w)
 #   [7..10)   right EEF position [m]
-#   [10..14)  right EEF quaternion (w, x, y, z)
+#   [10..14)  right EEF quaternion (x, y, z, w)
 #   [14..28)  hand joint positions (14 DOF, interleaved L/R by URDF order)
 #   [28..32)  base / locomotion command [vel_x, vel_y, rot_vel_z, hip_height]
 #
