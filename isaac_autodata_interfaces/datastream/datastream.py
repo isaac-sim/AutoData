@@ -257,6 +257,23 @@ class Datastream:
             object_pose_matrix[obj_name] = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
         return object_pose_matrix
 
+    def get_robot_root_pose(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
+        """Get the robot articulation root pose in the env-relative frame.
+
+        Returns a tensor of shape ``(len(env_ids), 4, 4)`` using the same frame convention as
+        :meth:`get_object_poses` (per-env origin subtracted). Motion planners read this to
+        reconcile the env-relative frame they exchange with callers and the robot base frame
+        their solver plans in.
+        """
+
+        index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
+        scene = self.env.scene
+        robot_name = getattr(self.embodiment_adapter, "robot_asset_name", "robot")
+        robot = scene[robot_name]
+        pos_rel = as_torch(robot.data.root_pos_w)[index] - scene.env_origins[index]
+        quat = as_torch(robot.data.root_quat_w)[index]
+        return pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
+
     def get_scene_state(self, is_relative: bool = True) -> dict:
         """Return the raw scene-state snapshot from the underlying env.
 
