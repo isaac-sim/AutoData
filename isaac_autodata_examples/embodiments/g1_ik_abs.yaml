@@ -1,0 +1,54 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Embodiment descriptor for the Unitree G1 (whole-body IK, Absolute-pose).
+#
+# Action vector layout (32-D):
+#   [0..3)    left EEF position [m]
+#   [3..7)    left EEF quaternion (x, y, z, w)
+#   [7..10)   right EEF position [m]
+#   [10..14)  right EEF quaternion (x, y, z, w)
+#   [14..28)  hand joint positions (14 DOF, interleaved L/R by URDF order)
+#   [28..32)  base / locomotion command [vel_x, vel_y, rot_vel_z, hip_height]
+#
+# Pose is absolute; tracked by the whole-body PinkIK controller. EEF poses are read from the
+# `left_wrist_yaw_link` / `right_wrist_yaw_link` frames.
+#
+# The 14 hand joints are interleaved (not block-contiguous): the env's hand_joint_names order is
+#   0 l_index_0  1 l_middle_0  2 l_thumb_0  3 r_index_0  4 r_middle_0  5 r_thumb_0
+#   6 l_index_1  7 l_middle_1  8 l_thumb_1  9 r_index_1 10 r_middle_1 11 r_thumb_1
+#  12 l_thumb_2 13 r_thumb_2
+# so the left hand occupies hand-slice indices [0,1,2,6,7,8,12] and the right [3,4,5,9,10,11,13].
+#
+# The base command is a non-eef passthrough channel: copied verbatim from the source demo per step,
+# exactly like the gripper.
+
+type: absolute_pose_whole_body_bimanual
+name: g1
+description: Unitree G1 humanoid with whole-body IK and three-finger hands, absolute-pose control.
+
+eefs:
+  left:
+    pose_obs_keys:
+      pos: left_eef_pos
+      quat: left_eef_quat
+    # 7 left-hand joints (index/middle/thumb proximal + distal + thumb tip)
+    gripper_action_indices: [0, 1, 2, 6, 7, 8, 12]
+
+  right:
+    pose_obs_keys:
+      pos: right_eef_pos
+      quat: right_eef_quat
+    # 7 right-hand joints (index/middle/thumb proximal + distal + thumb tip)
+    gripper_action_indices: [3, 4, 5, 9, 10, 11, 13]
+
+action_layout:
+  left_pose_slice: [0, 7]
+  right_pose_slice: [7, 14]
+  hand_joints_slice: [14, 28]
+  canonicalize_quat: true
+  # Non-eef passthrough channels: name -> contiguous action slice. Add more here freely.
+  passthrough_channels:
+    body: [28, 32]  # [vel_x, vel_y, rot_vel_z, hip_height]

@@ -5,7 +5,7 @@
 
 """Waypoint and trajectory primitives consumed by :class:`DataGenerator`.
 
-* :class:`Waypoint` — one target pose + gripper action.
+* :class:`Waypoint` — one target pose + passthrough actions.
 * :class:`WaypointSequence` — ordered list of :class:`Waypoint`.
 * :class:`WaypointTrajectory` — list of :class:`WaypointSequence`, supports merge with interpolation.
 * :class:`MultiWaypoint` — per-EEF :class:`Waypoint` map; ``execute`` issues one env step.
@@ -26,25 +26,26 @@ if TYPE_CHECKING:
 
 
 class Waypoint:
-    """Single 6-DoF target pose with paired gripper action."""
+    """Single 6-DoF target pose with paired passthrough actions."""
 
     def __init__(
         self,
         pose: torch.Tensor,
-        gripper_action: torch.Tensor,
+        passthrough_action: dict[str, torch.Tensor],
         noise: float | torch.Tensor | None = None,
         joint_seed: torch.Tensor | None = None,
     ) -> None:
         """
         Args:
             pose: 4x4 pose target [m, rad].
-            gripper_action: Gripper command of shape ``[D]``.
-            noise: Action-noise amplitude applied to arm actions at this tick. Gripper actions are
-                not noised.
+            passthrough_action: Passthrough (non-pose) action channels active at this tick, keyed by
+                channel name — this eef's own channel (under its eef name) plus any non-eef channels
+                (e.g. ``"body"``). Not noised.
+            noise: Action-noise amplitude applied to the pose action at this tick.
             joint_seed: Optional joint-space seed; used by IK and by offline scheduling.
         """
         self.pose = pose
-        self.gripper_action = gripper_action
+        self.passthrough_action = passthrough_action
         self.noise = noise
         self.joint_seed = joint_seed
 
@@ -67,15 +68,17 @@ class WaypointSequence:
     def from_poses(
         cls,
         poses: torch.Tensor,
-        gripper_actions: torch.Tensor,
+        passthrough_actions: dict[str, torch.Tensor],
         action_noise: float | torch.Tensor,
         joint_positions: list[torch.Tensor] | None = None,
     ) -> WaypointSequence:
-        """Build a sequence from parallel pose, gripper-action, and noise tensors.
+        """Build a sequence from parallel pose and passthrough-action tensors.
 
         Args:
             poses: ``[T, 4, 4]`` pose matrices [m, rad].
-            gripper_actions: ``[T, D]`` gripper commands.
+            passthrough_actions: ``{channel_name: [T, D]}``, every passthrough channel for this
+                eef's trajectory (the eef's own channel keyed by its eef name, plus any non-eef
+                channels), sliced per step into each waypoint's ``passthrough``.
             action_noise: Either a scalar broadcast across time, or a ``[T]`` / ``[T, 1]`` tensor.
             joint_positions: Optional per-step joint seeds; element ``t`` aligns with ``poses[t]``.
         """
@@ -91,10 +94,13 @@ class WaypointSequence:
             joint_seed = None
             if joint_positions is not None and t < len(joint_positions):
                 joint_seed = joint_positions[t]
+            passthrough_action = {
+                channel_name: channel_tensor[t] for channel_name, channel_tensor in passthrough_actions.items()
+            }
             sequence.append(
                 Waypoint(
                     pose=poses[t],
-                    gripper_action=gripper_actions[t],
+                    passthrough_action=passthrough_action,
                     noise=action_noise[t, 0],
                     joint_seed=joint_seed,
                 )
@@ -161,7 +167,7 @@ class WaypointTrajectory:
     def add_waypoint_sequence_for_target_pose(
         self,
         pose: torch.Tensor,
-        gripper_action: torch.Tensor,
+        passthrough_action: dict[str, torch.Tensor],
         num_steps: int,
         skip_interpolation: bool = False,
         action_noise: float = 0.0,
@@ -173,7 +179,8 @@ class WaypointTrajectory:
 
         Args:
             pose: 4x4 target pose [m, rad].
-            gripper_action: Gripper command broadcast across the segment.
+            passthrough_action: This waypoint's passthrough channels (keyed by channel name)
+                broadcast across the segment.
             num_steps: Number of action steps in the segment.
             skip_interpolation: If True, hold ``pose`` constant; otherwise interpolate.
             action_noise: Gaussian noise scale applied during execution.
@@ -184,7 +191,10 @@ class WaypointTrajectory:
         if skip_interpolation:
             assert num_steps is not None
             poses = pose.unsqueeze(0).repeat((num_steps, 1, 1))
-            gripper_actions = gripper_action.unsqueeze(0).repeat((num_steps, 1))
+            passthrough_actions = {
+                channel_name: channel_tensor.unsqueeze(0).repeat((num_steps, 1))
+                for channel_name, channel_tensor in passthrough_action.items()
+            }
         else:
             last_waypoint = self.last_waypoint
             poses, num_steps_2 = PoseUtils.interpolate_poses(
@@ -193,14 +203,16 @@ class WaypointTrajectory:
                 num_steps=num_steps,
             )
             assert num_steps == num_steps_2
-            gripper_actions = gripper_action.unsqueeze(0).repeat((num_steps + 2, 1))
             # Drop the first interpolated sample — it duplicates the trajectory's current endpoint.
             poses = poses[1:]
-            gripper_actions = gripper_actions[1:]
+            passthrough_actions = {
+                channel_name: channel_tensor.unsqueeze(0).repeat((num_steps + 2, 1))[1:]
+                for channel_name, channel_tensor in passthrough_action.items()
+            }
 
         sequence = WaypointSequence.from_poses(
             poses=poses,
-            gripper_actions=gripper_actions,
+            passthrough_actions=passthrough_actions,
             action_noise=action_noise,
         )
         self.add_waypoint_sequence(sequence)
@@ -242,7 +254,7 @@ class WaypointTrajectory:
             if need_interp:
                 self.add_waypoint_sequence_for_target_pose(
                     pose=target_for_interpolation.pose,
-                    gripper_action=target_for_interpolation.gripper_action,
+                    passthrough_action=target_for_interpolation.passthrough_action,
                     num_steps=num_steps_interp,
                     action_noise=action_noise,
                     skip_interpolation=False,
@@ -253,7 +265,7 @@ class WaypointTrajectory:
                 num_steps_fixed_to_use = num_steps_fixed if need_interp else (num_steps_fixed + 1)
                 self.add_waypoint_sequence_for_target_pose(
                     pose=target_for_interpolation.pose,
-                    gripper_action=target_for_interpolation.gripper_action,
+                    passthrough_action=target_for_interpolation.passthrough_action,
                     num_steps=num_steps_fixed_to_use,
                     action_noise=action_noise,
                     skip_interpolation=True,
@@ -300,13 +312,16 @@ class MultiWaypoint:
         """
         env = datastream.get_env()
 
-        target_eef_pose_dict = {name: w.pose for name, w in self.waypoints.items()}
-        gripper_action_dict = {name: w.gripper_action for name, w in self.waypoints.items()}
-        action_noise_dict = {name: w.noise for name, w in self.waypoints.items()}
+        target_eef_pose_dict = {eef_name: waypoint.pose for eef_name, waypoint in self.waypoints.items()}
+        action_noise_dict = {eef_name: waypoint.noise for eef_name, waypoint in self.waypoints.items()}
+        passthrough_action_dict: dict[str, torch.Tensor] = {}
+        for eef_name in sorted(self.waypoints):
+            for channel_name, channel_tensor in self.waypoints[eef_name].passthrough_action.items():
+                passthrough_action_dict.setdefault(channel_name, channel_tensor)
 
         play_action = datastream.target_eef_pose_to_action(
             target_eef_pose_dict=target_eef_pose_dict,
-            gripper_action_dict=gripper_action_dict,
+            passthrough_action_dict=passthrough_action_dict,
             action_noise_dict=action_noise_dict,
             env_id=env_id,
         )

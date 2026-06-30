@@ -19,7 +19,7 @@ from __future__ import annotations
 import torch
 from abc import abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from isaac_autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
@@ -104,15 +104,15 @@ class BimanualEmbodimentAdapter(EmbodimentAdapter):
     def target_eef_pose_to_action(
         self,
         target_eef_pose_dict: dict[str, torch.Tensor],
-        gripper_action_dict: dict[str, torch.Tensor],
+        passthrough_action_dict: dict[str, torch.Tensor],
         action_noise_dict: dict[str, float] | None = None,
         env_id: int = 0,
     ) -> torch.Tensor:
-        """Convert per-EEF target pose and gripper to env action. Implemented by concrete subclasses."""
+        """Convert per-EEF target pose and passthrough actions to env action. Implemented by subclasses."""
 
     @abstractmethod
-    def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Extract gripper-actuation slices from a sequence of env actions. Implemented by concrete subclasses."""
+    def actions_to_passthrough_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Extract passthrough-action slices from a sequence of env actions. Implemented by subclasses."""
 
 
 @dataclass(kw_only=True)
@@ -120,10 +120,15 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
     """Bimanual adapter for absolute-pose whole-body IK control.
 
     Action layout (concatenated):
-    ``[left_pos(3), left_quat(4), right_pos(3), right_quat(4), interleaved_hand_joints]``.
+    ``[left_pos(3), left_quat(4), right_pos(3), right_quat(4), interleaved_hand_joints, *extra]``.
     Pose is absolute and tracked by a whole-body IK controller. Hand joints
     are interleaved by URDF order; which indices belong to which arm is
     captured in :attr:`BimanualEefConfig.gripper_action_indices`.
+
+    Beyond the two eef (hand) passthrough channels, the embodiment may declare any number of
+    additional non-eef passthrough channels via :attr:`passthrough_channels` (e.g. a mobile
+    base / locomotion command). Each is a named, contiguous slice of the action vector that is copied verbatim from the source demo, exactly
+    like the gripper.
 
     Args:
         left_pose_slice: Half-open ``(start, end)`` range in the action vector
@@ -134,17 +139,22 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
             block. Must immediately follow ``right_pose_slice``.
         canonicalize_quat: If True, flip quaternions to ``w >= 0`` before
             packing into the action. Prevents sign drift in recorded actions.
+        passthrough_channels: Map ``channel_name → (start, end)`` of additional non-eef
+            passthrough channels, each a contiguous slice of the action vector.
+            Channel names must be distinct from the eef names. Empty by default.
     """
 
     left_pose_slice: tuple[int, int]
     right_pose_slice: tuple[int, int]
     hand_joints_slice: tuple[int, int]
     canonicalize_quat: bool = True
+    passthrough_channels: dict[str, tuple[int, int]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        for label, sl in (("left", self.left_pose_slice), ("right", self.right_pose_slice)):
-            assert sl[1] - sl[0] == 7, f"{label}_pose_slice must span 7 dims, got {sl[1] - sl[0]}"
+        for label, pose_slice in (("left", self.left_pose_slice), ("right", self.right_pose_slice)):
+            span = pose_slice[1] - pose_slice[0]
+            assert span == 7, f"{label}_pose_slice must span 7 dims, got {span}"
         assert self.right_pose_slice[0] == self.left_pose_slice[1], (
             "right_pose_slice must immediately follow left_pose_slice; "
             f"got left=({self.left_pose_slice[0]}, {self.left_pose_slice[1]}), "
@@ -161,10 +171,27 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
                 f"hand-joints slice only has width {hand_joints_width}"
             )
 
+        # Validate the extra (non-eef) passthrough channels: distinct names, valid non-overlapping
+        # slices outside the contiguous pose+hand region.
+        eef_names = {self.left.name, self.right.name}
+        occupied_ranges: list[tuple[int, int]] = [(self.left_pose_slice[0], self.hand_joints_slice[1])]
+        for channel_name, channel_slice in self.passthrough_channels.items():
+            assert channel_name not in eef_names, f"passthrough channel {channel_name!r} collides with an eef name"
+            assert (
+                len(channel_slice) == 2 and channel_slice[1] > channel_slice[0] >= 0
+            ), f"passthrough channel {channel_name!r} has invalid slice {channel_slice}"
+            for occupied_range in occupied_ranges:
+                assert channel_slice[1] <= occupied_range[0] or channel_slice[0] >= occupied_range[1], (
+                    f"passthrough channel {channel_name!r} slice {tuple(channel_slice)} "
+                    f"overlaps action region {occupied_range}"
+                )
+            occupied_ranges.append(tuple(channel_slice))
+
     @property
     def action_dim(self) -> int:
-        """Total width of the env action vector."""
-        return self.hand_joints_slice[1]
+        """Total width of the env action vector (pose + hands + any extra passthrough channels)."""
+        channel_ends = (channel_slice[1] for channel_slice in self.passthrough_channels.values())
+        return max(self.hand_joints_slice[1], *channel_ends)
 
     def action_to_target_eef_pose(self, action: torch.Tensor) -> dict[str, torch.Tensor]:
         """Convert env action to target EEF poses for both arms.
@@ -180,9 +207,9 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
             action.dim() == 2 and action.shape[-1] == self.action_dim
         ), f"action shape must be (num_envs, {self.action_dim}), got {tuple(action.shape)}"
         result: dict[str, torch.Tensor] = {}
-        for eef, sl in ((self.left, self.left_pose_slice), (self.right, self.right_pose_slice)):
-            pos = action[:, sl[0] : sl[0] + 3]
-            quat = action[:, sl[0] + 3 : sl[1]]
+        for eef, pose_slice in ((self.left, self.left_pose_slice), (self.right, self.right_pose_slice)):
+            pos = action[:, pose_slice[0] : pose_slice[0] + 3]
+            quat = action[:, pose_slice[0] + 3 : pose_slice[1]]
             rot = pose_math.matrix_from_quat(quat)
             result[eef.name] = pose_math.make_pose(pos, rot)
         return result
@@ -190,18 +217,17 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
     def target_eef_pose_to_action(
         self,
         target_eef_pose_dict: dict[str, torch.Tensor],
-        gripper_action_dict: dict[str, torch.Tensor],
+        passthrough_action_dict: dict[str, torch.Tensor],
         action_noise_dict: dict[str, float] | None = None,
         env_id: int = 0,  # noqa: ARG002
     ) -> torch.Tensor:
-        """Convert per-arm target pose and gripper to env action.
+        """Convert per-arm target pose and passthrough actions to env action.
 
         Args:
             target_eef_pose_dict: ``{eef_name: target_pose(4, 4)}`` for both arms.
-            gripper_action_dict: ``{eef_name: gripper_tensor}``; each tensor is
-                shape ``(len(gripper_action_indices),)`` for that arm.
+            passthrough_action_dict: ``{channel_name: tensor}`` for both arms and any declared extra channels.
             action_noise_dict: Optional per-arm noise scales. Applied to pose
-                and quat slices independently per arm; gripper joints are not
+                and quat slices independently per arm; passthrough actions are not
                 noisified.
             env_id: Present for ABC parity. Unused (absolute-pose encoding
                 does not read env state).
@@ -209,41 +235,54 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
         Returns:
             Env action tensor of shape (action_dim,).
         """
-        expected_keys = {self.left.name, self.right.name}
+        eef_keys = {self.left.name, self.right.name}
+        expected_keys = eef_keys | set(self.passthrough_channels)
         assert (
-            set(target_eef_pose_dict) == expected_keys
-        ), f"target_eef_pose_dict must have exactly {expected_keys}, got {set(target_eef_pose_dict)}"
+            set(target_eef_pose_dict) == eef_keys
+        ), f"target_eef_pose_dict must have exactly {eef_keys}, got {set(target_eef_pose_dict)}"
         assert (
-            set(gripper_action_dict) == expected_keys
-        ), f"gripper_action_dict must have exactly {expected_keys}, got {set(gripper_action_dict)}"
+            set(passthrough_action_dict) == expected_keys
+        ), f"passthrough_action_dict must have exactly {expected_keys}, got {set(passthrough_action_dict)}"
         left_pos, left_quat = self._encode_pose(target_eef_pose_dict[self.left.name])
         right_pos, right_quat = self._encode_pose(target_eef_pose_dict[self.right.name])
         if action_noise_dict is not None:
             left_pos, left_quat = self._add_noise(left_pos, left_quat, action_noise_dict.get(self.left.name, 0.0))
             right_pos, right_quat = self._add_noise(right_pos, right_quat, action_noise_dict.get(self.right.name, 0.0))
-        hand_joints = self._build_interleaved_hand_joints(gripper_action_dict)
-        return torch.cat([left_pos, left_quat, right_pos, right_quat, hand_joints], dim=0)
+        hand_joints = self._build_interleaved_hand_joints(passthrough_action_dict)
 
-    def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
-        """De-interleave the hand-joints slice into per-arm gripper actions.
+        action = torch.zeros(self.action_dim, dtype=left_pos.dtype, device=left_pos.device)
+        action[self.left_pose_slice[0] : self.left_pose_slice[1]] = torch.cat([left_pos, left_quat], dim=0)
+        action[self.right_pose_slice[0] : self.right_pose_slice[1]] = torch.cat([right_pos, right_quat], dim=0)
+        action[self.hand_joints_slice[0] : self.hand_joints_slice[1]] = hand_joints
+        for channel_name, channel_slice in self.passthrough_channels.items():
+            action[channel_slice[0] : channel_slice[1]] = passthrough_action_dict[channel_name]
+        return action
+
+    def actions_to_passthrough_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Extract all passthrough channels from a sequence of env actions.
+
+        De-interleaves the hand-joints slice into per-arm gripper actions and slices out every
+        declared extra (non-eef) channel. Leading batch dims are preserved.
 
         Args:
-            actions: Action tensor whose last dim is ``action_dim``. Leading
-                batch dims are preserved.
+            actions: Action tensor whose last dim is ``action_dim``.
 
         Returns:
-            Dictionary ``{left_name: left_gripper, right_name: right_gripper}``
-            where each tensor's last dim equals that arm's
-            ``len(gripper_action_indices)``.
+            Dictionary keyed by channel name: the two eef hand channels (each tensor's last dim
+            equals that arm's ``len(gripper_action_indices)``) plus every entry in
+            :attr:`passthrough_channels` (each the width of its slice).
         """
         assert (
             actions.shape[-1] == self.action_dim
         ), f"actions last dim must be {self.action_dim}, got {actions.shape[-1]}"
         hand_joints = actions[..., self.hand_joints_slice[0] : self.hand_joints_slice[1]]
-        return {
+        result = {
             self.left.name: self._gather_indices(hand_joints, self.left.gripper_action_indices),
             self.right.name: self._gather_indices(hand_joints, self.right.gripper_action_indices),
         }
+        for channel_name, channel_slice in self.passthrough_channels.items():
+            result[channel_name] = actions[..., channel_slice[0] : channel_slice[1]]
+        return result
 
     def _encode_pose(self, target_pose: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Decompose (4, 4) target pose into (pos[3], quat[4]); canonicalize quat sign if configured."""
@@ -261,11 +300,15 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
             return pos, quat
         return pos + scale * torch.randn_like(pos), quat + scale * torch.randn_like(quat)
 
-    def _build_interleaved_hand_joints(self, gripper_action_dict: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Place per-arm gripper actions at their configured indices in the hand-joints block."""
+    def _build_interleaved_hand_joints(self, passthrough_action_dict: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Place per-arm gripper actions at their configured indices in the hand-joints block.
+
+        Reads only the two eef channels from ``passthrough_action_dict``; extra non-eef channels
+        are placed separately by :meth:`target_eef_pose_to_action`.
+        """
         width = self.hand_joints_slice[1] - self.hand_joints_slice[0]
-        left = gripper_action_dict[self.left.name]
-        right = gripper_action_dict[self.right.name]
+        left = passthrough_action_dict[self.left.name]
+        right = passthrough_action_dict[self.right.name]
         assert left.shape == (
             len(self.left.gripper_action_indices),
         ), f"left gripper action must be shape ({len(self.left.gripper_action_indices)},), got {tuple(left.shape)}"
@@ -304,9 +347,15 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
               right_pose_slice: [<start>, <end>]
               hand_joints_slice: [<start>, <end>]
               canonicalize_quat: <bool>   # optional, default true
+              passthrough_channels:       # optional, non-eef channels copied from the action
+                <name>: [<start>, <end>]
         """
         eefs = data["eefs"]
         layout = data["action_layout"]
+        passthrough_channels = {
+            channel_name: tuple(channel_slice)
+            for channel_name, channel_slice in layout.get("passthrough_channels", {}).items()
+        }
         return cls(
             name=data["name"],
             description=data.get("description", ""),
@@ -317,6 +366,7 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
             right_pose_slice=tuple(layout["right_pose_slice"]),
             hand_joints_slice=tuple(layout["hand_joints_slice"]),
             canonicalize_quat=bool(layout.get("canonicalize_quat", True)),
+            passthrough_channels=passthrough_channels,
         )
 
     @staticmethod

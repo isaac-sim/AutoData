@@ -102,15 +102,15 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
     def target_eef_pose_to_action(
         self,
         target_eef_pose_dict: dict[str, torch.Tensor],
-        gripper_action_dict: dict[str, torch.Tensor],
+        passthrough_action_dict: dict[str, torch.Tensor],
         action_noise_dict: dict[str, float] | None = None,
         env_id: int = 0,
     ) -> torch.Tensor:
-        """Convert per-EEF target pose and gripper to env action. Implemented by concrete subclasses."""
+        """Convert per-EEF target pose and passthrough actions to env action. Implemented by subclasses."""
 
     @abstractmethod
-    def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Extract gripper-actuation slices from a sequence of env actions. Implemented by concrete subclasses."""
+    def actions_to_passthrough_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Extract passthrough-action slices from a sequence of env actions. Implemented by subclasses."""
 
 
 @dataclass(kw_only=True)
@@ -159,16 +159,16 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
     def target_eef_pose_to_action(
         self,
         target_eef_pose_dict: dict[str, torch.Tensor],
-        gripper_action_dict: dict[str, torch.Tensor],
+        passthrough_action_dict: dict[str, torch.Tensor],
         action_noise_dict: dict[str, float] | None = None,
         env_id: int = 0,
     ) -> torch.Tensor:
-        """Convert target EEF pose and gripper to env action for a single env.
+        """Convert target EEF pose and passthrough actions to env action for a single env.
 
         Args:
             target_eef_pose_dict: ``{eef_name: target_pose}`` with target pose
                 of shape (4, 4).
-            gripper_action_dict: ``{eef_name: gripper_action}`` of shape
+            passthrough_action_dict: ``{eef_name: gripper_action}`` of shape
                 (gripper_action_dim,).
             action_noise_dict: Optional ``{eef_name: noise_scale}``. Noise is
                 applied to the pose part only; the result is clipped if
@@ -181,9 +181,9 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
         assert set(target_eef_pose_dict) == {
             self.eef_name
         }, f"target_eef_pose_dict must have exactly one key '{self.eef_name}', got {list(target_eef_pose_dict)}"
-        assert set(gripper_action_dict) == {
+        assert set(passthrough_action_dict) == {
             self.eef_name
-        }, f"gripper_action_dict must have exactly one key '{self.eef_name}', got {list(gripper_action_dict)}"
+        }, f"passthrough_action_dict must have exactly one key '{self.eef_name}', got {list(passthrough_action_dict)}"
         target_pose = target_eef_pose_dict[self.eef_name]
         assert target_pose.shape == (4, 4), f"target pose must be (4, 4), got {tuple(target_pose.shape)}"
         target_pos, target_rot = pose_math.unmake_pose(target_pose)
@@ -198,16 +198,17 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
                 pose_action = pose_action + scale * torch.randn_like(pose_action)
         if self.clip_pose_action_to_unit:
             pose_action = torch.clamp(pose_action, -1.0, 1.0)
-        gripper_action = gripper_action_dict[self.eef_name]
+        gripper_action = passthrough_action_dict[self.eef_name]
         assert gripper_action.shape == (
             self.gripper_action_dim,
         ), f"gripper action must be ({self.gripper_action_dim},), got {tuple(gripper_action.shape)}"
         return torch.cat([pose_action, gripper_action], dim=0)
 
-    def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
+    def actions_to_passthrough_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
         """Slice the trailing gripper dims off a sequence of env actions.
 
-        Leading batch dims are preserved (e.g. ``(num_envs, num_steps, action_dim)``).
+        The single-arm embodiment has one passthrough channel: the eef gripper. Leading batch
+        dims are preserved (e.g. ``(num_envs, num_steps, action_dim)``).
 
         Args:
             actions: Action tensor whose final dim is ``action_dim``.

@@ -38,8 +38,8 @@ class DataGenInfoPool:
         """
         Args:
             task_descriptor: Source of subtask semantics.
-            embodiment_adapter: Projects recorded actions into per-eef gripper actions via
-                ``actions_to_gripper_actions``.
+            embodiment_adapter: Projects recorded actions into passthrough actions (per-eef
+                grippers plus any non-eef channels) via ``actions_to_passthrough_actions``.
             device: Target torch device for episode tensors.
             uses_start_signals: Whether the algorithm reads subtask start signals
                 (SkillGen-only). Selects how subtask boundaries are parsed and validated.
@@ -131,7 +131,7 @@ class DataGenInfoPool:
         subtask_term_signals_dict = ep_grp["obs"]["datagen_info"]["subtask_term_signals"]
         subtask_start_signals_dict = ep_grp["obs"]["datagen_info"].get("subtask_start_signals")
 
-        gripper_actions = self.embodiment_adapter.actions_to_gripper_actions(ep_grp["actions"])
+        passthrough_actions = self.embodiment_adapter.actions_to_passthrough_actions(ep_grp["actions"])
 
         ep_datagen_info = DatagenInfo(
             eef_pose=eef_pose,
@@ -139,7 +139,7 @@ class DataGenInfoPool:
             subtask_start_signals=subtask_start_signals_dict,
             subtask_term_signals=subtask_term_signals_dict,
             target_eef_pose=target_eef_pose,
-            gripper_action=gripper_actions,
+            passthrough_action=passthrough_actions,
         )
         self._datagen_infos.append(ep_datagen_info)
 

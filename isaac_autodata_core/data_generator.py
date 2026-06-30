@@ -236,7 +236,7 @@ class DataGenerator:
                     ),
                     subtask_term_signals=None,
                     target_eef_pose=src_ep.target_eef_pose[eef_name][start_ind:end_ind],
-                    gripper_action=src_ep.gripper_action[eef_name][start_ind:end_ind],
+                    passthrough_action=src_ep.passthrough_action[eef_name][start_ind:end_ind],
                 )
             )
 
@@ -320,7 +320,13 @@ class DataGenerator:
         src_ep = self.src_demo_datagen_info_pool.datagen_infos[selected_src_demo_ind]
         src_subtask_eef_poses = src_ep.eef_pose[eef_name][selected_boundary[0] : selected_boundary[1]]
         src_subtask_target_poses = src_ep.target_eef_pose[eef_name][selected_boundary[0] : selected_boundary[1]]
-        src_subtask_gripper_actions = src_ep.gripper_action[eef_name][selected_boundary[0] : selected_boundary[1]]
+
+        eef_names = set(self.datastream.get_eef_names())
+        src_subtask_passthrough_actions = {
+            channel_name: channel_tensor[selected_boundary[0] : selected_boundary[1]]
+            for channel_name, channel_tensor in src_ep.passthrough_action.items()
+            if channel_name == eef_name or channel_name not in eef_names
+        }
         src_subtask_object_pose = (
             src_ep.object_poses[subtask_object_name][selected_boundary[0]] if subtask_object_name is not None else None
         )
@@ -329,12 +335,16 @@ class DataGenerator:
             # Prepending the recorded EEF pose makes interpolation seed from the robot's actual
             # pose rather than the first target pose.
             src_eef_poses = torch.cat([src_subtask_eef_poses[0:1], src_subtask_target_poses], dim=0)
-            src_subtask_gripper_actions = torch.cat(
-                [src_subtask_gripper_actions[0:1], src_subtask_gripper_actions], dim=0
-            )
+            src_subtask_passthrough_actions = {
+                channel_name: torch.cat([channel_tensor[0:1], channel_tensor], dim=0)
+                for channel_name, channel_tensor in src_subtask_passthrough_actions.items()
+            }
         else:
             src_eef_poses = src_subtask_target_poses.clone()
-            src_subtask_gripper_actions = src_subtask_gripper_actions.clone()
+            src_subtask_passthrough_actions = {
+                channel_name: channel_tensor.clone()
+                for channel_name, channel_tensor in src_subtask_passthrough_actions.items()
+            }
 
         transformed_eef_poses = self._apply_subtask_transform(
             eef_name=eef_name,
@@ -350,7 +360,7 @@ class DataGenerator:
 
         seq = WaypointSequence.from_poses(
             poses=transformed_eef_poses,
-            gripper_actions=src_subtask_gripper_actions,
+            passthrough_actions=src_subtask_passthrough_actions,
             action_noise=subtasks[subtask_ind].action_noise,
         )
         traj = WaypointTrajectory()
@@ -484,9 +494,14 @@ class DataGenerator:
             assert prev_executed_traj is not None
             init_sequence = WaypointSequence(sequence=[prev_executed_traj[-1]])
         else:
+            first_wp = subtask_trajectory[0]
+            init_passthrough_actions = {
+                channel_name: channel_tensor.unsqueeze(0)
+                for channel_name, channel_tensor in first_wp.passthrough_action.items()
+            }
             init_sequence = WaypointSequence.from_poses(
                 poses=self.datastream.get_robot_eef_pose(env_ids=[env_id], eef_name=eef_name)[0].unsqueeze(0),
-                gripper_actions=subtask_trajectory[0].gripper_action.unsqueeze(0),
+                passthrough_actions=init_passthrough_actions,
                 action_noise=subtask.action_noise,
             )
         traj_to_execute.add_waypoint_sequence(init_sequence)
