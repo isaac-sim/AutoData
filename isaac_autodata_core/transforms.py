@@ -75,7 +75,10 @@ def get_delta_pose_with_scheme(
     device = src_obj_pose.device
 
     if scheme == SubTaskConstraintCoordinationScheme.TRANSFORM:
-        delta_pose = PoseUtils.get_delta_object_pose(cur_obj_pose, src_obj_pose)
+        delta_pose = PoseUtils.pose_in_A_to_pose_in_B(
+            pose_in_A=PoseUtils.pose_inv(src_obj_pose),
+            pose_A_in_B=cur_obj_pose,
+        )
     elif scheme == SubTaskConstraintCoordinationScheme.TRANSLATE:
         delta_pose = torch.eye(4, device=device)
         delta_pose[:3, 3] = cur_obj_pose[:3, 3] - src_obj_pose[:3, 3]
