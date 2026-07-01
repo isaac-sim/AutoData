@@ -22,7 +22,11 @@ import json
 import os
 import sys
 
-REQUIRED_DEMO_FIELDS = ("actions", "initial_state", "obs")
+REQUIRED_DEMO_FIELDS = {
+    "actions": h5py.Dataset,
+    "initial_state": h5py.Group,
+    "obs": h5py.Group,
+}
 
 
 class ValidationResult:
@@ -31,7 +35,7 @@ class ValidationResult:
     def __init__(self, path: str) -> None:
         self.path = path
         self.num_episodes: int | None = None
-        self.env_id: str | None = None
+        self.env_name: str | None = None
         self.sim_args: dict | None = None
         self.env_args: object | None = None
         self.issues: list[str] = []
@@ -89,6 +93,11 @@ def validate_file(path: str) -> ValidationResult:
             missing = [field for field in REQUIRED_DEMO_FIELDS if field not in demo]
             if missing:
                 result.issues.append(f"{name}: missing required field(s): {', '.join(missing)}")
+            # Present fields must be the right kind: actions is a dataset, initial_state/obs are groups.
+            for field, expected_kind in REQUIRED_DEMO_FIELDS.items():
+                if field in demo and not isinstance(demo[field], expected_kind):
+                    kind = "group" if expected_kind is h5py.Group else "dataset"
+                    result.issues.append(f"{name}: '{field}' must be a {kind}")
 
     return result
 
@@ -106,7 +115,7 @@ def _read_env_metadata(data: h5py.Group, result: ValidationResult) -> None:
         return
     result.env_args = env_args
     if isinstance(env_args, dict):
-        result.env_id = env_args.get("env_name")
+        result.env_name = env_args.get("env_name")
         sim_args = env_args.get("sim_args")
         result.sim_args = sim_args if isinstance(sim_args, dict) else None
 
@@ -135,7 +144,7 @@ def print_results(results: list[ValidationResult]) -> None:
         (
             r.path,
             "-" if r.num_episodes is None else str(r.num_episodes),
-            r.env_id or "-",
+            r.env_name or "-",
             _format_sim_args(r.sim_args),
             "VALID" if r.valid else "INVALID",
         )
