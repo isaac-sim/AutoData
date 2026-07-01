@@ -305,6 +305,15 @@ class CuroboPlanner(MotionPlannerBase):
         # Only recompute when objects are added/removed, not when poses change
         self._cached_object_mappings: dict[str, str] | None = None
 
+        # Robot base frame (cuRobo's planning frame) expressed in the env-relative frame the
+        # planner exchanges with callers. Refreshed from the live articulation in
+        # update_world(); object, goal, and planned poses are reconciled between the two frames.
+        # Initialized to identity so the transform is a no-op until the first world update.
+        identity_pose = torch.eye(4, dtype=torch.float32, device=self.datastream.device)
+        self._base_pose_in_env: torch.Tensor = identity_pose
+        self._env_to_base_transform: torch.Tensor = identity_pose.clone()
+        self._base_frame_is_identity: bool = True
+
     # =====================================================================================
     # DEVICE CONVERSION UTILITIES
     # =====================================================================================
@@ -339,6 +348,59 @@ class CuroboPlanner(MotionPlannerBase):
         return tensor.to(device=self.datastream.device, dtype=tensor.dtype)
 
     # =====================================================================================
+    # FRAME RECONCILIATION
+    # =====================================================================================
+
+    def _refresh_base_frame_transform(self) -> None:
+        """Refresh the cached transform between the env-relative and robot base frames.
+
+        cuRobo plans in the robot base frame (the kinematic root at its origin), while the
+        planner exchanges poses with callers in the env-relative frame. This reads the robot
+        base pose (env-relative) and caches the forward and inverse transforms used to map
+        object, goal, and planned poses between the two frames.
+        """
+        self._base_pose_in_env = self.datastream.get_robot_root_pose(env_ids=[self.env_id])[0]
+        self._env_to_base_transform = torch.linalg.inv(self._base_pose_in_env)
+        identity = torch.eye(4, dtype=self._base_pose_in_env.dtype, device=self._base_pose_in_env.device)
+        self._base_frame_is_identity = bool(torch.allclose(self._base_pose_in_env, identity, atol=1e-6))
+
+    def _pose_env_to_base(self, pose_env: torch.Tensor) -> torch.Tensor:
+        """Express an env-relative pose in the robot base frame.
+
+        The planner exchanges poses with callers in the env-relative frame, while cuRobo plans
+        in the robot base frame. This applies the cached env-to-base transform and is a no-op
+        when the robot base coincides with the env origin.
+
+        Args:
+            pose_env: Pose as a 4x4 transformation matrix in the env-relative frame.
+
+        Returns:
+            The same pose as a 4x4 transformation matrix in the robot base frame.
+        """
+        if self._base_frame_is_identity:
+            return pose_env
+        transform = self._env_to_base_transform.to(device=pose_env.device, dtype=pose_env.dtype)
+        return transform @ pose_env
+
+    def _pose_base_to_env(self, pose_base: torch.Tensor) -> torch.Tensor:
+        """Express a robot-base-frame pose in the env-relative frame.
+
+        Inverse of :meth:`_pose_env_to_base`, used to map planned poses back into the
+        env-relative frame callers expect. This is a no-op when the robot base coincides with
+        the env origin.
+
+        Args:
+            pose_base: Pose as a 4x4 transformation matrix in the robot base frame.
+
+        Returns:
+            The same pose as a 4x4 transformation matrix in the env-relative frame.
+        """
+        if self._base_frame_is_identity:
+            return pose_base
+        transform = self._base_pose_in_env.to(device=pose_base.device, dtype=pose_base.dtype)
+        return transform @ pose_base
+
+    # =====================================================================================
     # INITIALIZATION AND CONFIGURATION
     # =====================================================================================
 
@@ -362,6 +424,8 @@ class CuroboPlanner(MotionPlannerBase):
             "/curobo",
         ]
 
+        # Static obstacles are expressed relative to the robot prim, which is assumed to
+        # coincide with the kinematic root link that defines cuRobo's planning frame.
         self._static_world_config = self.usd_helper.get_obstacles_from_stage(
             only_paths=[env_prim_path],
             reference_prim_path=robot_prim_path,
@@ -535,6 +599,10 @@ class CuroboPlanner(MotionPlannerBase):
             RuntimeError: If the set of objects has changed at runtime
         """
 
+        # Refresh the env-relative -> robot base frame transform before syncing geometry, so
+        # object, goal, and planned poses are reconciled against the current base pose.
+        self._refresh_base_frame_transform()
+
         # Establish validation baseline on first call, validate on subsequent calls
         if self._expected_objects is None:
             self._expected_objects = set(self._get_world_object_names())
@@ -629,7 +697,8 @@ class CuroboPlanner(MotionPlannerBase):
         for object_name, object_path in object_mappings.items():
             if object_name not in object_poses or _is_static(object_name):
                 continue
-            pose_list = self._object_pose_to_curobo_list(object_poses[object_name][0])
+            pose_base = self._pose_env_to_base(object_poses[object_name][0])
+            pose_list = self._object_pose_to_curobo_list(pose_base)
             if self._update_object_in_world_model(world_model, object_name, object_path, pose_list):
                 updated_count += 1
 
@@ -641,7 +710,8 @@ class CuroboPlanner(MotionPlannerBase):
             for object_name, object_path in object_mappings.items():
                 if object_name not in object_poses or _is_static(object_name):
                     continue
-                pose_list = self._object_pose_to_curobo_list(object_poses[object_name][0])
+                pose_base = self._pose_env_to_base(object_poses[object_name][0])
+                pose_list = self._object_pose_to_curobo_list(pose_base)
                 # pose_list quaternion is already cuRobo (w, x, y, z) order.
                 curobo_pose = self._make_pose(position=pose_list[:3], quaternion=pose_list[3:], quat_is_xyzw=False)
                 self.motion_gen.world_coll_checker.update_obstacle_pose(  # type: ignore
@@ -651,9 +721,8 @@ class CuroboPlanner(MotionPlannerBase):
             self.logger.debug(f"Updated {updated_count} object poses in collision checker")
 
     def _object_pose_to_curobo_list(self, pose_mat: torch.Tensor) -> list[float]:
-        """Decompose a 4x4 env-relative pose into cuRobo's ``[x, y, z, qw, qx, qy, qz]`` list.
+        """Decompose a 4x4 pose into cuRobo's ``[x, y, z, qw, qx, qy, qz]`` list.
 
-        The input matrix comes from :meth:`Datastream.get_object_poses` (env-relative frame).
         Our :mod:`pose_math` uses the ``(x, y, z, w)`` quaternion convention; cuRobo wants
         ``(w, x, y, z)``, so we reorder here.
         """
@@ -1071,8 +1140,12 @@ class CuroboPlanner(MotionPlannerBase):
         if enable_retiming is None:
             enable_retiming = step_size is not None
 
+        # The caller supplies the target in the env-relative frame; cuRobo plans in the robot
+        # base frame, so express it there before handing it to the solver.
+        target_pose_base = self._pose_env_to_base(target_pose)
+
         # Ensure target pose is on cuRobo device (CUDA) for device isolation
-        target_pose_cuda = self._to_curobo_device(target_pose)
+        target_pose_cuda = self._to_curobo_device(target_pose_base)
 
         target_pos: torch.Tensor
         target_rot: torch.Tensor
@@ -1478,7 +1551,14 @@ class CuroboPlanner(MotionPlannerBase):
         next_joint_state: JointState = self._current_plan[self._plan_index]
         self._plan_index += 1
         eef_state: CudaRobotModelState = self.motion_gen.compute_kinematics(next_joint_state)
-        return eef_state.ee_pose
+        if self._base_frame_is_identity:
+            return eef_state.ee_pose
+        # Express the base-frame EE pose in the env-relative frame callers expect.
+        ee_pos = self._to_env_device(eef_state.ee_pose.position)
+        ee_rot = self._to_env_device(eef_state.ee_pose.get_rotation())
+        ee_pose_env = self._pose_base_to_env(PoseUtils.make_pose(ee_pos, ee_rot))
+        env_pos, env_rot = PoseUtils.unmake_pose(ee_pose_env)
+        return self._make_pose(position=env_pos, quaternion=PoseUtils.quat_from_matrix(env_rot))
 
     def reset_plan(self) -> None:
         """Reset trajectory execution state.
@@ -1531,7 +1611,8 @@ class CuroboPlanner(MotionPlannerBase):
                     if isinstance(planned_pose.get_rotation(), torch.Tensor)
                     else planned_pose.get_rotation()
                 )
-                planned_poses.append(PoseUtils.make_pose(position, rotation)[0])
+                ee_pose_base = PoseUtils.make_pose(position, rotation)[0]
+                planned_poses.append(self._pose_base_to_env(ee_pose_base))
 
         # Restore the original execution state
         self._plan_index = original_plan_index
