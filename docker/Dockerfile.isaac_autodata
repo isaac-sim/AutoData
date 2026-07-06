@@ -91,6 +91,7 @@ RUN if [ "$INSTALL_CUROBO" = "true" ]; then \
 RUN echo "alias python='/isaac-sim/python.sh'" >> /etc/bash.bashrc \
  && echo "alias pip3='/isaac-sim/python.sh -m pip'" >> /etc/bash.bashrc \
  && echo "alias pytest='/isaac-sim/python.sh -m pytest'" >> /etc/bash.bashrc \
+ && echo "alias pre-commit='/isaac-sim/python.sh -m pre_commit'" >> /etc/bash.bashrc \
  && echo "alias ll='ls -alF --color=auto'" >> /etc/bash.bashrc \
  && echo "PS1='[Isaac AutoData] \[\e[0;32m\]\u \[\e[0;34m\]\w\[\e[0m\] \$ '" >> /etc/bash.bashrc \
  && cp /etc/bash.bashrc /root/.bashrc
