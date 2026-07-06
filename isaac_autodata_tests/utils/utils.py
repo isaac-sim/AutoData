@@ -6,11 +6,8 @@
 """Shared assertion helpers for the AutoData test suite."""
 
 import h5py
+import json
 import os
-import re
-
-# Matches the generator's per-update progress line, e.g. "250/480 (52.1%) successful demos generated".
-_SUCCESS_RATE_RE = re.compile(r"(\d+)/(\d+)\s*\(\s*[\d.]+%\)\s*successful demos generated")
 
 
 def assert_valid_dataset(output_file: str, min_num_demos: int) -> None:
@@ -25,19 +22,24 @@ def assert_valid_dataset(output_file: str, min_num_demos: int) -> None:
     assert num_demos >= min_num_demos, f"Expected at least {min_num_demos} demos, found {num_demos}."
 
 
-def parse_datagen_success_rate(output: str) -> tuple[int, int]:
-    """Parse the final data-gen progress line from captured generation output.
-
-    The generator logs "<successes>/<attempts> (<rate>%) successful demos generated" on every update;
-    this returns the counts from the last line.
+def read_generation_result(result_file: str) -> tuple[int, int]:
+    """Read successful-demo and attempt counts from a completed generation result file.
 
     Args:
-        output: Combined stdout+stderr captured from the generation run.
+        result_file: JSON result file passed to the data-generation CLI.
 
     Returns:
         Tuple of (num_success, num_attempts).
     """
-    matches = _SUCCESS_RATE_RE.findall(output)
-    assert matches, "No data-gen success-rate line found in the generation output."
-    num_success, num_attempts = matches[-1]
-    return int(num_success), int(num_attempts)
+    assert os.path.exists(result_file), f"Expected generation result file at {result_file}, but it was not created."
+    with open(result_file, encoding="utf-8") as result_handle:
+        result = json.load(result_handle)
+
+    assert result["schema_version"] == 1, f"Unsupported generation result schema: {result['schema_version']}."
+    assert result["status"] == "completed", f"Generation did not complete: {result['status']}."
+    num_success = result["num_success"]
+    num_failures = result["num_failures"]
+    num_attempts = result["num_attempts"]
+    assert num_success >= 0 and num_failures >= 0 and num_attempts > 0, "Generation result has invalid counts."
+    assert num_success + num_failures == num_attempts, "Generation result counts do not add up."
+    return num_success, num_attempts
