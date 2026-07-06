@@ -3,18 +3,17 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for :class:`isaac_autodata_core.data_generator.DataGenerator` construction guards.
+"""Unit tests for :class:`isaac_autodata_core.data_generator.DataGenerator`.
 
-Only the (synchronous) construction-time validation is covered here -- the async generation loop is
-exercised by the e2e suite. A minimal mock datastream supplies just the read methods the
-constructor calls (``source_pool``, ``get_eef_names``, ``get_subtasks``, ``get_task_constraints``).
+Only the construction-time validation is covered here. The async generation loop is
+exercised by the e2e suite.
 """
 
 import dataclasses
 
 import pytest
 
-from isaac_autodata_core.algorithms import DexMimicGen, MimicGen
+from isaac_autodata_core.algorithms import DexMimicGen, MimicGen, SkillGen
 from isaac_autodata_core.data_generator import DataGenerator, GenerationResult
 from isaac_autodata_interfaces.tasks.subtask_spec import MimicGenSubtaskAlgoParams, Subtask
 
@@ -45,35 +44,70 @@ class _MockDatastream:
         return self._constraints
 
 
+def _assert_constructed(generator: DataGenerator, datastream: _MockDatastream, algorithm) -> None:
+    assert generator.algorithm is algorithm
+    assert generator.datastream is datastream
+    assert generator.src_demo_datagen_info_pool is datastream.source_pool
+
+
 def test_valid_mimicgen_construction():
-    ds = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("")]})
-    gen = DataGenerator(datastream=ds, algorithm=MimicGen())
-    assert gen.algorithm.name == "mimicgen"
-    assert gen.src_demo_datagen_info_pool is ds.source_pool
+    datastream = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("")]})
+    algorithm = MimicGen()
+    generator = DataGenerator(datastream=datastream, algorithm=algorithm)
+    _assert_constructed(generator, datastream, algorithm)
 
 
-def test_eef_count_mismatch_raises():
-    ds = _MockDatastream({"left": [_subtask("l")], "right": [_subtask("r")]})  # 2 EEFs
+def test_valid_dexmimicgen_construction():
+    datastream = _MockDatastream({"left": [_subtask("l")], "right": [_subtask("r")]})
+    algorithm = DexMimicGen()
+    generator = DataGenerator(datastream=datastream, algorithm=algorithm)
+    _assert_constructed(generator, datastream, algorithm)
+
+
+def test_valid_skillgen_construction():
+    datastream = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("")]})
+    algorithm = SkillGen(motion_planners={0: object()})
+    generator = DataGenerator(datastream=datastream, algorithm=algorithm)
+    _assert_constructed(generator, datastream, algorithm)
+    assert generator.algorithm.requires_motion_planner is True
+
+
+def test_eef_count_mismatch_error():
+    datastream = _MockDatastream({"left": [_subtask("l")], "right": [_subtask("r")]})  # 2 EEFs
     with pytest.raises(ValueError, match="expects 1 EEF"):
-        DataGenerator(datastream=ds, algorithm=MimicGen())
+        DataGenerator(datastream=datastream, algorithm=MimicGen())
 
 
-def test_coordination_unsupported_raises():
-    ds = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("")]}, constraints=[object()])
+def test_coordination_unsupported_error():
+    datastream = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("")]}, constraints=[object()])
     with pytest.raises(ValueError, match="does not support coordination"):
-        DataGenerator(datastream=ds, algorithm=MimicGen())
+        DataGenerator(datastream=datastream, algorithm=MimicGen())
 
 
 def test_terminal_subtask_offset_must_be_zero():
-    ds = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("", term_offset=(0, 2))]})
+    datastream = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("", term_offset=(0, 2))]})
     with pytest.raises(AssertionError):
-        DataGenerator(datastream=ds, algorithm=MimicGen())
+        DataGenerator(datastream=datastream, algorithm=MimicGen())
 
 
 def test_dexmimicgen_with_two_eefs_and_constraints_ok():
-    ds = _MockDatastream({"left": [_subtask("l")], "right": [_subtask("r")]}, constraints=[object()])
-    gen = DataGenerator(datastream=ds, algorithm=DexMimicGen())
-    assert gen.algorithm.expected_eef_count == 2
+    # DexMimicGen supports coordination, so a datastream carrying constraints still constructs.
+    datastream = _MockDatastream({"left": [_subtask("l")], "right": [_subtask("r")]}, constraints=[object()])
+    algorithm = DexMimicGen()
+    generator = DataGenerator(datastream=datastream, algorithm=algorithm)
+    _assert_constructed(generator, datastream, algorithm)
+
+
+def test_skillgen_requires_motion_planners():
+    # SkillGen's only non-trivial construction invariant: at least one planner must be supplied.
+    with pytest.raises(AssertionError, match="at least one motion planner"):
+        SkillGen(motion_planners={})
+
+
+def test_skillgen_coordination_unsupported_error():
+    datastream = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("")]}, constraints=[object()])
+    with pytest.raises(ValueError, match="does not support coordination"):
+        DataGenerator(datastream=datastream, algorithm=SkillGen(motion_planners={0: object()}))
 
 
 def test_generation_result_fields_and_frozen():

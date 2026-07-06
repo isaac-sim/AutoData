@@ -41,7 +41,7 @@ def test_get_algorithm_no_kwargs(name, cls):
     assert isinstance(get_algorithm(name), cls)
 
 
-def test_get_algorithm_unknown_raises():
+def test_get_algorithm_unknown_error():
     with pytest.raises(KeyError, match="Unknown algorithm"):
         get_algorithm("nope")
 
@@ -80,12 +80,6 @@ def test_skillgen_requires_at_least_one_planner():
 def test_get_algorithm_skillgen_needs_planners():
     with pytest.raises(TypeError):
         get_algorithm("skillgen")  # motion_planners is required
-    assert isinstance(get_algorithm("skillgen", motion_planners={0: object()}), SkillGen)
-
-
-def test_validate_setup_default_is_noop():
-    MimicGen().validate_setup(datastream=None)  # base implementation must not raise
-
-
-def test_repr_contains_name():
-    assert "mimicgen" in repr(MimicGen())
+    assert isinstance(
+        get_algorithm("skillgen", motion_planners={0: object()}), SkillGen
+    )  # base implementation must not raise

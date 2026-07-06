@@ -55,6 +55,33 @@ def transform_source_data_segment_using_object_pose(
     )
 
 
+def _add_uniform_noise_to_pose(
+    pos: torch.Tensor,
+    rot: torch.Tensor,
+    pos_noise_scale: float,
+    rot_noise_scale: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Perturb a ``(translation, rotation)`` pair with uniform noise.
+
+    Position gains an independent per-axis offset drawn from Uniform(-pos_noise_scale, pos_noise_scale).
+    Orientation is pre-multiplied by a small rotation whose intrinsic XYZ Euler angles are
+    drawn from Uniform(-rot_noise_scale, rot_noise_scale). A zero scale leaves the corresponding block
+    unchanged.
+
+    Args:
+        pos: xyz translation.
+        rot: rotation matrix.
+        pos_noise_scale: Half-width of the uniform position noise [m].
+        rot_noise_scale: Half-width of the uniform per-axis rotation noise [rad].
+    """
+    device = pos.device
+    pos_new = pos + PoseUtils.sample_uniform(-pos_noise_scale, pos_noise_scale, (3,), device=device)
+    euler = PoseUtils.sample_uniform(-rot_noise_scale, rot_noise_scale, (3,), device=device)
+    delta_rot = PoseUtils.matrix_from_quat(PoseUtils.quat_from_euler_xyz(euler[0], euler[1], euler[2]))
+    rot_new = delta_rot @ rot
+    return pos_new, rot_new
+
+
 def get_delta_pose_with_scheme(
     src_obj_pose: torch.Tensor,
     cur_obj_pose: torch.Tensor,
@@ -93,7 +120,7 @@ def get_delta_pose_with_scheme(
     pos_noise_scale = task_constraint["coordination_scheme_pos_noise_scale"]
     rot_noise_scale = task_constraint["coordination_scheme_rot_noise_scale"]
     if pos_noise_scale != 0.0 or rot_noise_scale != 0.0:
-        pos_new, rot_new = PoseUtils.add_uniform_noise_to_pose(
+        pos_new, rot_new = _add_uniform_noise_to_pose(
             delta_pose[:3, 3], delta_pose[:3, :3], pos_noise_scale, rot_noise_scale
         )
         delta_pose = torch.eye(4, device=device)

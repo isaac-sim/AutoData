@@ -118,6 +118,38 @@ def test_trajectory_target_pose_skip_interpolation():
     assert torch.equal(traj.last_waypoint.pose, _pose([5.0, 5.0, 5.0]))
 
 
+def test_trajectory_target_pose_interpolates_from_last_pose():
+    # From a non-empty trajectory, the segment linearly interpolates from the current endpoint to
+    # the target (the first interpolated sample is dropped as a duplicate of the endpoint).
+    traj = WaypointTrajectory()
+    traj.add_waypoint_sequence(WaypointSequence([_wp([0.0, 0.0, 0.0])]))
+    traj.add_waypoint_sequence_for_target_pose(
+        pose=_pose([3.0, 0.0, 0.0]),
+        passthrough_action={"franka": torch.zeros(1)},
+        num_steps=3,
+        skip_interpolation=False,
+    )
+    xs = torch.tensor([traj[i].pose[0, 3] for i in range(len(traj))])
+    assert torch.allclose(xs, torch.tensor([0.0, 0.75, 1.5, 2.25, 3.0]), atol=1e-6)
+    assert torch.equal(traj.last_waypoint.pose, _pose([3.0, 0.0, 0.0]))
+
+
+def test_trajectory_merge_with_interp_bridge_preserves_target_noise():
+    def _wp_x(x, noise):
+        return Waypoint(pose=_pose([x, 0.0, 0.0]), passthrough_action={"franka": torch.zeros(1)}, noise=noise)
+
+    a = WaypointTrajectory()
+    a.add_waypoint_sequence(WaypointSequence([_wp_x(0.0, 0.7)]))
+    b = WaypointTrajectory()
+    b.add_waypoint_sequence(WaypointSequence([_wp_x(5.0, 0.9), _wp_x(5.0, 0.9)]))
+    a.merge(b, num_steps_interp=2)
+    # 1 (a) + 3-step interp bridge (0 -> 5) + 1 (b remainder) = 5. Bridge waypoints carry the
+    # bridge's own action-noise (0.0), except the last, overwritten with the popped target's noise.
+    noises = [float(w.noise) for w in a.get_full_sequence()]
+    assert len(a) == 5
+    assert noises == pytest.approx([0.7, 0.0, 0.0, 0.9, 0.9])
+
+
 def test_trajectory_interpolation_requires_nonempty():
     traj = WaypointTrajectory()
     with pytest.raises(AssertionError, match="cannot interpolate from an empty trajectory"):

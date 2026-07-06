@@ -38,7 +38,7 @@ def test_make_returns_registered_instance():
     assert isinstance(make_selection_strategy("nearest_neighbor_object"), NearestNeighborObjectStrategy)
 
 
-def test_make_unknown_raises():
+def test_make_unknown_error():
     with pytest.raises(KeyError, match="Unknown selection strategy"):
         make_selection_strategy("nope")
 
