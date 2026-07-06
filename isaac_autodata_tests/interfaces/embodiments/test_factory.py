@@ -36,23 +36,23 @@ def test_registry_contents():
 
 
 def test_from_dict_dispatches_single_arm():
-    adapter = embodiment_adapter_from_dict(_SINGLE_ARM_DICT)
-    assert isinstance(adapter, DeltaPoseIKSingleArmAdapter)
-    assert adapter.name == "franka"
-    assert adapter.env is None  # not bound when no env passed
+    embodiment_adapter = embodiment_adapter_from_dict(_SINGLE_ARM_DICT)
+    assert isinstance(embodiment_adapter, DeltaPoseIKSingleArmAdapter)
+    assert embodiment_adapter.name == "franka"
+    assert embodiment_adapter.env is None  # not bound when no env passed
 
 
 def test_from_dict_strips_type_key_before_delegating():
     # The 'type' discriminator must not be forwarded to the concrete from_dict (which would
     # reject it as an unexpected kwarg).
-    adapter = embodiment_adapter_from_dict(dict(_SINGLE_ARM_DICT))
-    assert adapter.eef_name == "franka"
+    embodiment_adapter = embodiment_adapter_from_dict(dict(_SINGLE_ARM_DICT))
+    assert embodiment_adapter.eef_name == "franka"
 
 
 def test_from_dict_binds_env_when_provided():
     env = MockEnv()
-    adapter = embodiment_adapter_from_dict(_SINGLE_ARM_DICT, env=env)
-    assert adapter.env is env
+    embodiment_adapter = embodiment_adapter_from_dict(_SINGLE_ARM_DICT, env=env)
+    assert embodiment_adapter.env is env
 
 
 def test_from_dict_missing_type():
@@ -83,9 +83,9 @@ def test_from_yaml_round_trip(tmp_path):
 
     path = tmp_path / "embodiment.yaml"
     path.write_text(yaml.safe_dump(_SINGLE_ARM_DICT))
-    adapter = embodiment_adapter_from_yaml(str(path))
-    assert isinstance(adapter, DeltaPoseIKSingleArmAdapter)
-    assert adapter.name == "franka"
+    embodiment_adapter = embodiment_adapter_from_yaml(str(path))
+    assert isinstance(embodiment_adapter, DeltaPoseIKSingleArmAdapter)
+    assert embodiment_adapter.name == "franka"
 
 
 @pytest.mark.parametrize(
@@ -100,9 +100,9 @@ def test_from_yaml_round_trip(tmp_path):
 def test_shipped_example_embodiment_yamls_build(yaml_name, expected_cls):
     """Every shipped embodiment descriptor must build into the expected adapter type."""
     path = os.path.join(TestPaths.embodiments_dir, yaml_name)
-    adapter = embodiment_adapter_from_yaml(path)
-    assert isinstance(adapter, expected_cls)
-    assert adapter.name
-    assert len(adapter.get_eef_names()) >= 1
+    embodiment_adapter = embodiment_adapter_from_yaml(path)
+    assert isinstance(embodiment_adapter, expected_cls)
+    assert embodiment_adapter.name
+    assert len(embodiment_adapter.get_eef_names()) >= 1
     # action_dim must be computable (regression guard for the bimanual empty-channels case).
-    assert adapter.action_dim > 0
+    assert embodiment_adapter.action_dim > 0

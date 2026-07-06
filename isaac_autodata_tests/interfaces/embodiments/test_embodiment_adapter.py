@@ -17,7 +17,7 @@ from isaac_autodata_interfaces.embodiments import DeltaPoseIKSingleArmAdapter, P
 from isaac_autodata_tests.interfaces.mocks import MockArticulationData, MockAsset, MockEnv, MockScene
 
 
-def _adapter() -> DeltaPoseIKSingleArmAdapter:
+def _embodiment_adapter() -> DeltaPoseIKSingleArmAdapter:
     return DeltaPoseIKSingleArmAdapter(
         name="franka",
         eef_name="franka",
@@ -32,40 +32,40 @@ def _robot_env(joint_pos: torch.Tensor, joint_names: list[str]) -> MockEnv:
 
 
 def test_default_robot_asset_name():
-    assert _adapter().robot_asset_name == "robot"
+    assert _embodiment_adapter().robot_asset_name == "robot"
 
 
 def test_bind_env_sets_env_once():
-    adapter = _adapter()
-    assert adapter.env is None
+    embodiment_adapter = _embodiment_adapter()
+    assert embodiment_adapter.env is None
     env = MockEnv()
-    adapter.bind_env(env)
-    assert adapter.env is env
+    embodiment_adapter.bind_env(env)
+    assert embodiment_adapter.env is env
 
 
 def test_bind_env_rejects_double_bind():
-    adapter = _adapter()
-    adapter.bind_env(MockEnv())
+    embodiment_adapter = _embodiment_adapter()
+    embodiment_adapter.bind_env(MockEnv())
     with pytest.raises(AssertionError, match="env already bound"):
-        adapter.bind_env(MockEnv())
+        embodiment_adapter.bind_env(MockEnv())
 
 
 def test_get_joint_positions_all_and_indexed():
-    adapter = _adapter()
+    embodiment_adapter = _embodiment_adapter()
     joint_pos = torch.tensor([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
-    adapter.bind_env(_robot_env(joint_pos, ["j0", "j1", "j2"]))
-    assert torch.equal(adapter.get_joint_positions(), joint_pos)
-    assert torch.equal(adapter.get_joint_positions(env_ids=[1]), joint_pos[[1]])
+    embodiment_adapter.bind_env(_robot_env(joint_pos, ["j0", "j1", "j2"]))
+    assert torch.equal(embodiment_adapter.get_joint_positions(), joint_pos)
+    assert torch.equal(embodiment_adapter.get_joint_positions(env_ids=[1]), joint_pos[[1]])
 
 
 def test_get_joint_names():
-    adapter = _adapter()
-    adapter.bind_env(_robot_env(torch.zeros(1, 3), ["j0", "j1", "j2"]))
-    assert adapter.get_joint_names() == ["j0", "j1", "j2"]
+    embodiment_adapter = _embodiment_adapter()
+    embodiment_adapter.bind_env(_robot_env(torch.zeros(1, 3), ["j0", "j1", "j2"]))
+    assert embodiment_adapter.get_joint_names() == ["j0", "j1", "j2"]
 
 
 def test_joint_queries_require_bound_env():
     with pytest.raises(AssertionError, match="bind_env"):
-        _adapter().get_joint_positions()
+        _embodiment_adapter().get_joint_positions()
     with pytest.raises(AssertionError, match="bind_env"):
-        _adapter().get_joint_names()
+        _embodiment_adapter().get_joint_names()
