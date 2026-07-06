@@ -3,12 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for :class:`isaac_autodata_interfaces.datastream.datastream.Datastream`.
-
-The Datastream is a thin aggregator over the env, task descriptor, embodiment adapter, and a
-source-demo pool. These tests use a mock env plus an *empty* :class:`DataGenInfoPool` (no HDF5) to
-exercise construction invariants, delegation to the task/embodiment, and the env-reading helpers.
-"""
+"""Unit tests for :class:`isaac_autodata_interfaces.datastream.datastream.Datastream`."""
 
 import torch
 
@@ -39,7 +34,7 @@ def _task_dict() -> dict:
     }
 
 
-def _adapter(eef_name: str = "franka") -> DeltaPoseIKSingleArmAdapter:
+def _embodiment_adapter(eef_name: str = "franka") -> DeltaPoseIKSingleArmAdapter:
     return DeltaPoseIKSingleArmAdapter(
         name="franka",
         eef_name=eef_name,
@@ -75,126 +70,134 @@ def _env(env_origins: torch.Tensor | None = None) -> MockEnv:
 
 def _datastream():
     task = TaskDescriptor.from_dict(_task_dict())
-    adapter = _adapter()
+    embodiment_adapter = _embodiment_adapter()
     env = _env()
     pool = DataGenInfoPool(
-        task_descriptor=task, embodiment_adapter=adapter, device=env.device, uses_start_signals=False
+        task_descriptor=task, embodiment_adapter=embodiment_adapter, device=env.device, uses_start_signals=False
     )
-    ds = Datastream(
-        env=env, task_descriptor=task, embodiment_adapter=adapter, source_pool=pool, uses_start_signals=False
+    datastream = Datastream(
+        env=env, task_descriptor=task, embodiment_adapter=embodiment_adapter, source_pool=pool, uses_start_signals=False
     )
-    return ds, task, adapter, env
+    return datastream, task, embodiment_adapter, env
 
 
 # ---------------------------------------------------------------------------------------------------
 # Construction invariants
 # ---------------------------------------------------------------------------------------------------
 def test_construction_binds_env_to_task_and_adapter():
-    ds, task, adapter, env = _datastream()
+    datastream, task, embodiment_adapter, env = _datastream()
     assert task.env is env
-    assert adapter.env is env
-    assert ds.get_env() is env
-    assert ds.device == "cpu"
+    assert embodiment_adapter.env is env
+    assert datastream.get_env() is env
+    assert datastream.device == "cpu"
 
 
 def test_requires_exactly_one_demo_source():
     task = TaskDescriptor.from_dict(_task_dict())
-    adapter = _adapter()
+    embodiment_adapter = _embodiment_adapter()
     env = _env()
     pool = DataGenInfoPool(
-        task_descriptor=task, embodiment_adapter=adapter, device=env.device, uses_start_signals=False
+        task_descriptor=task, embodiment_adapter=embodiment_adapter, device=env.device, uses_start_signals=False
     )
     # both provided
     with pytest.raises(AssertionError, match="exactly one of source_pool"):
         Datastream(
-            env=env, task_descriptor=task, embodiment_adapter=adapter, source_pool=pool, source_dataset_path="x.hdf5"
+            env=env,
+            task_descriptor=task,
+            embodiment_adapter=embodiment_adapter,
+            source_pool=pool,
+            source_dataset_path="x.hdf5",
         )
     # neither provided
     with pytest.raises(AssertionError, match="exactly one of source_pool"):
-        Datastream(env=env, task_descriptor=TaskDescriptor.from_dict(_task_dict()), embodiment_adapter=_adapter())
+        Datastream(
+            env=env, task_descriptor=TaskDescriptor.from_dict(_task_dict()), embodiment_adapter=_embodiment_adapter()
+        )
 
 
-def test_eef_mismatch_raises():
+def test_eef_mismatch_error():
     task = TaskDescriptor.from_dict(_task_dict())  # eef "franka"
-    adapter = _adapter(eef_name="other")
+    embodiment_adapter = _embodiment_adapter(eef_name="other")
     env = _env()
     pool = DataGenInfoPool(
-        task_descriptor=task, embodiment_adapter=adapter, device=env.device, uses_start_signals=False
+        task_descriptor=task, embodiment_adapter=embodiment_adapter, device=env.device, uses_start_signals=False
     )
     with pytest.raises(AssertionError, match="EEF mismatch"):
-        Datastream(env=env, task_descriptor=task, embodiment_adapter=adapter, source_pool=pool)
+        Datastream(env=env, task_descriptor=task, embodiment_adapter=embodiment_adapter, source_pool=pool)
 
 
-def test_task_bound_to_different_env_raises():
+def test_task_bound_to_different_env_error():
     task = TaskDescriptor.from_dict(_task_dict())
     task.bind_env(MockEnv())  # bound elsewhere
-    adapter = _adapter()
+    embodiment_adapter = _embodiment_adapter()
     env = _env()
     pool = DataGenInfoPool(
-        task_descriptor=task, embodiment_adapter=adapter, device=env.device, uses_start_signals=False
+        task_descriptor=task, embodiment_adapter=embodiment_adapter, device=env.device, uses_start_signals=False
     )
     with pytest.raises(AssertionError, match="task descriptor is bound to a different env"):
-        Datastream(env=env, task_descriptor=task, embodiment_adapter=adapter, source_pool=pool)
+        Datastream(env=env, task_descriptor=task, embodiment_adapter=embodiment_adapter, source_pool=pool)
 
 
-def test_adapter_bound_to_different_env_raises():
+def test_adapter_bound_to_different_env_error():
     task = TaskDescriptor.from_dict(_task_dict())
-    adapter = _adapter()
-    adapter.bind_env(MockEnv())  # bound elsewhere
+    embodiment_adapter = _embodiment_adapter()
+    embodiment_adapter.bind_env(MockEnv())  # bound elsewhere
     env = _env()
     pool = DataGenInfoPool(
-        task_descriptor=task, embodiment_adapter=adapter, device=env.device, uses_start_signals=False
+        task_descriptor=task, embodiment_adapter=embodiment_adapter, device=env.device, uses_start_signals=False
     )
     with pytest.raises(AssertionError, match="embodiment adapter is bound to a different env"):
-        Datastream(env=env, task_descriptor=task, embodiment_adapter=adapter, source_pool=pool)
+        Datastream(env=env, task_descriptor=task, embodiment_adapter=embodiment_adapter, source_pool=pool)
 
 
 # ---------------------------------------------------------------------------------------------------
-# Task-query delegation
+# Test task queries
 # ---------------------------------------------------------------------------------------------------
 def test_task_query_delegation():
-    ds, task, _, _ = _datastream()
-    assert ds.get_eef_names() == task.get_eef_names()
-    assert ds.get_subtasks("franka") == task.get_subtasks("franka")
-    assert ds.get_subtask("franka", 1) is task.get_subtasks("franka")[1]
-    assert ds.num_subtasks("franka") == 3
-    assert ds.get_object_refs("franka") == task.get_object_refs("franka")
-    assert ds.get_term_signal_names("franka") == ["grasp_1", "stack_1", ""]
-    assert ds.get_start_signal_names("franka") == task.get_start_signal_names("franka")
-    assert ds.get_subtask_descriptions("franka") == task.get_subtask_descriptions("franka")
-    assert ds.get_subtask_algo_params("franka") == task.get_subtask_algo_params("franka")
-    assert ds.get_task_constraints() == []
-    assert ds.get_generation_policy().num_trials == 5
+    datastream, task, _, _ = _datastream()
+    assert datastream.get_eef_names() == task.get_eef_names()
+    assert datastream.get_subtasks("franka") == task.get_subtasks("franka")
+    assert datastream.get_subtask("franka", 1) is task.get_subtasks("franka")[1]
+    assert datastream.num_subtasks("franka") == 3
+    assert datastream.get_object_refs("franka") == task.get_object_refs("franka")
+    assert datastream.get_term_signal_names("franka") == ["grasp_1", "stack_1", ""]
+    assert datastream.get_start_signal_names("franka") == task.get_start_signal_names("franka")
+    assert datastream.get_subtask_descriptions("franka") == task.get_subtask_descriptions("franka")
+    assert datastream.get_subtask_algo_params("franka") == task.get_subtask_algo_params("franka")
+    assert datastream.get_task_constraints() == []
+    assert datastream.get_generation_policy().num_trials == 5
     # grasp_1 (cube_2) -> stack_1 carries cube_2
-    assert ds.get_expected_attached_object("franka", 1) == "cube_2"
+    assert datastream.get_expected_attached_object("franka", 1) == "cube_2"
 
 
 # ---------------------------------------------------------------------------------------------------
-# Embodiment-query delegation
+# Test embodiment queries
 # ---------------------------------------------------------------------------------------------------
 def test_embodiment_query_delegation():
-    ds, _, adapter, _ = _datastream()
-    assert torch.equal(ds.get_robot_eef_pose(None, "franka"), adapter.get_eef_poses(env_ids=None)["franka"])
-    assert torch.equal(ds.get_robot_joint_positions(), adapter.get_joint_positions())
-    assert ds.get_robot_joint_names() == adapter.get_joint_names()
+    datastream, _, embodiment_adapter, _ = _datastream()
+    assert torch.equal(
+        datastream.get_robot_eef_pose(None, "franka"), embodiment_adapter.get_eef_poses(env_ids=None)["franka"]
+    )
+    assert torch.equal(datastream.get_robot_joint_positions(), embodiment_adapter.get_joint_positions())
+    assert datastream.get_robot_joint_names() == embodiment_adapter.get_joint_names()
 
 
 def test_action_pose_conversions_delegate():
-    ds, _, adapter, _ = _datastream()
+    datastream, _, embodiment_adapter, _ = _datastream()
     action = torch.tensor([[0.1, 0.2, 0.3, 0.0, 0.0, 0.0, 0.5]])
-    expected = adapter.action_to_target_eef_pose(action)["franka"]
-    assert torch.equal(ds.action_to_target_eef_pose(action)["franka"], expected)
+    expected = embodiment_adapter.action_to_target_eef_pose(action)["franka"]
+    assert torch.equal(datastream.action_to_target_eef_pose(action)["franka"], expected)
 
     actions = torch.randn(1, 4, 7)
     assert torch.equal(
-        ds.actions_to_passthrough_actions(actions)["franka"],
-        adapter.actions_to_passthrough_actions(actions)["franka"],
+        datastream.actions_to_passthrough_actions(actions)["franka"],
+        embodiment_adapter.actions_to_passthrough_actions(actions)["franka"],
     )
 
     from isaac_autodata_utils import pose_math
 
     target = pose_math.make_pose(torch.tensor([0.2, 0.3, 0.4]), torch.eye(3))
-    out = ds.target_eef_pose_to_action({"franka": target}, {"franka": torch.tensor([0.5])}, env_id=0)
+    out = datastream.target_eef_pose_to_action({"franka": target}, {"franka": torch.tensor([0.5])}, env_id=0)
     assert out.shape == (7,)
 
 
@@ -202,8 +205,8 @@ def test_action_pose_conversions_delegate():
 # Runtime scene queries
 # ---------------------------------------------------------------------------------------------------
 def test_get_object_poses_is_env_relative():
-    ds, _, _, _ = _datastream()
-    poses = ds.get_object_poses()
+    datastream, _, _, _ = _datastream()
+    poses = datastream.get_object_poses()
     assert set(poses) == {"cube_1"}
     pose = poses["cube_1"]
     assert pose.shape == (1, 4, 4)
@@ -213,24 +216,24 @@ def test_get_object_poses_is_env_relative():
 
 def test_get_object_poses_subtracts_env_origin():
     task = TaskDescriptor.from_dict(_task_dict())
-    adapter = _adapter()
+    embodiment_adapter = _embodiment_adapter()
     env = _env(env_origins=torch.tensor([[1.0, 1.0, 0.0]]))  # shifted env origin
     pool = DataGenInfoPool(
-        task_descriptor=task, embodiment_adapter=adapter, device=env.device, uses_start_signals=False
+        task_descriptor=task, embodiment_adapter=embodiment_adapter, device=env.device, uses_start_signals=False
     )
-    ds = Datastream(env=env, task_descriptor=task, embodiment_adapter=adapter, source_pool=pool)
-    pose = ds.get_object_poses()["cube_1"]
+    datastream = Datastream(env=env, task_descriptor=task, embodiment_adapter=embodiment_adapter, source_pool=pool)
+    pose = datastream.get_object_poses()["cube_1"]
     # world [1, 1, 0.05] - origin [1, 1, 0] = [0, 0, 0.05]
     assert torch.allclose(pose[0, :3, 3], torch.tensor([0.0, 0.0, 0.05]))
 
 
 def test_get_robot_root_pose():
-    ds, _, _, _ = _datastream()
-    pose = ds.get_robot_root_pose(env_ids=[0])
+    datastream, _, _, _ = _datastream()
+    pose = datastream.get_robot_root_pose(env_ids=[0])
     assert pose.shape == (1, 4, 4)
     assert torch.allclose(pose[0, :3, 3], torch.tensor([0.5, 0.0, 0.1]))
 
 
 def test_get_scene_state_passthrough():
-    ds, _, _, _ = _datastream()
-    assert ds.get_scene_state(is_relative=True) is _SCENE_STATE_SENTINEL
+    datastream, _, _, _ = _datastream()
+    assert datastream.get_scene_state(is_relative=True) is _SCENE_STATE_SENTINEL
