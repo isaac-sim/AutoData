@@ -3,11 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the :class:`EmbodimentAdapter` ABC's shared behavior.
-
-The ABC cannot be instantiated directly, so its env-binding and joint-state logic is exercised
-through the concrete :class:`DeltaPoseIKSingleArmAdapter`.
-"""
+"""Unit tests for the :class:`EmbodimentAdapter`."""
 
 import torch
 

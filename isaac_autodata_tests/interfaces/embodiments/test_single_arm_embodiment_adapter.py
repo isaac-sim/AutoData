@@ -36,17 +36,16 @@ def _bound(embodiment_adapter: DeltaPoseIKSingleArmAdapter, pos: torch.Tensor, q
 
 
 # ---------------------------------------------------------------------------------------------------
-# action_dim / __post_init__
+# action_dim
 # ---------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("gripper, expected", [(0, 6), (1, 7), (2, 8)])
 def test_action_dim(gripper, expected):
     assert _embodiment_adapter(gripper_action_dim=gripper).action_dim == expected
 
 
-def test_get_eef_names():
-    assert _embodiment_adapter().get_eef_names() == ("franka",)
-
-
+# ---------------------------------------------------------------------------------------------------
+# __post_init__
+# ---------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "kwargs, match",
     [
@@ -77,6 +76,13 @@ def test_post_init_rejects_non_pose_obs_keys():
             pose_obs_keys={"pos": "eef_pos", "quat": "eef_quat"},  # type: ignore[arg-type]
             gripper_action_dim=1,
         )
+
+
+# ---------------------------------------------------------------------------------------------------
+# get_eef_names
+# ---------------------------------------------------------------------------------------------------
+def test_get_eef_names():
+    assert _embodiment_adapter().get_eef_names() == ("franka",)
 
 
 # ---------------------------------------------------------------------------------------------------
