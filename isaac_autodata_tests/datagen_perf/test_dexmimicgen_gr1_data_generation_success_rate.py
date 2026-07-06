@@ -60,6 +60,7 @@ def test_dexmimicgen_gr1_data_generation_success_rate():
     num_success, num_attempts = parse_datagen_success_rate(output)
     assert num_attempts > 0, "generation reported zero attempts"
     success_rate = num_success / num_attempts
+    print(f"\nDexMimicGen GR1 data-gen success rate: {success_rate:.1%} ({num_success}/{num_attempts})")
     assert success_rate >= SUCCESS_RATE_THRESHOLD, (
         f"data-gen success rate {success_rate:.1%} ({num_success}/{num_attempts}) is below the "
         f"required threshold of {SUCCESS_RATE_THRESHOLD:.0%}"

@@ -75,6 +75,7 @@ def run_subprocess_capture(cmd: list[str], env: dict | None = None, timeout_sec:
         timeout_sec = _SUBPROCESS_TIMEOUT_SEC
     if env is None:
         env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
 
     print(f"Running command (timeout={timeout_sec}s): {' '.join(cmd)}", flush=True)
 
