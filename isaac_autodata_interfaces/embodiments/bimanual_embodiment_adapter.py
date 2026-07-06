@@ -190,8 +190,8 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
     @property
     def action_dim(self) -> int:
         """Total width of the env action vector (pose + hands + any extra passthrough channels)."""
-        channel_ends = (channel_slice[1] for channel_slice in self.passthrough_channels.values())
-        return max(self.hand_joints_slice[1], *channel_ends)
+        channel_ends = [channel_slice[1] for channel_slice in self.passthrough_channels.values()]
+        return max([self.hand_joints_slice[1], *channel_ends])
 
     def action_to_target_eef_pose(self, action: torch.Tensor) -> dict[str, torch.Tensor]:
         """Convert env action to target EEF poses for both arms.
