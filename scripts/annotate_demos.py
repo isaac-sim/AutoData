@@ -21,6 +21,15 @@ Controls:
 * ``B`` -- pause playback
 * ``S`` -- mark a subtask signal at the current step
 * ``Q`` -- skip the current episode
+
+Automatic mode (``--auto``, supports ``--headless``):
+
+Pass ``--auto`` to annotate without a human in the loop. Each replay step samples the boolean
+observation terms named by the task descriptor's ``subtask_term_signal`` entries from the env's
+``--signal_obs_group`` observation group (default ``subtask_terms``); each signal's first rising
+edge becomes the subtask boundary. Episodes whose signals never fire, fire out of subtask order,
+or violate the descriptor's ``subtask_term_offset_range`` spacing are skipped. Only termination
+signals are auto-annotated; SkillGen start signals require manual mode.
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -63,6 +72,18 @@ parser.add_argument(
     default="./datasets/dataset_annotated.hdf5",
     help="Destination HDF5 for the annotated dataset.",
 )
+parser.add_argument(
+    "--auto",
+    action="store_true",
+    default=False,
+    help="Annotate automatically by sampling the env's subtask-term observation terms during replay.",
+)
+parser.add_argument(
+    "--signal_obs_group",
+    type=str,
+    default="subtask_terms",
+    help="Observation group holding the per-subtask boolean terms read in --auto mode.",
+)
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -77,6 +98,7 @@ import gymnasium as gym  # noqa: E402
 import math  # noqa: E402
 import os  # noqa: E402
 import torch  # noqa: E402
+from collections.abc import Callable  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401, E402  (registers gym envs)
 from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg  # noqa: E402
@@ -189,9 +211,9 @@ def main() -> int:
     """Annotate the source dataset and export the annotated copy."""
     global _datastream, is_paused, skip_episode, marked_subtask_action_indices
 
-    assert not args_cli.headless, (
+    assert args_cli.auto or not args_cli.headless, (
         "annotate_demos.py performs manual keyboard annotation and cannot run headless. "
-        "Re-run with a window (drop --headless / unset HEADLESS)."
+        "Re-run with a window (drop --headless / unset HEADLESS), or pass --auto."
     )
 
     if not os.path.exists(args_cli.input_file):
@@ -205,6 +227,12 @@ def main() -> int:
 
     # Start signals are required only by SkillGen.
     annotate_start_signals = generation_policy.use_skillgen
+
+    assert not (args_cli.auto and annotate_start_signals), (
+        "--auto only annotates subtask termination signals; SkillGen additionally needs subtask "
+        "start signals, which have no automatic source yet. Annotate SkillGen datasets in manual "
+        "mode (drop --auto)."
+    )
 
     # Resolve the subtask signals to annotate
     term_signal_names, start_signal_names = _build_signal_names(task_descriptor, annotate_start_signals)
@@ -251,13 +279,17 @@ def main() -> int:
 
         env.reset()
 
-        # Set up the keyboard used to mark subtask boundaries during replay.
-        keyboard_interface = Se3Keyboard(Se3KeyboardCfg(pos_sensitivity=0.1, rot_sensitivity=0.1))
-        keyboard_interface.add_callback("N", play_cb)
-        keyboard_interface.add_callback("B", pause_cb)
-        keyboard_interface.add_callback("S", mark_subtask_cb)
-        keyboard_interface.add_callback("Q", skip_episode_cb)
-        keyboard_interface.reset()
+        if args_cli.auto:
+            # Fail fast if the env does not publish the expected signal observation terms.
+            _datastream.get_subtask_term_signals(obs_group=args_cli.signal_obs_group)
+        else:
+            # Set up the keyboard used to mark subtask boundaries during replay.
+            keyboard_interface = Se3Keyboard(Se3KeyboardCfg(pos_sensitivity=0.1, rot_sensitivity=0.1))
+            keyboard_interface.add_callback("N", play_cb)
+            keyboard_interface.add_callback("B", pause_cb)
+            keyboard_interface.add_callback("S", mark_subtask_cb)
+            keyboard_interface.add_callback("Q", skip_episode_cb)
+            keyboard_interface.reset()
 
         dataset_file_handler = HDF5DatasetFileHandler()
         dataset_file_handler.open(args_cli.input_file)
@@ -276,9 +308,14 @@ def main() -> int:
                 print(f"\nAnnotating episode #{episode_index} ({episode_name})")
                 episode = dataset_file_handler.load_episode(episode_name, env.device)
 
-                annotated = annotate_episode_in_manual_mode(
-                    env, episode, success_term, term_signal_names, start_signal_names, annotate_start_signals
-                )
+                if args_cli.auto:
+                    annotated = annotate_episode_in_auto_mode(
+                        env, episode, success_term, term_signal_names, task_descriptor, args_cli.signal_obs_group
+                    )
+                else:
+                    annotated = annotate_episode_in_manual_mode(
+                        env, episode, success_term, term_signal_names, start_signal_names, annotate_start_signals
+                    )
 
                 if annotated and not skip_episode:
                     env.recorder_manager.set_success_to_episodes(
@@ -304,6 +341,7 @@ def replay_episode(
     env,
     episode: EpisodeData,
     success_term: TerminationTermCfg | None = None,
+    on_step: Callable[[int], None] | None = None,
 ) -> bool:
     """Replay a recorded episode, recording datagen info each step.
 
@@ -312,6 +350,8 @@ def replay_episode(
         env: The environment to replay in.
         episode: The recorded episode to replay.
         success_term: Optional termination term used to verify the task succeeded.
+        on_step: Optional callback invoked with the action index before each step is applied,
+            mirroring where manual marks are taken (state reflects all previous actions).
 
     Returns:
         True if the episode replayed to completion and the success condition held on any step (or no
@@ -339,6 +379,8 @@ def replay_episode(
                 if skip_episode:
                     return False
                 continue
+        if on_step is not None:
+            on_step(action_index)
         action = actions[action_index]
         action_tensor = action.reshape(1, action.shape[0]).to(device=env.device)
         env.step(action_tensor)
@@ -453,12 +495,125 @@ def annotate_episode_in_manual_mode(
     return True
 
 
+def _first_rising_edge(values: torch.Tensor) -> int | None:
+    """Return the index of the first False -> True transition, or None if there is none.
+
+    A signal already active at step 0 has no rising edge and is treated as invalid: the
+    downstream boundary parser derives subtask ends from the transition, not the level.
+    """
+    if bool(values[0]):
+        return None
+    true_indices = values.nonzero()
+    if len(true_indices) == 0:
+        return None
+    return int(true_indices[0][0])
+
+
+def _validate_boundary_spacing(
+    task_descriptor: TaskDescriptor, eef_name: str, term_edges: list[int], num_steps: int
+) -> str | None:
+    """Check detected boundaries against the descriptor's term-offset ranges; None if valid.
+
+    Mirrors :meth:`DataGenInfoPool._validate_subtask_offsets` (non-SkillGen branch) so episodes
+    the pool would reject are skipped at annotation time with a readable reason instead.
+    """
+    # Pool boundary convention: a signal ramp rising at edge index e ends its subtask at e + 1;
+    # the final subtask ends at the trajectory end.
+    ends = [edge + 1 for edge in term_edges] + [num_steps]
+    term_offsets = [st.subtask_term_offset_range for st in task_descriptor.get_subtasks(eef_name)]
+    for i in range(1, len(ends)):
+        if not ends[i - 1] + term_offsets[i - 1][1] < ends[i] + term_offsets[i][0]:
+            return (
+                f"subtasks {i - 1} and {i} are too close for the configured offsets: "
+                f"end={ends[i - 1]} +max_offset={term_offsets[i - 1][1]} vs "
+                f"end={ends[i]} +min_offset={term_offsets[i][0]}"
+            )
+    return None
+
+
+def annotate_episode_in_auto_mode(
+    env,
+    episode: EpisodeData,
+    success_term: TerminationTermCfg | None,
+    term_signal_names: dict[str, list[str]],
+    task_descriptor: TaskDescriptor,
+    signal_obs_group: str,
+) -> bool:
+    """Automatically annotate one episode's subtask termination signals.
+
+    Replays the episode once, sampling the env's subtask-term observation terms before each
+    action (the state then reflects all previous actions, matching where manual marks are
+    taken). Each signal's first rising edge becomes its subtask boundary; the boundaries are
+    validated against subtask order and the descriptor's term-offset spacing before writing the
+    same monotonic ramps manual mode produces.
+
+    Args:
+        env: The environment to replay in.
+        episode: The recorded episode to annotate.
+        success_term: Optional success termination term.
+        term_signal_names: Per-EEF ordered subtask termination-signal names to annotate.
+        task_descriptor: Task descriptor providing subtask offset ranges for validation.
+        signal_obs_group: Observation group holding the per-subtask boolean terms.
+
+    Returns:
+        True if the episode was fully annotated, False if it was rejected (with a printed reason).
+    """
+    assert _datastream is not None, "Datastream must be initialized before annotating."
+
+    sampled_signals: list[dict[str, torch.Tensor]] = []
+
+    def sample_signals(action_index: int) -> None:
+        sampled_signals.append(_datastream.get_subtask_term_signals(env_ids=[0], obs_group=signal_obs_group))
+
+    task_succeeded = replay_episode(env, episode, success_term, on_step=sample_signals)
+    if not task_succeeded:
+        print("\tThe final task was not completed.")
+        return False
+
+    num_steps = len(episode.data["actions"])
+    term_signal_action_indices: dict[str, int] = {}
+
+    for eef_name, eef_term_names in term_signal_names.items():
+        eef_edges: list[int] = []
+        for signal_name in eef_term_names:
+            signal = torch.stack([step[signal_name][0] for step in sampled_signals])
+            edge = _first_rising_edge(signal)
+            if edge is None:
+                reason = "already active at episode start" if bool(signal[0]) else "never fired"
+                print(f'\tSubtask signal "{signal_name}" (eef "{eef_name}") {reason}.')
+                return False
+            eef_edges.append(edge)
+
+        if any(later <= earlier for earlier, later in zip(eef_edges, eef_edges[1:])):
+            print(f'\tSubtask signals for eef "{eef_name}" fired out of order: {dict(zip(eef_term_names, eef_edges))}.')
+            return False
+
+        spacing_error = _validate_boundary_spacing(task_descriptor, eef_name, eef_edges, num_steps)
+        if spacing_error is not None:
+            print(f'\tRejected annotations for eef "{eef_name}": {spacing_error}.')
+            return False
+
+        print(f'\tDetected subtask signals for eef "{eef_name}": {dict(zip(eef_term_names, eef_edges))}')
+        for signal_name, edge in zip(eef_term_names, eef_edges):
+            term_signal_action_indices[signal_name] = edge
+
+    annotated_episode = env.recorder_manager.get_episode(0)
+    for signal_name, action_index in term_signal_action_indices.items():
+        # Termination signal: False until the subtask completes, True from that step onward.
+        signal = torch.ones(num_steps, dtype=torch.bool)
+        signal[:action_index] = False
+        annotated_episode.add(f"obs/datagen_info/subtask_term_signals/{signal_name}", signal)
+
+    return True
+
+
 if __name__ == "__main__":
-    exported_count = 0
+    exit_code = 0
     try:
-        exported_count = main()
+        main()
     except KeyboardInterrupt:
         print("\nInterrupted; exiting.")
+        exit_code = 130
     finally:
         simulation_app.close()
-    exit(exported_count)
+    exit(exit_code)
