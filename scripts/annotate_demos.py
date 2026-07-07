@@ -198,7 +198,7 @@ def main() -> int:
         raise FileNotFoundError(f"The input dataset file {args_cli.input_file} does not exist.")
 
     # Resolve the env id (CLI override, else the name recorded in the dataset).
-    env_name = args_cli.task.split(":")[-1] if args_cli.task else get_env_name_from_dataset(args_cli.input_file)
+    env_name = args_cli.env_name.split(":")[-1] if args_cli.env_name else get_env_name_from_dataset(args_cli.input_file)
 
     task_descriptor = TaskDescriptor.from_yaml(args_cli.task_descriptor)
     generation_policy = task_descriptor.get_generation_policy()
