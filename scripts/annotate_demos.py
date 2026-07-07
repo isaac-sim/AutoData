@@ -15,7 +15,7 @@ python scripts/annotate_demos.py \
 
 If ``--task`` is omitted the env id is read from the source dataset (if available).
 
-Controls (windowed mode only):
+Controls:
 
 * ``N`` -- begin / resume playback
 * ``B`` -- pause playback
@@ -34,10 +34,10 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
 parser.add_argument(
-    "--task",
+    "--env_name",
     type=str,
     default=None,
-    help="Gym env id. Overrides the env name recorded in the source dataset.",
+    help="Environment name. Overrides the env name recorded in the source dataset.",
 )
 parser.add_argument(
     "--task_descriptor",
@@ -63,12 +63,6 @@ parser.add_argument(
     default="./datasets/dataset_annotated.hdf5",
     help="Destination HDF5 for the annotated dataset.",
 )
-parser.add_argument(
-    "--annotate_subtask_start_signals",
-    action="store_true",
-    default=False,
-    help="Also annotate subtask start signals (required by SkillGen).",
-)
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -85,12 +79,7 @@ import os  # noqa: E402
 import torch  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401, E402  (registers gym envs)
-
-# Only enable keyboard input when running with a window (matches isaaclab_mimic's annotate flow).
-_INTERACTIVE = not args_cli.headless and not os.environ.get("HEADLESS", 0)
-if _INTERACTIVE:
-    from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg  # noqa: E402
-
+from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg  # noqa: E402
 from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg  # noqa: E402
 from isaaclab.managers import DatasetExportMode, RecorderTerm, RecorderTermCfg, TerminationTermCfg  # noqa: E402
 from isaaclab.utils import configclass  # noqa: E402
@@ -178,8 +167,8 @@ def _build_signal_names(
         if annotate_start_signals:
             assert all(name for name in eef_term_names), (
                 f"Missing 'subtask_term_signal' for one or more subtasks of eef '{eef_name}'. When "
-                "'--annotate_subtask_start_signals' is enabled, every subtask (including the last) "
-                "must specify 'subtask_term_signal' (its name is reused as the start-signal key)."
+                "annotating for SkillGen, every subtask (including the last) must specify"
+                "'subtask_term_signal' (its name is reused as the start-signal key)."
             )
             start_signal_names[eef_name] = list(eef_term_names)
         else:
@@ -200,6 +189,11 @@ def main() -> int:
     """Annotate the source dataset and export the annotated copy."""
     global _datastream, is_paused, skip_episode, marked_subtask_action_indices
 
+    assert not args_cli.headless, (
+        "annotate_demos.py performs manual keyboard annotation and cannot run headless. "
+        "Re-run with a window (drop --headless / unset HEADLESS)."
+    )
+
     if not os.path.exists(args_cli.input_file):
         raise FileNotFoundError(f"The input dataset file {args_cli.input_file} does not exist.")
 
@@ -209,10 +203,11 @@ def main() -> int:
     task_descriptor = TaskDescriptor.from_yaml(args_cli.task_descriptor)
     generation_policy = task_descriptor.get_generation_policy()
 
+    # Start signals are required only by SkillGen.
+    annotate_start_signals = generation_policy.use_skillgen
+
     # Resolve the subtask signals to annotate
-    term_signal_names, start_signal_names = _build_signal_names(
-        task_descriptor, args_cli.annotate_subtask_start_signals
-    )
+    term_signal_names, start_signal_names = _build_signal_names(task_descriptor, annotate_start_signals)
     total_signals = sum(len(names) for names in term_signal_names.values()) + sum(
         len(names) for names in start_signal_names.values()
     )
@@ -244,33 +239,25 @@ def main() -> int:
             task_descriptor=task_descriptor,
             embodiment_adapter=embodiment_adapter,
             device=env.device,
-            uses_start_signals=args_cli.annotate_subtask_start_signals,
+            uses_start_signals=annotate_start_signals,
         )
         _datastream = Datastream(
             env=env,
             task_descriptor=task_descriptor,
             embodiment_adapter=embodiment_adapter,
             source_pool=empty_pool,
-            uses_start_signals=args_cli.annotate_subtask_start_signals,
+            uses_start_signals=annotate_start_signals,
         )
 
         env.reset()
 
-        # Manual annotation needs keyboard input to mark subtask boundaries.
-        if not _INTERACTIVE:
-            print(
-                "WARNING: running without a window (headless). Subtask boundaries cannot be marked, so "
-                "no episodes will be annotated. Re-run with a window to annotate manually."
-            )
-
-        # Wire up the keyboard (windowed mode only).
-        if _INTERACTIVE:
-            keyboard_interface = Se3Keyboard(Se3KeyboardCfg(pos_sensitivity=0.1, rot_sensitivity=0.1))
-            keyboard_interface.add_callback("N", play_cb)
-            keyboard_interface.add_callback("B", pause_cb)
-            keyboard_interface.add_callback("S", mark_subtask_cb)
-            keyboard_interface.add_callback("Q", skip_episode_cb)
-            keyboard_interface.reset()
+        # Set up the keyboard used to mark subtask boundaries during replay.
+        keyboard_interface = Se3Keyboard(Se3KeyboardCfg(pos_sensitivity=0.1, rot_sensitivity=0.1))
+        keyboard_interface.add_callback("N", play_cb)
+        keyboard_interface.add_callback("B", pause_cb)
+        keyboard_interface.add_callback("S", mark_subtask_cb)
+        keyboard_interface.add_callback("Q", skip_episode_cb)
+        keyboard_interface.reset()
 
         dataset_file_handler = HDF5DatasetFileHandler()
         dataset_file_handler.open(args_cli.input_file)
@@ -290,7 +277,7 @@ def main() -> int:
                 episode = dataset_file_handler.load_episode(episode_name, env.device)
 
                 annotated = annotate_episode_in_manual_mode(
-                    env, episode, success_term, term_signal_names, start_signal_names
+                    env, episode, success_term, term_signal_names, start_signal_names, annotate_start_signals
                 )
 
                 if annotated and not skip_episode:
@@ -320,9 +307,6 @@ def replay_episode(
 ) -> bool:
     """Replay a recorded episode, recording datagen info each step.
 
-    Resets the env to the episode's recorded initial state and steps its recorded actions one at a
-    time. Supports interactive pause / skip while playing. Optionally checks a success termination
-    condition once the replay finishes.
 
     Args:
         env: The environment to replay in.
@@ -330,7 +314,8 @@ def replay_episode(
         success_term: Optional termination term used to verify the task succeeded.
 
     Returns:
-        True if the episode replayed to completion and met the success condition (when given).
+        True if the episode replayed to completion and the success condition held on any step (or no
+        success term was given).
     """
     global current_action_index, skip_episode, is_paused
     initial_state = episode.data["initial_state"]
@@ -341,6 +326,8 @@ def replay_episode(
     env.recorder_manager.reset()
     env.reset_to(initial_state, torch.tensor([0], device=env.device), is_relative=True)
 
+    # Always return True if no success term was given.
+    task_succeeded = success_term is None
     first_action = True
     for action_index in range(len(actions)):
         current_action_index = action_index
@@ -355,11 +342,10 @@ def replay_episode(
         action = actions[action_index]
         action_tensor = action.reshape(1, action.shape[0]).to(device=env.device)
         env.step(action_tensor)
+        if success_term is not None:
+            task_succeeded = task_succeeded or bool(success_term.func(env, **success_term.params)[0])
 
-    if success_term is not None:
-        if not bool(success_term.func(env, **success_term.params)[0]):
-            return False
-    return True
+    return task_succeeded
 
 
 def annotate_episode_in_manual_mode(
@@ -368,6 +354,7 @@ def annotate_episode_in_manual_mode(
     success_term: TerminationTermCfg | None,
     term_signal_names: dict[str, list[str]],
     start_signal_names: dict[str, list[str]],
+    annotate_start: bool,
 ) -> bool:
     """Interactively annotate one episode's subtask signals.
 
@@ -381,13 +368,14 @@ def annotate_episode_in_manual_mode(
         success_term: Optional success termination term.
         term_signal_names: Per-EEF ordered subtask termination-signal names to annotate.
         start_signal_names: Per-EEF ordered subtask start-signal names to annotate (may be empty).
+        annotate_start: Whether subtask start signals are annotated (SkillGen); when True the marks
+            interleave start/termination per subtask, otherwise every mark is a termination.
 
     Returns:
         True if the episode was fully annotated, False if it was skipped or never succeeded.
     """
     global is_paused, marked_subtask_action_indices, skip_episode
 
-    annotate_start = args_cli.annotate_subtask_start_signals
     term_signal_action_indices: dict[str, int] = {}
     start_signal_action_indices: dict[str, int] = {}
 
