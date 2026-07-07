@@ -40,7 +40,6 @@ def write_generation_result(
     result_path = Path(result_file)
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result = {
-        "status": "completed",
         "algorithm": algorithm,
         "requested_trials": requested_trials,
         "num_success": stats["num_success"],

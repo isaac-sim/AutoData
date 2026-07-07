@@ -35,7 +35,6 @@ def read_generation_result(result_file: str) -> tuple[int, int]:
     with open(result_file, encoding="utf-8") as result_handle:
         result = json.load(result_handle)
 
-    assert result["status"] == "completed", f"Generation did not complete: {result['status']}."
     num_success = result["num_success"]
     num_failures = result["num_failures"]
     num_attempts = result["num_attempts"]

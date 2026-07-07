@@ -28,6 +28,5 @@ def test_write_generation_result_writes_completed_stats_atomically(tmp_path):
         "num_failures": 2,
         "num_success": 8,
         "requested_trials": 10,
-        "status": "completed",
     }
     assert not list(result_file.parent.glob(f".{result_file.name}.*.tmp"))
