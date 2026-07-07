@@ -7,13 +7,13 @@
 Usage:
 
 python scripts/annotate_demos.py \
---task <ENV_ID> \
+--env_name <ENV_ID> \
 --task_descriptor <TASK_DESCRIPTOR_YAML> \
 --embodiment <EMBODIMENT_YAML> \
 --input_file ./datasets/source.hdf5 \
 --output_file ./datasets/source_annotated.hdf5
 
-If ``--task`` is omitted the env id is read from the source dataset (if available).
+If ``--env_name`` is omitted the env id is read from the source dataset (if available).
 
 Controls:
 

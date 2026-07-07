@@ -18,7 +18,8 @@ class _TestPaths:
 
         # Config directories
         self.examples_dir = os.path.join(self.repo_root, "isaac_autodata_examples")
-        self.generate_dataset_script = os.path.join(self.examples_dir, "generate_dataset.py")
+        self.scripts_dir = os.path.join(self.repo_root, "scripts")
+        self.generate_dataset_script = os.path.join(self.scripts_dir, "generate_dataset.py")
         self.tasks_dir = os.path.join(self.examples_dir, "tasks")
         self.embodiments_dir = os.path.join(self.examples_dir, "embodiments")
 

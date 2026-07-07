@@ -8,8 +8,8 @@
 
 Usage::
 
-    python isaac_autodata_examples/generate_dataset.py \\
-        --task <task_name> \\
+    python scripts/generate_dataset.py \\
+        --env_name <env_id> \\
         --alg {mimicgen|dexmimicgen|skillgen} \\
         --task_descriptor <task_descriptor.yaml> \\
         --embodiment <embodiment.yaml> \\
@@ -41,7 +41,12 @@ from isaaclab.app import AppLauncher
 _ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument(
+    "--env_name",
+    type=str,
+    default=None,
+    help="Environment name. Overrides the env name recorded in the source dataset.",
+)
 parser.add_argument(
     "--alg",
     type=str,
@@ -246,11 +251,8 @@ def _close_motion_planners(planners: dict | None) -> None:
 
 def main() -> None:
     output_dir, output_file_name = setup_output_paths(args_cli.output_file)
-    # The task name, if provided, overrides the environment name recorded in the dataset.
-    if args_cli.task:
-        env_name = args_cli.task.split(":")[-1]
-    else:
-        env_name = get_env_name_from_dataset(args_cli.input_file)
+    # The env name (CLI override) falls back to the name recorded in the source dataset.
+    env_name = args_cli.env_name.split(":")[-1] if args_cli.env_name else get_env_name_from_dataset(args_cli.input_file)
 
     # The task descriptor's GenerationPolicy is the source for generation policy parameters.
     task_descriptor = TaskDescriptor.from_yaml(args_cli.task_descriptor)

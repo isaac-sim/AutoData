@@ -34,7 +34,7 @@ def test_dexmimicgen_gr1_data_generation_success_rate():
         args = [
             TestPaths.python_path,
             TestPaths.generate_dataset_script,
-            "--task",
+            "--env_name",
             "Isaac-PickPlace-GR1T2-Abs-v0",
             "--alg",
             "dexmimicgen",
