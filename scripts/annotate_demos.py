@@ -22,14 +22,11 @@ Controls:
 * ``S`` -- mark a subtask signal at the current step
 * ``Q`` -- skip the current episode
 
-Automatic mode (``--auto``, supports ``--headless``):
+Automatic mode:
 
-Pass ``--auto`` to annotate without a human in the loop. Each replay step samples the boolean
-observation terms named by the task descriptor's ``subtask_term_signal`` entries from the env's
-``--signal_obs_group`` observation group (default ``subtask_terms``); each signal's first rising
-edge becomes the subtask boundary. Episodes whose signals never fire, fire out of subtask order,
-or violate the descriptor's ``subtask_term_offset_range`` spacing are skipped. Only termination
-signals are auto-annotated; SkillGen start signals require manual mode.
+Pass ``--auto`` to annotate subtask termination signals without keyboard input (``--headless``
+supported). ``--signal_obs_group`` selects the observation group holding the per-subtask boolean
+terms (default ``subtask_terms``). SkillGen start signals still require manual mode.
 """
 
 """Launch Isaac Sim Simulator first."""
