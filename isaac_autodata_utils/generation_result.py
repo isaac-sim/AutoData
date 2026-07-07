@@ -14,6 +14,7 @@ import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 
+
 def write_generation_result(
     result_file: str,
     algorithm: str,
