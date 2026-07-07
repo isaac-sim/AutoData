@@ -14,9 +14,6 @@ import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 
-GENERATION_RESULT_SCHEMA_VERSION = 1
-
-
 def write_generation_result(
     result_file: str,
     algorithm: str,
@@ -42,7 +39,6 @@ def write_generation_result(
     result_path = Path(result_file)
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result = {
-        "schema_version": GENERATION_RESULT_SCHEMA_VERSION,
         "status": "completed",
         "algorithm": algorithm,
         "requested_trials": requested_trials,

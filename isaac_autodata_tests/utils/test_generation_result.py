@@ -7,7 +7,7 @@
 
 import json
 
-from isaac_autodata_utils.generation_result import GENERATION_RESULT_SCHEMA_VERSION, write_generation_result
+from isaac_autodata_utils.generation_result import write_generation_result
 
 
 def test_write_generation_result_writes_completed_stats_atomically(tmp_path):
@@ -28,7 +28,6 @@ def test_write_generation_result_writes_completed_stats_atomically(tmp_path):
         "num_failures": 2,
         "num_success": 8,
         "requested_trials": 10,
-        "schema_version": GENERATION_RESULT_SCHEMA_VERSION,
         "status": "completed",
     }
     assert not list(result_file.parent.glob(f".{result_file.name}.*.tmp"))
