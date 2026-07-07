@@ -262,11 +262,13 @@ class Datastream:
     ) -> dict[str, torch.Tensor]:
         """Read the current per-subtask termination signals from the env observation buffer.
 
-        For every non-empty termination-signal name declared by the task descriptor (across all
-        EEFs), reads the identically named boolean observation term from
-        ``env.obs_buf[obs_group]``. The env must therefore publish one observation term per
-        term-signal name in a non-concatenated group. Auto annotation samples this each replay
-        step to locate subtask boundaries without a human in the loop.
+        For every non-empty, non-final termination-signal name declared by the task descriptor
+        (across all EEFs), reads the identically named boolean observation term from
+        ``env.obs_buf[obs_group]``. The env must therefore publish one observation term per such
+        name in a non-concatenated group. The final subtask of each EEF is skipped: it terminates
+        at the trajectory end, so its signal name (when present, e.g. as a SkillGen start-signal
+        key) has no observation term behind it. Auto annotation samples this each replay step to
+        locate subtask boundaries without a human in the loop.
 
         Args:
             env_ids: Environments to read; ``None`` reads all.
@@ -289,7 +291,7 @@ class Datastream:
         )
         signals: dict[str, torch.Tensor] = {}
         for eef_name in self.get_eef_names():
-            for signal_name in self.get_term_signal_names(eef_name):
+            for signal_name in self.get_term_signal_names(eef_name)[:-1]:
                 if not signal_name:
                     continue
                 assert signal_name in group, (

@@ -28,8 +28,13 @@ Pass ``--auto`` to annotate without a human in the loop. Each replay step sample
 observation terms named by the task descriptor's ``subtask_term_signal`` entries from the env's
 ``--signal_obs_group`` observation group (default ``subtask_terms``); each signal's first rising
 edge becomes the subtask boundary. Episodes whose signals never fire, fire out of subtask order,
-or violate the descriptor's ``subtask_term_offset_range`` spacing are skipped. Only termination
-signals are auto-annotated; SkillGen start signals require manual mode.
+or violate the descriptor's offset-range spacing are skipped.
+
+For SkillGen tasks, subtask start signals are additionally derived from the per-subtask
+``skill_start_gate`` geometry declared in the task descriptor: the start is the last entry of the
+EEF into the gate region (approach sphere or descent corridor around the subtask's reference
+object) before the subtask completes. The final subtask's completion is anchored on the task
+success condition.
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -98,6 +103,7 @@ import gymnasium as gym  # noqa: E402
 import math  # noqa: E402
 import os  # noqa: E402
 import torch  # noqa: E402
+import traceback  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401, E402  (registers gym envs)
@@ -228,12 +234,6 @@ def main() -> int:
     # Start signals are required only by SkillGen.
     annotate_start_signals = generation_policy.use_skillgen
 
-    assert not (args_cli.auto and annotate_start_signals), (
-        "--auto only annotates subtask termination signals; SkillGen additionally needs subtask "
-        "start signals, which have no automatic source yet. Annotate SkillGen datasets in manual "
-        "mode (drop --auto)."
-    )
-
     # Resolve the subtask signals to annotate
     term_signal_names, start_signal_names = _build_signal_names(task_descriptor, annotate_start_signals)
     total_signals = sum(len(names) for names in term_signal_names.values()) + sum(
@@ -310,7 +310,14 @@ def main() -> int:
 
                 if args_cli.auto:
                     annotated = annotate_episode_in_auto_mode(
-                        env, episode, success_term, term_signal_names, task_descriptor, args_cli.signal_obs_group
+                        env,
+                        episode,
+                        success_term,
+                        term_signal_names,
+                        start_signal_names,
+                        task_descriptor,
+                        args_cli.signal_obs_group,
+                        annotate_start_signals,
                     )
                 else:
                     annotated = annotate_episode_in_manual_mode(
@@ -342,7 +349,7 @@ def replay_episode(
     episode: EpisodeData,
     success_term: TerminationTermCfg | None = None,
     on_step: Callable[[int], None] | None = None,
-) -> bool:
+) -> tuple[bool, int | None]:
     """Replay a recorded episode, recording datagen info each step.
 
 
@@ -354,8 +361,9 @@ def replay_episode(
             mirroring where manual marks are taken (state reflects all previous actions).
 
     Returns:
-        True if the episode replayed to completion and the success condition held on any step (or no
-        success term was given).
+        Tuple of (task succeeded, first action index after which the success condition held).
+        Success is True if the episode replayed to completion and the success condition held on
+        any step (or no success term was given); the index is None if success never held.
     """
     global current_action_index, skip_episode, is_paused
     initial_state = episode.data["initial_state"]
@@ -368,6 +376,7 @@ def replay_episode(
 
     # Always return True if no success term was given.
     task_succeeded = success_term is None
+    first_success_step: int | None = None
     first_action = True
     for action_index in range(len(actions)):
         current_action_index = action_index
@@ -377,17 +386,19 @@ def replay_episode(
             while is_paused or skip_episode:
                 env.sim.render()
                 if skip_episode:
-                    return False
+                    return False, first_success_step
                 continue
         if on_step is not None:
             on_step(action_index)
         action = actions[action_index]
         action_tensor = action.reshape(1, action.shape[0]).to(device=env.device)
         env.step(action_tensor)
-        if success_term is not None:
-            task_succeeded = task_succeeded or bool(success_term.func(env, **success_term.params)[0])
+        if success_term is not None and first_success_step is None:
+            if bool(success_term.func(env, **success_term.params)[0]):
+                first_success_step = action_index
+                task_succeeded = True
 
-    return task_succeeded
+    return task_succeeded, first_success_step
 
 
 def annotate_episode_in_manual_mode(
@@ -441,7 +452,7 @@ def annotate_episode_in_manual_mode(
             print('\tPress "Q" to skip the episode.\n')
 
             marked_subtask_action_indices = []
-            task_succeeded = replay_episode(env, episode, success_term)
+            task_succeeded, _ = replay_episode(env, episode, success_term)
             if skip_episode:
                 print("\tSkipping the episode.")
                 return False
@@ -531,29 +542,141 @@ def _validate_boundary_spacing(
     return None
 
 
+def _detect_skill_start_edges(
+    task_descriptor: TaskDescriptor,
+    eef_name: str,
+    term_edges: list[int],
+    final_anchor: int,
+    eef_positions: torch.Tensor,
+    object_positions: dict[str, torch.Tensor],
+) -> list[int] | None:
+    """Locate per-subtask skill-start indices from the descriptor's ``skill_start_gate`` geometry.
+
+    Each subtask's start is the earliest step of the last continuous run inside its gate region
+    (approach sphere or descent corridor around the subtask's ``object_ref``) that ends at the
+    subtask's completion anchor. Walking backward from the anchor makes transient early gate
+    crossings during transit harmless.
+
+    Args:
+        task_descriptor: Source of per-subtask gate geometry and object refs.
+        eef_name: End-effector whose subtasks are annotated.
+        term_edges: Detected termination edges of the non-final subtasks, in subtask order.
+        final_anchor: Completion anchor of the final subtask (first step with task success).
+        eef_positions: Per-step EEF positions [m], shape ``(T, 3)``.
+        object_positions: Per-step object positions [m], each of shape ``(T, 3)``.
+
+    Returns:
+        Per-subtask start indices, or None when detection fails (reason printed).
+    """
+    subtasks = task_descriptor.get_subtasks(eef_name)
+    anchors = [*term_edges, final_anchor]
+    assert len(anchors) == len(subtasks), f"{len(anchors)} anchors for {len(subtasks)} subtasks"
+
+    start_edges: list[int] = []
+    for subtask_index, subtask in enumerate(subtasks):
+        gate = getattr(subtask.algo_params, "skill_start_gate", "")
+        gate_radius = getattr(subtask.algo_params, "skill_start_gate_radius", 0.0)
+        if not gate:
+            print(
+                f'\tSubtask {subtask_index} ("{subtask.subtask_term_signal}", eef "{eef_name}") declares no '
+                "skill_start_gate; auto start annotation needs one per subtask (or use manual mode)."
+            )
+            return None
+        if subtask.object_ref not in object_positions:
+            print(
+                f'\tSubtask {subtask_index} object_ref "{subtask.object_ref}" not found among scene objects '
+                f"{sorted(object_positions)}."
+            )
+            return None
+
+        delta = eef_positions - object_positions[subtask.object_ref]
+        if gate == "approach_radius":
+            inside = torch.linalg.vector_norm(delta, dim=1) < gate_radius
+        else:  # descent_corridor
+            inside = torch.linalg.vector_norm(delta[:, :2], dim=1) < gate_radius
+
+        anchor = anchors[subtask_index]
+        # Earliest step a start ramp can rise: 1 for the first subtask (a rising edge must
+        # exist), one past the previous subtask's pool end otherwise.
+        window_lo = 1 if subtask_index == 0 else term_edges[subtask_index - 1] + 2
+        if not bool(inside[anchor]):
+            print(
+                f"\tEEF is outside the {gate} gate (radius {gate_radius} m) at the completion of subtask "
+                f'{subtask_index} ("{subtask.subtask_term_signal}", eef "{eef_name}"); increase '
+                "skill_start_gate_radius."
+            )
+            return None
+        start_edge = anchor
+        while start_edge > window_lo and bool(inside[start_edge - 1]):
+            start_edge -= 1
+        start_edges.append(start_edge)
+
+    return start_edges
+
+
+def _validate_skillgen_boundary_spacing(
+    task_descriptor: TaskDescriptor,
+    eef_name: str,
+    start_edges: list[int],
+    term_edges: list[int],
+    num_steps: int,
+) -> str | None:
+    """Check start/term boundaries against the descriptor's offset ranges; None if valid.
+
+    Mirrors :meth:`DataGenInfoPool._validate_subtask_offsets` (SkillGen branch) so episodes the
+    pool would reject are skipped at annotation time with a readable reason instead.
+    """
+    subtasks = task_descriptor.get_subtasks(eef_name)
+    # Pool boundary convention: term ramp rising at edge e ends its subtask at e + 1 (the final
+    # subtask ends at the trajectory end); a start ramp rising at edge s starts its subtask at s.
+    ends = [edge + 1 for edge in term_edges] + [num_steps]
+    term_offsets = [st.subtask_term_offset_range for st in subtasks]
+    start_offsets = [getattr(st.algo_params, "subtask_start_offset_range", (0, 0)) for st in subtasks]
+    for i in range(len(subtasks)):
+        if not start_edges[i] + start_offsets[i][1] < ends[i] + term_offsets[i][0]:
+            return (
+                f"subtask {i} is empty in the worst case: start={start_edges[i]} "
+                f"+max_start_offset={start_offsets[i][1]} vs end={ends[i]} +min_term_offset={term_offsets[i][0]}"
+            )
+        if i < len(subtasks) - 1 and not ends[i] + term_offsets[i][1] < start_edges[i + 1] + start_offsets[i + 1][0]:
+            return (
+                f"subtasks {i} and {i + 1} overlap in the worst case: end={ends[i]} "
+                f"+max_term_offset={term_offsets[i][1]} vs next start={start_edges[i + 1]} "
+                f"+min_start_offset={start_offsets[i + 1][0]}"
+            )
+    return None
+
+
 def annotate_episode_in_auto_mode(
     env,
     episode: EpisodeData,
     success_term: TerminationTermCfg | None,
     term_signal_names: dict[str, list[str]],
+    start_signal_names: dict[str, list[str]],
     task_descriptor: TaskDescriptor,
     signal_obs_group: str,
+    annotate_start: bool,
 ) -> bool:
-    """Automatically annotate one episode's subtask termination signals.
+    """Automatically annotate one episode's subtask signals.
 
     Replays the episode once, sampling the env's subtask-term observation terms before each
     action (the state then reflects all previous actions, matching where manual marks are
-    taken). Each signal's first rising edge becomes its subtask boundary; the boundaries are
-    validated against subtask order and the descriptor's term-offset spacing before writing the
-    same monotonic ramps manual mode produces.
+    taken). Each termination signal's first rising edge becomes the subtask boundary. For
+    SkillGen, per-subtask start signals are additionally derived from the descriptor's
+    ``skill_start_gate`` geometry, anchored on each subtask's completion (the task success step
+    for the final subtask). All boundaries are validated against subtask order and the
+    descriptor's offset spacing before writing the same monotonic ramps manual mode produces.
 
     Args:
         env: The environment to replay in.
         episode: The recorded episode to annotate.
         success_term: Optional success termination term.
         term_signal_names: Per-EEF ordered subtask termination-signal names to annotate.
-        task_descriptor: Task descriptor providing subtask offset ranges for validation.
+        start_signal_names: Per-EEF ordered subtask start-signal names to annotate (empty lists
+            unless ``annotate_start``).
+        task_descriptor: Task descriptor providing gate geometry and offset ranges.
         signal_obs_group: Observation group holding the per-subtask boolean terms.
+        annotate_start: Whether subtask start signals are derived (SkillGen).
 
     Returns:
         True if the episode was fully annotated, False if it was rejected (with a printed reason).
@@ -561,17 +684,33 @@ def annotate_episode_in_auto_mode(
     assert _datastream is not None, "Datastream must be initialized before annotating."
 
     sampled_signals: list[dict[str, torch.Tensor]] = []
+    sampled_eef_positions: dict[str, list[torch.Tensor]] = {name: [] for name in term_signal_names}
+    sampled_object_positions: list[dict[str, torch.Tensor]] = []
 
-    def sample_signals(action_index: int) -> None:
+    def sample_step(action_index: int) -> None:
         sampled_signals.append(_datastream.get_subtask_term_signals(env_ids=[0], obs_group=signal_obs_group))
+        if annotate_start:
+            # Clone: adapter/object poses may view live buffers that mutate on the next step.
+            eef_poses = _datastream.embodiment_adapter.get_eef_poses(env_ids=[0])
+            for eef_name in sampled_eef_positions:
+                sampled_eef_positions[eef_name].append(eef_poses[eef_name][0, :3, 3].clone())
+            sampled_object_positions.append(
+                {name: pose[0, :3, 3].clone() for name, pose in _datastream.get_object_poses(env_ids=[0]).items()}
+            )
 
-    task_succeeded = replay_episode(env, episode, success_term, on_step=sample_signals)
+    task_succeeded, first_success_step = replay_episode(env, episode, success_term, on_step=sample_step)
     if not task_succeeded:
         print("\tThe final task was not completed.")
         return False
 
     num_steps = len(episode.data["actions"])
     term_signal_action_indices: dict[str, int] = {}
+    start_signal_action_indices: dict[str, int] = {}
+
+    if annotate_start:
+        object_positions = {
+            name: torch.stack([step[name] for step in sampled_object_positions]) for name in sampled_object_positions[0]
+        }
 
     for eef_name, eef_term_names in term_signal_names.items():
         eef_edges: list[int] = []
@@ -588,12 +727,41 @@ def annotate_episode_in_auto_mode(
             print(f'\tSubtask signals for eef "{eef_name}" fired out of order: {dict(zip(eef_term_names, eef_edges))}.')
             return False
 
-        spacing_error = _validate_boundary_spacing(task_descriptor, eef_name, eef_edges, num_steps)
-        if spacing_error is not None:
-            print(f'\tRejected annotations for eef "{eef_name}": {spacing_error}.')
-            return False
+        if annotate_start:
+            # The final subtask completes at the first step where the task success condition
+            # holds (converted to the pre-step mark convention used by all other edges).
+            assert first_success_step is not None
+            final_anchor = min(first_success_step + 1, num_steps - 1)
+            start_edges = _detect_skill_start_edges(
+                task_descriptor,
+                eef_name,
+                eef_edges,
+                final_anchor,
+                torch.stack(sampled_eef_positions[eef_name]),
+                object_positions,
+            )
+            if start_edges is None:
+                return False
+            spacing_error = _validate_skillgen_boundary_spacing(
+                task_descriptor, eef_name, start_edges, eef_edges, num_steps
+            )
+            if spacing_error is not None:
+                print(f'\tRejected annotations for eef "{eef_name}": {spacing_error}.')
+                return False
+            print(
+                f'\tDetected subtask signals for eef "{eef_name}": '
+                f"starts {dict(zip(start_signal_names[eef_name], start_edges))}, "
+                f"terminations {dict(zip(eef_term_names, eef_edges))}"
+            )
+            for signal_name, edge in zip(start_signal_names[eef_name], start_edges):
+                start_signal_action_indices[signal_name] = edge
+        else:
+            spacing_error = _validate_boundary_spacing(task_descriptor, eef_name, eef_edges, num_steps)
+            if spacing_error is not None:
+                print(f'\tRejected annotations for eef "{eef_name}": {spacing_error}.')
+                return False
+            print(f'\tDetected subtask signals for eef "{eef_name}": {dict(zip(eef_term_names, eef_edges))}')
 
-        print(f'\tDetected subtask signals for eef "{eef_name}": {dict(zip(eef_term_names, eef_edges))}')
         for signal_name, edge in zip(eef_term_names, eef_edges):
             term_signal_action_indices[signal_name] = edge
 
@@ -603,6 +771,11 @@ def annotate_episode_in_auto_mode(
         signal = torch.ones(num_steps, dtype=torch.bool)
         signal[:action_index] = False
         annotated_episode.add(f"obs/datagen_info/subtask_term_signals/{signal_name}", signal)
+
+    for signal_name, action_index in start_signal_action_indices.items():
+        signal = torch.ones(num_steps, dtype=torch.bool)
+        signal[:action_index] = False
+        annotated_episode.add(f"obs/datagen_info/subtask_start_signals/{signal_name}", signal)
 
     return True
 
@@ -614,6 +787,11 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nInterrupted; exiting.")
         exit_code = 130
+    except Exception:
+        # Print before closing the app: SimulationApp.close() can hard-exit the process,
+        # which would otherwise swallow the traceback and report a bogus exit code 0.
+        traceback.print_exc()
+        exit_code = 1
     finally:
         simulation_app.close()
     exit(exit_code)

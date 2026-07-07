@@ -41,9 +41,33 @@ class SkillGenSubtaskAlgoParams(SubtaskAlgoParams):
     Args:
         subtask_start_offset_range: Random offset range for the subtask's
             start, in steps.
+        skill_start_gate: Geometric gate used by auto annotation to locate the subtask's
+            skill start (where motion-planned transit hands off to demo replay). The start is
+            the last entry into the gate region before the subtask completes.
+            ``"approach_radius"`` gates on EEF distance to the reference object;
+            ``"descent_corridor"`` gates on horizontal EEF distance to the reference object
+            (final descent onto a placement target). Empty string disables auto start
+            detection for this subtask (manual annotation only).
+        skill_start_gate_radius: Gate region size [m]. Sphere radius for
+            ``"approach_radius"``; horizontal (xy) radius for ``"descent_corridor"``.
     """
 
     subtask_start_offset_range: tuple[int, int] = (0, 0)
+    skill_start_gate: str = ""
+    skill_start_gate_radius: float = 0.0
+
+    SKILL_START_GATE_TYPES = ("approach_radius", "descent_corridor")
+
+    def __post_init__(self) -> None:
+        assert self.skill_start_gate in ("", *self.SKILL_START_GATE_TYPES), (
+            f"Unknown skill_start_gate {self.skill_start_gate!r}; "
+            f"choose from {self.SKILL_START_GATE_TYPES} or leave empty."
+        )
+        if self.skill_start_gate:
+            assert self.skill_start_gate_radius > 0.0, (
+                "skill_start_gate_radius must be positive when a skill_start_gate is set, "
+                f"got {self.skill_start_gate_radius}."
+            )
 
 
 @dataclass(kw_only=True)

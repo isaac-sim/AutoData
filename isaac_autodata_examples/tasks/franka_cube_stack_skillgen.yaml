@@ -28,6 +28,9 @@ subtasks:
     - object_ref: cube_2
       description: Grasp red cube.
       subtask_term_signal: grasp_1
+      algo_params:
+        skill_start_gate: approach_radius
+        skill_start_gate_radius: 0.16
       selection_strategy: nearest_neighbor_object
       selection_strategy_kwargs:
         nn_k: 3
@@ -40,6 +43,9 @@ subtasks:
     - object_ref: cube_1
       description: Stack red cube on top of blue cube.
       subtask_term_signal: stack_1
+      algo_params:
+        skill_start_gate: descent_corridor
+        skill_start_gate_radius: 0.05
       selection_strategy: nearest_neighbor_object
       selection_strategy_kwargs:
         nn_k: 3
@@ -52,6 +58,9 @@ subtasks:
     - object_ref: cube_3
       description: Grasp green cube.
       subtask_term_signal: grasp_2
+      algo_params:
+        skill_start_gate: approach_radius
+        skill_start_gate_radius: 0.16
       selection_strategy: nearest_neighbor_object
       selection_strategy_kwargs:
         nn_k: 3
@@ -66,6 +75,9 @@ subtasks:
     - object_ref: cube_2
       description: Stack green cube on top of red cube.
       subtask_term_signal: stack_2
+      algo_params:
+        skill_start_gate: descent_corridor
+        skill_start_gate_radius: 0.05
       selection_strategy: nearest_neighbor_object
       selection_strategy_kwargs:
         nn_k: 3
