@@ -92,3 +92,6 @@ testpaths = ["isaac_autodata_tests"]
 markers = [
     "with_subprocess: test launches the data-generation CLI as an Isaac Sim child process",
 ]
+filterwarnings = [
+    "ignore:`torch.jit.script` is deprecated:DeprecationWarning",
+]

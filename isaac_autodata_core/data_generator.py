@@ -17,7 +17,7 @@ import numpy as np
 import torch
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from isaaclab.managers import TerminationTermCfg
 
@@ -30,11 +30,13 @@ from isaac_autodata_core.transforms import (
     transform_source_data_segment_using_object_pose,
 )
 from isaac_autodata_core.waypoint import MultiWaypoint, Waypoint, WaypointSequence, WaypointTrajectory
-from isaac_autodata_interfaces.datastream.datastream import Datastream
 from isaac_autodata_interfaces.tasks.subtask_constraint_spec import (
     SubTaskConstraintCoordinationScheme,
     SubTaskConstraintType,
 )
+
+if TYPE_CHECKING:
+    from isaac_autodata_interfaces.datastream.datastream import Datastream
 
 
 @contextlib.asynccontextmanager
