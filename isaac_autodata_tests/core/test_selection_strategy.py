@@ -19,10 +19,16 @@ from isaac_autodata_core.selection_strategy import (
 )
 
 
-def _pose(pos) -> torch.Tensor:
+def _pose(pos, rot: torch.Tensor | None = None) -> torch.Tensor:
     p = torch.eye(4)
+    if rot is not None:
+        p[:3, :3] = rot
     p[:3, 3] = torch.tensor(pos, dtype=torch.float32)
     return p
+
+
+# +90 degrees about z; a non-identity rotation makes the object-frame transform observable.
+_RZ90 = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
 
 
 def test_registry_contents():
@@ -70,3 +76,38 @@ def test_nearest_neighbor_robot_distance_picks_closest():
     ]
     idx = NearestNeighborRobotDistanceStrategy().select_source_demo(_pose([2.0, 2.0, 2.0]), obj, infos, nn_k=1)
     assert int(idx) == 2
+
+
+def test_nearest_neighbor_robot_distance_transforms_source_eef_into_current_object_frame():
+    # Test source-object -> current-object frame conversion and its multiplication order.
+    #   - demo 0 wins under the correct object-frame transform,
+    #   - demo 1 wins if the conversion is skipped (raw EEF distance),
+    #   - demo 2 wins if the transform is applied in reversed order.
+    current_object_pose = _pose([10.0, 0.0, 0.0], _RZ90)
+    local_eef_offset = _pose([1.0, 0.0, 0.0])  # EEF pose expressed in its object's frame
+    target_eef_pose = current_object_pose @ local_eef_offset
+
+    # demo 0: a non-identity source object with same local offset.
+    source_object_pose = _pose([1.0, 2.0, 0.0])
+    correct_match = DatagenInfo(
+        eef_pose=(source_object_pose @ local_eef_offset).unsqueeze(0),
+        object_poses={"cube": source_object_pose.unsqueeze(0)},
+    )
+    # demo 1: raw EEF sits exactly on the target.
+    raw_distance_decoy = DatagenInfo(
+        eef_pose=target_eef_pose.unsqueeze(0),
+        object_poses={"cube": torch.eye(4).unsqueeze(0)},
+    )
+    # demo 2: constructed so that only a reversed transform order (eef @ obj_inv @ current) would
+    # land on the target.
+    reversed_order_decoy = DatagenInfo(
+        eef_pose=(target_eef_pose @ torch.inverse(current_object_pose)).unsqueeze(0),
+        object_poses={"cube": torch.eye(4).unsqueeze(0)},
+    )
+
+    infos = [correct_match, raw_distance_decoy, reversed_order_decoy]
+    index = NearestNeighborRobotDistanceStrategy().select_source_demo(
+        target_eef_pose, current_object_pose, infos, nn_k=1
+    )
+
+    assert int(index) == 0
