@@ -14,7 +14,7 @@ Prerequisites
 * Installation is complete — repo cloned with submodules, NGC login, Docker with the NVIDIA
   Container Toolkit (see :doc:`installation`).
 * Git LFS data is pulled — the source dataset lives at
-  ``TBD``.
+  ``/datasets/annotated_datasets``.
 
 
 Start the Dev Container
@@ -25,8 +25,8 @@ Start the Dev Container
 
 :docker_run_default:
 
-The first time you run the command, it will take a few minutes to build the container.
-Once built, the script will automatically drops you into a shell at ``/workspaces/isaac_autodata``
+It will take a few minutes to build the container the first time you run it.
+Once built, the script will automatically drop you into a shell at ``/workspaces/isaac_autodata``
 inside the container. All following commands are run from there.
 
 Generate a Dataset
@@ -49,7 +49,7 @@ From ``/workspaces/isaac_autodata`` inside the container, run:
        
 
 While it runs, the console reports the number of source episodes loaded into the pool and a
-running tally after every attempt:
+running tally after every attempt to generate a new demonstration:
 
 .. code-block:: text
 
@@ -61,7 +61,7 @@ running tally after every attempt:
 
 The command was run with ``--viz kit`` which shows a live visualization of the generation process in an Isaac Sim window.
 
-Wait for the data generation to complete after 10 successful demos are recorded into an HDF5 dataset.
+Wait for the script to complete after 10 successful demos are generated and recorded into an HDF5 dataset.
 The window will close automatically when the generation is complete.
 
 .. figure:: ../../images/franka_datagen.jpg
