@@ -48,13 +48,15 @@ DATASETS_HOST_MOUNT_DIRECTORY="$HOME/datasets"
 
 FORCE_REBUILD=false
 NO_CACHE=""
+BUILD_ONLY=false
 
-while getopts ":d:crRvh" OPTION; do
+while getopts ":d:crRbvh" OPTION; do
     case $OPTION in
         d) DATASETS_HOST_MOUNT_DIRECTORY=$OPTARG ;;
         c) INSTALL_CUROBO=true ;;
         r) FORCE_REBUILD=true ;;
         R) FORCE_REBUILD=true; NO_CACHE="--no-cache" ;;
+        b) BUILD_ONLY=true ;;
         v) set -x ;;
         h)
             script_name=$(basename "$0")
@@ -67,6 +69,7 @@ while getopts ":d:crRvh" OPTION; do
             echo "  -c        Install cuRobo, auto-detects the GPU arch (override with the TORCH_CUDA_ARCH_LIST env var)."
             echo "  -r        Force rebuilding the image."
             echo "  -R        Force rebuilding the image without cache."
+            echo "  -b        Build the image only, then exit (no container run). Used by CI image publishing."
             echo "  -v        Verbose (set -x)."
             echo "  -h        Show this help."
             echo ""
@@ -106,6 +109,12 @@ else
         -t "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" \
         --file "${SCRIPT_DIR}/Dockerfile.isaac_autodata" \
         "${REPO_ROOT}"
+fi
+
+# Build-only mode (CI image publishing): stop before creating/running a container.
+if [ "$BUILD_ONLY" = "true" ]; then
+    echo "Build-only mode: image ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} is ready."
+    exit 0
 fi
 
 # Remove a previously-exited container of the same name so we can recreate it.

@@ -144,5 +144,19 @@ more space-separated test paths; defaults to the whole tree), `PYTEST_MARK`
 (marker filter; empty runs everything), and `FORCE_REBUILD=true` (image rebuild,
 used by the nightly).
 
-Test datasets are pulled from Git LFS in CI; no external credentials are
 required. The jobs run on `[self-hosted, gpu]` runners.
+
+### Prebuilt image
+
+Building the image from scratch (isaac-sim base + Lab/Arena install + cuRobo
+compile) takes ~30 minutes. To skip that, `.github/workflows/build-image.yml`
+publishes the image to GHCR (`ghcr.io/isaac-sim/isaac-autodata`) and the test
+job pulls it instead of building. The image is tagged by a content hash over its
+inputs (`docker/`, the pinned `IsaacLab-Arena` submodule, packaging metadata, and
+the CUDA arch — see `scripts/ci/image_tag.sh`), so it rebuilds only when one of
+those changes. On a cache miss the test job falls back to a local build, so the
+prebuilt image is purely an accelerator, never a correctness dependency.
+
+The image bakes cuRobo for the runner GPU arch (`8.9+PTX`, L40S); building for a
+different GPU generation means bumping that value in `build-image.yml` and
+`image_tag.sh`.
