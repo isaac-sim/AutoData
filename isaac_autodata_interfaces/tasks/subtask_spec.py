@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import MISSING, dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -50,13 +50,18 @@ class SkillGenSubtaskAlgoParams(SubtaskAlgoParams):
             detection for this subtask (manual annotation only).
         skill_start_gate_radius: Gate region size [m]. Sphere radius for
             ``"approach_radius"``; horizontal (xy) radius for ``"descent_corridor"``.
+        skill_start_gate_height: Optional height cap [m]. When positive, the detected start is
+            deferred within the gate run to the first step the EEF height above the reference
+            object drops below this value — lowering the transit handoff pose toward the target
+            (e.g. past the carry apex of a placement). Zero disables the cap.
     """
 
     subtask_start_offset_range: tuple[int, int] = (0, 0)
     skill_start_gate: str = ""
     skill_start_gate_radius: float = 0.0
+    skill_start_gate_height: float = 0.0
 
-    SKILL_START_GATE_TYPES = ("approach_radius", "descent_corridor")
+    SKILL_START_GATE_TYPES: ClassVar[tuple[str, ...]] = ("approach_radius", "descent_corridor")
 
     def __post_init__(self) -> None:
         assert self.skill_start_gate in ("", *self.SKILL_START_GATE_TYPES), (
@@ -68,6 +73,12 @@ class SkillGenSubtaskAlgoParams(SubtaskAlgoParams):
                 "skill_start_gate_radius must be positive when a skill_start_gate is set, "
                 f"got {self.skill_start_gate_radius}."
             )
+        assert (
+            self.skill_start_gate_height >= 0.0
+        ), f"skill_start_gate_height must be non-negative, got {self.skill_start_gate_height}."
+        assert not (
+            self.skill_start_gate_height > 0.0 and not self.skill_start_gate
+        ), "skill_start_gate_height requires a skill_start_gate to be set."
 
 
 @dataclass(kw_only=True)

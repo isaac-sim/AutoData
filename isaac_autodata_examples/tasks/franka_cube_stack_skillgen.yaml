@@ -46,6 +46,7 @@ subtasks:
       algo_params:
         skill_start_gate: descent_corridor
         skill_start_gate_radius: 0.05
+        skill_start_gate_height: 0.19
       selection_strategy: nearest_neighbor_object
       selection_strategy_kwargs:
         nn_k: 3
@@ -78,6 +79,7 @@ subtasks:
       algo_params:
         skill_start_gate: descent_corridor
         skill_start_gate_radius: 0.05
+        skill_start_gate_height: 0.19
       selection_strategy: nearest_neighbor_object
       selection_strategy_kwargs:
         nn_k: 3

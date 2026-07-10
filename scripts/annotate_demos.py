@@ -22,19 +22,12 @@ Controls:
 * ``S`` -- mark a subtask signal at the current step
 * ``Q`` -- skip the current episode
 
-Automatic mode (``--auto``, supports ``--headless``):
+Automatic mode:
 
-Pass ``--auto`` to annotate without a human in the loop. Each replay step samples the boolean
-observation terms named by the task descriptor's ``subtask_term_signal`` entries from the env's
-``--signal_obs_group`` observation group (default ``subtask_terms``); each signal's first rising
-edge becomes the subtask boundary. Episodes whose signals never fire, fire out of subtask order,
-or violate the descriptor's offset-range spacing are skipped.
-
-For SkillGen tasks, subtask start signals are additionally derived from the per-subtask
-``skill_start_gate`` geometry declared in the task descriptor: the start is the last entry of the
-EEF into the gate region (approach sphere or descent corridor around the subtask's reference
-object) before the subtask completes. The final subtask's completion is anchored on the task
-success condition.
+Pass ``--auto`` to annotate subtask signals without keyboard input (``--headless`` supported).
+``--signal_obs_group`` selects the observation group holding the per-subtask boolean terms
+(default ``subtask_terms``). For SkillGen tasks, start signals are derived from the
+``skill_start_gate`` geometry declared in the task descriptor.
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -195,7 +188,7 @@ def _build_signal_names(
         if annotate_start_signals:
             assert all(name for name in eef_term_names), (
                 f"Missing 'subtask_term_signal' for one or more subtasks of eef '{eef_name}'. When "
-                "annotating for SkillGen, every subtask (including the last) must specify"
+                "annotating for SkillGen, every subtask (including the last) must specify "
                 "'subtask_term_signal' (its name is reused as the start-signal key)."
             )
             start_signal_names[eef_name] = list(eef_term_names)
@@ -555,7 +548,10 @@ def _detect_skill_start_edges(
     Each subtask's start is the earliest step of the last continuous run inside its gate region
     (approach sphere or descent corridor around the subtask's ``object_ref``) that ends at the
     subtask's completion anchor. Walking backward from the anchor makes transient early gate
-    crossings during transit harmless.
+    crossings during transit harmless. When the subtask sets ``skill_start_gate_height``, the
+    start is then deferred within that run to the first step the EEF descends below the cap;
+    the run itself stays height-agnostic because the EEF can rise above the cap again between
+    placing and the completion anchor (post-placement retreat).
 
     Args:
         task_descriptor: Source of per-subtask gate geometry and object refs.
@@ -576,6 +572,7 @@ def _detect_skill_start_edges(
     for subtask_index, subtask in enumerate(subtasks):
         gate = getattr(subtask.algo_params, "skill_start_gate", "")
         gate_radius = getattr(subtask.algo_params, "skill_start_gate_radius", 0.0)
+        gate_height = getattr(subtask.algo_params, "skill_start_gate_height", 0.0)
         if not gate:
             print(
                 f'\tSubtask {subtask_index} ("{subtask.subtask_term_signal}", eef "{eef_name}") declares no '
@@ -592,7 +589,8 @@ def _detect_skill_start_edges(
         delta = eef_positions - object_positions[subtask.object_ref]
         if gate == "approach_radius":
             inside = torch.linalg.vector_norm(delta, dim=1) < gate_radius
-        else:  # descent_corridor
+        else:
+            assert gate == "descent_corridor", f"Unhandled skill_start_gate type: {gate!r}"
             inside = torch.linalg.vector_norm(delta[:, :2], dim=1) < gate_radius
 
         anchor = anchors[subtask_index]
@@ -609,6 +607,16 @@ def _detect_skill_start_edges(
         start_edge = anchor
         while start_edge > window_lo and bool(inside[start_edge - 1]):
             start_edge -= 1
+        if gate_height > 0.0:
+            below_cap = delta[start_edge : anchor + 1, 2] < gate_height
+            if not bool(below_cap.any()):
+                print(
+                    f"\tEEF never descends below the skill_start_gate_height ({gate_height} m) within the "
+                    f'gate run of subtask {subtask_index} ("{subtask.subtask_term_signal}", eef "{eef_name}"); '
+                    "increase skill_start_gate_height."
+                )
+                return None
+            start_edge += int(below_cap.int().argmax())
         start_edges.append(start_edge)
 
     return start_edges
@@ -687,7 +695,7 @@ def annotate_episode_in_auto_mode(
     sampled_eef_positions: dict[str, list[torch.Tensor]] = {name: [] for name in term_signal_names}
     sampled_object_positions: list[dict[str, torch.Tensor]] = []
 
-    def sample_step(action_index: int) -> None:
+    def sample_step(_action_index: int) -> None:
         sampled_signals.append(_datastream.get_subtask_term_signals(env_ids=[0], obs_group=signal_obs_group))
         if annotate_start:
             # Clone: adapter/object poses may view live buffers that mutate on the next step.
