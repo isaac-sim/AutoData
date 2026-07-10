@@ -130,6 +130,13 @@ if [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "$SSH_AUTH_SOCK" ]; then
     SSH_DOCKER_ARGS+=("-v" "$SSH_AUTH_SOCK:/ssh-agent" "--env" "SSH_AUTH_SOCK=/ssh-agent")
 fi
 
+# Isolated mode (ISAAC_AUTODATA_ISOLATED=1, e.g. CI): skip the dev-only host
+# mounts ($HOME/.cache, X11) whose ownership collides with the container user.
+ISOLATED=false
+case "${ISAAC_AUTODATA_ISOLATED:-}" in
+    1 | true | TRUE | yes) ISOLATED=true ;;
+esac
+
 DOCKER_RUN_ARGS=(
     "--name" "${CONTAINER_NAME}"
     "--privileged"
@@ -142,10 +149,18 @@ DOCKER_RUN_ARGS=(
     # Live-mount the repo: host edits are reflected in the container's editable installs.
     "-v" "${REPO_ROOT}:${WORKDIR}"
     $(add_volume_if_it_exists "$DATASETS_HOST_MOUNT_DIRECTORY" /datasets)
-    # Share the host Kit/pip cache to speed up shader warmup and reinstalls across runs.
-    "-v" "$HOME/.cache:/home/$(id -un)/.cache"
-    # X11 passthrough so "--viz kit" can open a window.
-    "-v" "/tmp/.X11-unix:/tmp/.X11-unix:rw"
+)
+
+if [ "$ISOLATED" = false ]; then
+    DOCKER_RUN_ARGS+=(
+        # Share the host Kit/pip cache to speed up shader warmup and reinstalls across runs.
+        "-v" "$HOME/.cache:/home/$(id -un)/.cache"
+        # X11 passthrough so "--viz kit" can open a window.
+        "-v" "/tmp/.X11-unix:/tmp/.X11-unix:rw"
+    )
+fi
+
+DOCKER_RUN_ARGS+=(
     "${SSH_DOCKER_ARGS[@]}"
     "--env" "DISPLAY=${DISPLAY:-}"
     "--env" "ACCEPT_EULA=Y"
@@ -158,8 +173,9 @@ DOCKER_RUN_ARGS=(
     "--env" "DOCKER_RUN_GROUP_NAME=$(id -gn)"
 )
 
-# Allow local X11 clients from the container (for the Kit viewer).
-if command -v xhost >/dev/null 2>&1; then
+# Allow local X11 clients from the container (for the Kit viewer). Skipped in
+# isolated mode, where X11 is not mounted.
+if [ "$ISOLATED" = false ] && command -v xhost >/dev/null 2>&1; then
     xhost +local:docker >/dev/null 2>&1 || true
 fi
 
