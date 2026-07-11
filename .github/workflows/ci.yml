@@ -67,12 +67,12 @@ jobs:
     # Skip GPU work for pull requests opened from forks (no secrets, untrusted code).
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
 
-    # Premerge runs the correctness suites: e2e (GPU/Sim data-gen) and interfaces
-    # (CPU unit tests). The datagen_perf/ success-rate benchmarks (500 trials each)
-    # are heavy and run in the nightly instead. Add isaac_autodata_tests/core once
-    # PR #29 lands. No marker filter, so both subprocess and unit tests run.
+    # Premerge runs the correctness suites: e2e (GPU/Sim data-gen) plus interfaces
+    # and core (CPU unit tests). The datagen_perf/ success-rate benchmarks (500
+    # trials each) are heavy and run in the nightly instead. No marker filter, so
+    # both subprocess and unit tests run.
     env:
-      TEST_PATH: "isaac_autodata_tests/e2e/ isaac_autodata_tests/interfaces/"
+      TEST_PATH: "isaac_autodata_tests/e2e/ isaac_autodata_tests/interfaces/ isaac_autodata_tests/core/"
 
     steps:
       - name: nvidia-smi
