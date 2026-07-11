@@ -1,0 +1,58 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Isaac AutoData Nightly
+
+# Manual trigger only. Add a `schedule:` cron block here when the team wants
+# automated nightly runs.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+
+  test_full:
+    name: Full E2E (GPU, rebuilt image)
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 120
+
+    # Force an image rebuild (run_docker.sh -r; reuses valid Docker layer cache)
+    # and run the whole suite (no marker filter, default
+    # TEST_PATH=isaac_autodata_tests/), including the heavy datagen_perf/
+    # success-rate benchmarks that premerge skips.
+    env:
+      FORCE_REBUILD: "true"
+      PYTEST_MARK: ""
+
+    steps:
+      - name: nvidia-smi
+        run: nvidia-smi
+
+      - name: Clean up submodules directory
+        run: |
+          rm -f .git/modules/submodules/IsaacLab-Arena/index.lock || true
+          rm -rf submodules/* || true
+
+      - name: Mark repo as safe for git
+        run: git config --global --add safe.directory "$PWD"
+
+      - name: Checkout (recursive submodules)
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Pull LFS test data
+        run: |
+          git lfs install --local
+          git lfs pull
+
+      - name: Run full E2E suite
+        run: ./scripts/ci/run_tests.sh
