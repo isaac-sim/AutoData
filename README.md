@@ -117,3 +117,31 @@ Run the pre-commit formatter using:
 ```bash
 pre-commit run --all-files
 ```
+
+## Continuous Integration
+
+GitHub Actions runs on every pull request and on pushes to `main`
+(`.github/workflows/ci.yml`):
+
+- **`pre_commit`** — runs `pre-commit run --all-files` (same hooks as local).
+- **`test_e2e`** — runs the correctness suites inside the repo Docker image:
+  `isaac_autodata_tests/e2e/` (GPU/Sim data generation) and
+  `isaac_autodata_tests/interfaces/` (CPU unit tests). The heavier
+  `datagen_perf/` success-rate benchmarks are left to the nightly.
+
+The test job and the manual nightly (`.github/workflows/nightly.yml`,
+`workflow_dispatch`) both call one script, which is also the way to reproduce a
+CI failure locally on a GPU host:
+
+```bash
+./scripts/ci/run_tests.sh
+```
+
+It wraps `./docker/run_docker.sh -c` (cuRobo enabled) and runs pytest inside the
+container. Override behavior with environment variables: `TEST_PATH` (one or
+more space-separated test paths; defaults to the whole tree), `PYTEST_MARK`
+(marker filter; empty runs everything), and `FORCE_REBUILD=true` (image rebuild,
+used by the nightly).
+
+Test datasets are pulled from Git LFS in CI; no external credentials are
+required. The jobs run on `[self-hosted, gpu]` runners.
