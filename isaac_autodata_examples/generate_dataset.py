@@ -214,7 +214,7 @@ def setup_async_generation(
     }
 
 
-def _build_motion_planners(datastream, num_envs: int, env_name: str, visualize_plan: bool = False) -> dict:
+def _build_motion_planners(datastream, num_envs: int, env_name: str, *, visualize_plan: bool = False) -> dict:
     """Construct one cuRobo v1 motion planner per env_id satisfying the SkillGen interface.
 
     Planners read all world state (collision-geometry source, object poses, joint configuration)

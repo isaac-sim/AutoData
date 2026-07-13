@@ -76,10 +76,8 @@ def _kill_owned_rerun_processes(owner_pid: int) -> int:
     return killed_count
 
 
-def _cleanup_all_plan_visualizers():
+def _cleanup_all_plan_visualizers() -> None:
     """Close all registered visualizers and kill Rerun viewers spawned by this process."""
-    global _GLOBAL_PLAN_VISUALIZERS
-
     # Close instances first so recordings are flushed and tracked viewer handles terminate.
     for visualizer in _GLOBAL_PLAN_VISUALIZERS[:]:
         if not visualizer._closed:
@@ -142,7 +140,6 @@ class PlanVisualizer:
         self._motion_gen_ref = None
 
         # Register this instance globally for cleanup
-        global _GLOBAL_PLAN_VISUALIZERS
         _GLOBAL_PLAN_VISUALIZERS.append(self)
 
         # Initialize Rerun
@@ -322,13 +319,14 @@ class PlanVisualizer:
         except Exception:
             pass
 
-        # Enhanced process killing
-        self._kill_rerun_processes()
-
         # Remove from global registry
-        global _GLOBAL_PLAN_VISUALIZERS
         if self in _GLOBAL_PLAN_VISUALIZERS:
             _GLOBAL_PLAN_VISUALIZERS.remove(self)
+
+        # Sweep for strays only when no other live instance remains, so closing one
+        # visualizer cannot kill a sibling instance's viewer in the same process.
+        if not any(not visualizer._closed for visualizer in _GLOBAL_PLAN_VISUALIZERS):
+            self._kill_rerun_processes()
 
         if self.debug:
             print("Closed Rerun visualization with enhanced cleanup")
