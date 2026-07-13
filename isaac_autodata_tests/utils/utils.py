@@ -38,6 +38,8 @@ def read_generation_result(result_file: str) -> tuple[int, int]:
     num_success = result["num_success"]
     num_failures = result["num_failures"]
     num_attempts = result["num_attempts"]
-    assert num_success >= 0 and num_failures >= 0 and num_attempts > 0, "Generation result has invalid counts."
+    assert num_success >= 0, f"Generation result has invalid num_success: {num_success}."
+    assert num_failures >= 0, f"Generation result has invalid num_failures: {num_failures}."
+    assert num_attempts > 0, f"Generation result has invalid num_attempts: {num_attempts}."
     assert num_success + num_failures == num_attempts, "Generation result counts do not add up."
     return num_success, num_attempts
