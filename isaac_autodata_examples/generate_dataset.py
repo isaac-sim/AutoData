@@ -71,6 +71,12 @@ parser.add_argument(
     help="Destination HDF5 for generated episodes.",
 )
 parser.add_argument(
+    "--result_file",
+    type=str,
+    default=None,
+    help="Optional JSON path for the final structured generation result.",
+)
+parser.add_argument(
     "--pause_subtask",
     action="store_true",
     help="Pause after every subtask for interactive debugging.",
@@ -104,6 +110,7 @@ from isaac_autodata_interfaces.env import (  # noqa: E402
     setup_output_paths,
 )
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
+from isaac_autodata_utils.generation_result import write_generation_result  # noqa: E402
 
 
 async def run_data_generator(
@@ -302,8 +309,9 @@ def main() -> None:
         )
 
         data_gen_tasks = asyncio.ensure_future(asyncio.gather(*async_components["tasks"]))
+        generation_completed = False
         try:
-            env_loop(
+            generation_completed = env_loop(
                 env,
                 async_components["reset_queue"],
                 async_components["action_queue"],
@@ -323,6 +331,14 @@ def main() -> None:
             except Exception as exc:
                 print(f"Error cleaning up async tasks: {exc}")
             _close_motion_planners(motion_planners)
+
+        if generation_completed and args_cli.result_file:
+            write_generation_result(
+                result_file=args_cli.result_file,
+                algorithm=args_cli.alg,
+                requested_trials=generation_policy_params.num_trials,
+                stats=async_components["stats"],
+            )
     finally:
         env.close()
 

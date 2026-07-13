@@ -11,8 +11,8 @@ import tempfile
 import pytest
 
 from isaac_autodata_tests.utils.constants import TestPaths
-from isaac_autodata_tests.utils.subprocess import run_subprocess_capture
-from isaac_autodata_tests.utils.utils import assert_valid_dataset, parse_datagen_success_rate
+from isaac_autodata_tests.utils.subprocess import run_subprocess
+from isaac_autodata_tests.utils.utils import assert_valid_dataset, read_generation_result
 
 # --- Tunables (change these to adjust the perf test) ---------------------------------------------
 SUCCESS_RATE_THRESHOLD = 0.70  # minimum acceptable data-gen success rate
@@ -29,6 +29,7 @@ def test_dexmimicgen_g1_data_generation_success_rate():
     """Generate NUM_TRIALS demos on NUM_ENVS envs and assert the success rate exceeds the threshold."""
     with tempfile.TemporaryDirectory() as temp_dir:
         output_file = os.path.join(temp_dir, "generated.hdf5")
+        result_file = os.path.join(temp_dir, "generation_result.json")
 
         args = [
             TestPaths.python_path,
@@ -45,6 +46,8 @@ def test_dexmimicgen_g1_data_generation_success_rate():
             os.path.join(TestPaths.test_data_dir, "annotated_dataset_g1_pick_place_dexmimicgen.hdf5"),
             "--output_file",
             output_file,
+            "--result_file",
+            result_file,
             "--generation_num_trials",
             str(NUM_TRIALS),
             "--num_envs",
@@ -54,10 +57,10 @@ def test_dexmimicgen_g1_data_generation_success_rate():
             "--viz",
             "none" if HEADLESS else "kit",
         ]
-        output = run_subprocess_capture(args, timeout_sec=TIMEOUT_SEC)
+        run_subprocess(args, timeout_sec=TIMEOUT_SEC)
         assert_valid_dataset(output_file, min_num_demos=1)
+        num_success, num_attempts = read_generation_result(result_file)
 
-    num_success, num_attempts = parse_datagen_success_rate(output)
     assert num_attempts > 0, "generation reported zero attempts"
     success_rate = num_success / num_attempts
     print(f"\nDexMimicGen G1 data-gen success rate: {success_rate:.1%} ({num_success}/{num_attempts})")

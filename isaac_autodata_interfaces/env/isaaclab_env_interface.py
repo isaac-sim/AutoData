@@ -122,7 +122,7 @@ def env_loop(
     generation_policy_params: GenerationPolicy,
     stats: dict,
     data_gen_tasks: asyncio.Future | None = None,
-) -> None:
+) -> bool:
     """Synchronous step loop for the environment.
 
     Steps the env in inference mode, draining actions produced by the async data generators from
@@ -143,6 +143,9 @@ def env_loop(
         stats: Shared dict with ``num_success``, ``num_failures``, and ``num_attempts`` counters.
         data_gen_tasks: Gathered future for all data generation tasks. When provided, the loop
             exits early if all tasks finish unexpectedly (e.g. due to an unhandled exception).
+
+    Returns:
+        Whether the generation policy's requested trial target was reached.
     """
     num_trials = generation_policy_params.num_trials
     guarantee_success = generation_policy_params.guarantee_success
@@ -158,7 +161,7 @@ def env_loop(
                     exc = data_gen_tasks.exception()
                     if exc is not None:
                         raise exc
-                    return
+                    return False
                 while not env_reset_queue.empty():
                     env_id_tensor[0] = env_reset_queue.get_nowait()
                     env.reset(env_ids=env_id_tensor)
@@ -193,11 +196,12 @@ def env_loop(
                 check_val = num_success if guarantee_success else num_attempts
                 if check_val >= num_trials:
                     print(f"Reached {num_trials} {'successes' if guarantee_success else 'attempts'}. Exiting.")
-                    break
+                    return True
 
             # check that simulation is stopped or not
             if env.sim.is_stopped():
-                break
+                return False
 
     # Do not close env here: async data generator tasks may still be running.
     # Caller must close env after cancelling and awaiting those tasks.
+    return False

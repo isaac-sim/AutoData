@@ -1,0 +1,101 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Isaac AutoData CI
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+
+  pre_commit:
+    name: Pre-commit
+    # Lint-only job: no GPU needed, so keep it off the scarce self-hosted GPU pool.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    container:
+      image: python:3.12-slim
+
+    steps:
+      - name: Install git and LFS
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git git-lfs ca-certificates
+          git --version
+          git lfs version
+
+      - name: Mark repo as safe for git
+        run: git config --global --add safe.directory "$PWD"
+
+      # Linting does not need the submodules; the hooks exclude submodules/.
+      # No post-checkout git auth is needed here, so don't persist credentials
+      # into the workspace that later (repo-controlled) steps could read.
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: false
+          persist-credentials: false
+
+      # Run pre-commit directly rather than via pre-commit/action, which pins
+      # actions/cache@v4 (Node 20, deprecated). We already point PRE_COMMIT_HOME
+      # at a fresh dir, so the action's caching brings nothing here anyway.
+      - name: Run pre-commit
+        env:
+          PRE_COMMIT_HOME: /tmp/pre-commit-cache
+        run: |
+          pip install --no-cache-dir pre-commit==4.6.0
+          pre-commit run --all-files --show-diff-on-failure --verbose
+
+  test_e2e:
+    name: E2E (GPU, repo Docker)
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 120
+    needs: [pre_commit]
+    # Skip GPU work for pull requests opened from forks (no secrets, untrusted code).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+
+    # Premerge runs the correctness suites: e2e (GPU/Sim data-gen) plus interfaces
+    # and core (CPU unit tests). The datagen_perf/ success-rate benchmarks (500
+    # trials each) are heavy and run in the nightly instead. No marker filter, so
+    # both subprocess and unit tests run.
+    env:
+      TEST_PATH: "isaac_autodata_tests/e2e/ isaac_autodata_tests/interfaces/ isaac_autodata_tests/core/"
+
+    steps:
+      - name: nvidia-smi
+        run: nvidia-smi
+
+      # Clear stale submodule symlinks/locks left by a previous run on the host.
+      - name: Clean up submodules directory
+        run: |
+          rm -f .git/modules/submodules/IsaacLab-Arena/index.lock || true
+          rm -rf submodules/* || true
+
+      - name: Mark repo as safe for git
+        run: git config --global --add safe.directory "$PWD"
+
+      - name: Checkout (recursive submodules)
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Pull LFS test data
+        run: |
+          git lfs install --local
+          git lfs pull
+
+      - name: Run E2E tests
+        run: ./scripts/ci/run_tests.sh
