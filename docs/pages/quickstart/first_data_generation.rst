@@ -64,7 +64,7 @@ The command was run with ``--viz kit`` which shows a live visualization of the g
 Wait for the script to complete after 10 successful demos are generated and recorded into an HDF5 dataset.
 The window will close automatically when the generation is complete.
 
-.. figure:: ../../images/franka_datagen.jpg
+.. figure:: ../../images/franka_mimicgen_datagen.jpg
    :width: 100%
    :align: center
    :alt: Parallel environments generating cube-stacking demonstrations

@@ -8,16 +8,12 @@ Check the generated HDF5 for structural problems and summarize its contents:
 
 .. code-block:: bash
 
-   python scripts/validate_dataset.py datasets/generated_dataset.hdf5
+   python scripts/validate_dataset.py datasets/generated_dataset_mimicgen_franka.hdf5
 
-The validator prints one summary row per file — episode count, the env id recorded in the
-file's metadata, and the simulation args — followed by per-file issues. Every episode is
-checked for the required fields (``actions``, ``initial_state``, ``obs``). Multiple files and
-globs work too, and ``--strict`` makes the exit code non-zero if any file is invalid:
+The validator prints one summary row per file (episode count, the env id recorded in the
+file's metadata, and the simulation args) followed by per-file issues. Every episode is
+checked for the required fields (``actions``, ``initial_state``, ``obs``):
 
-.. code-block:: bash
-
-   python scripts/validate_dataset.py --strict datasets/*.hdf5
 
 Visual Validation
 ^^^^^^^^^^^^^^^^^
@@ -28,26 +24,26 @@ replay tool:
 .. code-block:: bash
 
    python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
+       --viz kit \
        --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
-       --dataset_file datasets/generated_dataset.hdf5
+       --num_envs 20 \
+       --dataset_file datasets/generated_dataset_mimicgen_franka.hdf5
 
-A good generated demonstration looks like a plausible human one: a direct approach, a clean
-grasp, and a controlled place. Common artifacts worth watching for are jerky transitions at
+A good generated demonstration looks like a plausible human one (clean and firm
+grasp, stable placement, etc). Common artifacts worth watching for are jerky transitions at
 subtask boundaries (interpolation too short — raise ``num_interpolation_steps``) and grasps
 that only just succeed (consider tightening ``subtask_term_offset_range`` or reducing
 ``action_noise`` in the task descriptor).
 
-Training a Policy
-^^^^^^^^^^^^^^^^^
+.. figure:: ../../../images/franka_mimicgen_replay.gif
+   :width: 90%
+   :align: center
+   :alt: Replaying generated demonstrations
 
-The generated HDF5 is a standard Isaac Lab dataset, so it plugs into the imitation-learning
-pipelines documented by Isaac Lab (e.g. robomimic behavior cloning) and Arena (e.g. GR00T
-fine-tuning) unchanged. See the
-`Isaac Lab imitation-learning documentation
-<https://isaac-sim.github.io/IsaacLab/main/source/overview/imitation-learning/teleop_imitation.html>`_
-for the robomimic route.
+.. note::
 
-.. todo::
-
-   Once the recommended training route for AutoData-generated datasets is settled, document
-   it here end-to-end (training command, checkpoint evaluation, expected success rates).
+   **Isaac Lab replay is PhysX non-deterministic.** Isaac Lab PhysX is not deterministically reproducible
+   across an ``env.reset``, so replaying an episode's recorded actions from its saved initial
+   state can diverge from the original. Some episodes may fail to reproduce success during replay
+   even though **every** episode in the dataset was a successful demonstration at generation time.
+   All recorded episode data in the HDF5 are still valid successes following the environment's success criterion.
