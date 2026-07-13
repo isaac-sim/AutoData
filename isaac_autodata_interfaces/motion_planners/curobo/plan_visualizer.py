@@ -13,7 +13,6 @@ import atexit
 import numpy as np
 import os
 import signal
-import subprocess
 import threading
 import time
 import torch
@@ -48,32 +47,49 @@ if TYPE_CHECKING:  # For type hints only
 _GLOBAL_PLAN_VISUALIZERS: list["PlanVisualizer"] = []
 
 
-def _cleanup_all_plan_visualizers():
-    """Enhanced global cleanup function with better process killing."""
-    global _GLOBAL_PLAN_VISUALIZERS
+def _kill_owned_rerun_processes(owner_pid: int) -> int:
+    """Kill Rerun viewer processes that are descendants of ``owner_pid``.
 
-    if PSUTIL_AVAILABLE:
-        killed_count = 0
-        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-            # Check if it's a rerun process
-            if (proc.info["name"] and "rerun" in proc.info["name"].lower()) or (
-                proc.info["cmdline"] and any("rerun" in str(arg).lower() for arg in proc.info["cmdline"])
-            ):
+    Matching is restricted to the owner's process tree so that Rerun sessions
+    belonging to other processes on the machine are never touched.
+
+    Args:
+        owner_pid: PID whose descendant Rerun processes are killed.
+
+    Returns:
+        Number of processes killed.
+    """
+    if not PSUTIL_AVAILABLE:
+        return 0
+    try:
+        descendants = psutil.Process(owner_pid).children(recursive=True)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return 0
+    killed_count = 0
+    for proc in descendants:
+        try:
+            if "rerun" in proc.name().lower() or any("rerun" in str(arg).lower() for arg in proc.cmdline()):
                 proc.kill()
                 killed_count += 1
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return killed_count
 
-        print(f"Killed {killed_count} Rerun viewer processes on script exit")
-    else:
-        # Fallback to pkill
-        subprocess.run(["pkill", "-f", "rerun"], stderr=subprocess.DEVNULL, check=False)
-        print("Used pkill fallback to close Rerun processes")
 
-    # Also clean up individual instances
+def _cleanup_all_plan_visualizers():
+    """Close all registered visualizers and kill Rerun viewers spawned by this process."""
+    global _GLOBAL_PLAN_VISUALIZERS
+
+    # Close instances first so recordings are flushed and tracked viewer handles terminate.
     for visualizer in _GLOBAL_PLAN_VISUALIZERS[:]:
         if not visualizer._closed:
             visualizer.close()
-
     _GLOBAL_PLAN_VISUALIZERS.clear()
+
+    # Kill any stray viewers spawned by this process that outlived their handle.
+    killed_count = _kill_owned_rerun_processes(os.getpid())
+    if killed_count:
+        print(f"Killed {killed_count} leftover Rerun viewer processes on script exit")
 
 
 # Register global cleanup on module import
@@ -232,48 +248,10 @@ class PlanVisualizer:
         self._monitor_thread.start()
 
     def _kill_rerun_processes(self) -> None:
-        """Enhanced method to kill Rerun viewer processes using psutil."""
-        try:
-            if PSUTIL_AVAILABLE:
-                killed_count = 0
-                for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-                    try:
-                        # Check if it's a rerun process
-                        is_rerun = False
-
-                        # Check process name
-                        if proc.info["name"] and "rerun" in proc.info["name"].lower():
-                            is_rerun = True
-
-                        # Check command line arguments
-                        if proc.info["cmdline"] and any("rerun" in str(arg).lower() for arg in proc.info["cmdline"]):
-                            is_rerun = True
-
-                        if is_rerun:
-                            proc.kill()
-                            killed_count += 1
-                            if self.debug:
-                                print(f"Killed Rerun process {proc.info['pid']} ({proc.info['name']})")
-
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                        # Process already dead or inaccessible
-                        pass
-                    except Exception as e:
-                        if self.debug:
-                            print(f"Error killing process: {e}")
-
-                if self.debug:
-                    print(f"Killed {killed_count} Rerun processes using psutil")
-
-            else:
-                # Fallback to pkill if psutil not available
-                result = subprocess.run(["pkill", "-f", "rerun"], stderr=subprocess.DEVNULL, check=False)
-                if self.debug:
-                    print(f"Used pkill fallback (return code: {result.returncode})")
-
-        except Exception as e:
-            if self.debug:
-                print(f"Error killing rerun processes: {e}")
+        """Kill Rerun viewer processes spawned by the owning process."""
+        killed_count = _kill_owned_rerun_processes(self._parent_pid)
+        if self.debug and killed_count:
+            print(f"Killed {killed_count} Rerun viewer processes owned by PID {self._parent_pid}")
 
     @staticmethod
     def _cleanup_class_resources(recording_id: str, save_path: str | None, debug: bool) -> None:
@@ -293,20 +271,10 @@ class PlanVisualizer:
             if debug:
                 print(f"Saved Rerun recording to {save_path}")
 
-        # Enhanced process killing
-        if PSUTIL_AVAILABLE:
-            killed_count = 0
-            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-                if (proc.info["name"] and "rerun" in proc.info["name"].lower()) or (
-                    proc.info["cmdline"] and any("rerun" in str(arg).lower() for arg in proc.info["cmdline"])
-                ):
-                    proc.kill()
-                    killed_count += 1
-
-            if debug:
-                print(f"Killed {killed_count} Rerun processes during cleanup")
-        else:
-            subprocess.run(["pkill", "-f", "rerun"], stderr=subprocess.DEVNULL, check=False)
+        # Kill only viewers spawned by this process; other Rerun sessions are left alone.
+        killed_count = _kill_owned_rerun_processes(os.getpid())
+        if debug and killed_count:
+            print(f"Killed {killed_count} Rerun processes during cleanup")
 
         if debug:
             print("Cleanup completed")
