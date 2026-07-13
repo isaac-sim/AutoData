@@ -257,6 +257,48 @@ class Datastream:
             object_pose_matrix[obj_name] = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
         return object_pose_matrix
 
+    def get_subtask_term_signals(
+        self, env_ids: Sequence[int] | None = None, obs_group: str = "subtask_terms"
+    ) -> dict[str, torch.Tensor]:
+        """Read the current per-subtask termination signals from the env observation buffer.
+
+        For every non-empty termination-signal name declared by the task descriptor (across all
+        EEFs), reads the identically named boolean observation term from
+        ``env.obs_buf[obs_group]``. The env must therefore publish one observation term per
+        term-signal name in a non-concatenated group. Auto annotation samples this each replay
+        step to locate subtask boundaries without a human in the loop.
+
+        Args:
+            env_ids: Environments to read; ``None`` reads all.
+            obs_group: Observation-buffer group holding the per-subtask boolean terms.
+
+        Returns:
+            Mapping of term-signal name to a boolean tensor of shape ``(len(env_ids),)``.
+        """
+
+        index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
+        obs_buf = self.env.obs_buf
+        assert obs_group in obs_buf, (
+            f"Observation group {obs_group!r} not found in the env observation buffer. "
+            f"Available groups: {sorted(obs_buf.keys())}"
+        )
+        group = obs_buf[obs_group]
+        assert isinstance(group, dict), (
+            f"Observation group {obs_group!r} is concatenated into a single tensor. Per-name "
+            "signal reads require the group to set 'concatenate_terms = False'."
+        )
+        signals: dict[str, torch.Tensor] = {}
+        for eef_name in self.get_eef_names():
+            for signal_name in self.get_term_signal_names(eef_name):
+                if not signal_name:
+                    continue
+                assert signal_name in group, (
+                    f"Termination signal {signal_name!r} has no matching observation term in "
+                    f"group {obs_group!r}. Available terms: {sorted(group.keys())}"
+                )
+                signals[signal_name] = as_torch(group[signal_name])[index].reshape(-1).bool()
+        return signals
+
     def get_robot_root_pose(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
         """Get the robot articulation root pose in the env-relative frame.
 

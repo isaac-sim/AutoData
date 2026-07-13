@@ -163,4 +163,11 @@ if command -v xhost >/dev/null 2>&1; then
     xhost +local:docker >/dev/null 2>&1 || true
 fi
 
-docker run "${DOCKER_RUN_ARGS[@]}" --interactive --rm --tty "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" "${@}"
+# Only allocate a TTY when stdin is a terminal. CI has no TTY, and passing --tty
+# there fails with "cannot attach stdin to a TTY-enabled container".
+TTY_ARGS=()
+if [ -t 0 ]; then
+    TTY_ARGS+=("--tty")
+fi
+
+docker run "${DOCKER_RUN_ARGS[@]}" --interactive --rm "${TTY_ARGS[@]}" "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" "${@}"
