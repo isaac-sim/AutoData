@@ -443,6 +443,28 @@ class CuroboPlannerCfg:
         return config
 
     @classmethod
+    def from_profile(cls, profile_name: str) -> "CuroboPlannerCfg":
+        """Create configuration from a named planner profile.
+
+        Planner profiles decouple planner tuning from env ids: an environment profile names the
+        planner profile matching its scene (e.g. which objects are static collision geometry),
+        instead of :meth:`from_task_name` substring-matching the task name.
+
+        Args:
+            profile_name: Key into the planner-profile registry.
+
+        Returns:
+            CuroboPlannerCfg: Configuration for the specified profile
+        """
+        profiles = {
+            "franka": cls.franka_config,
+            "franka_stack_cube": cls.franka_stack_cube_config,
+            "franka_stack_cube_bin": cls.franka_stack_cube_bin_config,
+        }
+        assert profile_name in profiles, f"Unknown planner profile {profile_name!r}. Registered: {sorted(profiles)}"
+        return profiles[profile_name]()
+
+    @classmethod
     def from_task_name(cls, task_name: str) -> "CuroboPlannerCfg":
         """Create configuration from task name.
 

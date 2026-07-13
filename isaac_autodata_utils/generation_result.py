@@ -20,6 +20,7 @@ def write_generation_result(
     algorithm: str,
     requested_trials: int,
     stats: Mapping[str, int],
+    env_profile: Mapping[str, str | None] | None = None,
 ) -> None:
     """Atomically write the final outcome of a completed data-generation run.
 
@@ -28,6 +29,9 @@ def write_generation_result(
         algorithm: Name of the generation algorithm that ran.
         requested_trials: Number of trials or successful demos requested by the generation policy.
         stats: Final ``num_success``, ``num_failures``, and ``num_attempts`` counters.
+        env_profile: Environment-profile provenance (``name``, ``path``, ``planner``) when the run
+            overlaid a profile on the base task. The generated dataset records only the base env
+            id, so this is where the scene modifications are traceable from.
     """
     required_stats = ("num_success", "num_failures", "num_attempts")
     for stat_name in required_stats:
@@ -46,6 +50,8 @@ def write_generation_result(
         "num_failures": stats["num_failures"],
         "num_attempts": stats["num_attempts"],
     }
+    if env_profile is not None:
+        result["env_profile"] = dict(env_profile)
 
     file_descriptor, temporary_file_name = tempfile.mkstemp(
         prefix=f".{result_path.name}.", suffix=".tmp", dir=result_path.parent, text=True

@@ -13,6 +13,7 @@ Usage::
         --alg {mimicgen|dexmimicgen|skillgen} \\
         --task_descriptor <task_descriptor.yaml> \\
         --embodiment <embodiment.yaml> \\
+        --env_profile <environment_profile.yaml> \\
         --input_file <source.hdf5> \\
         --output_file <out.hdf5> \\
         --generation_num_trials <N> \\
@@ -61,6 +62,15 @@ parser.add_argument(
     required=True,
     help="Path to the embodiment YAML (defines the robot's pose ↔ action transforms).",
 )
+parser.add_argument(
+    "--env_profile",
+    type=str,
+    default=None,
+    help=(
+        "Optional environment profile YAML overlaid on the base task before env creation "
+        "(scene additions, reset randomization, motion-planner profile)."
+    ),
+)
 parser.add_argument("--generation_num_trials", type=int, default=None, help="Number of demos to generate.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
 parser.add_argument("--input_file", type=str, required=True, help="Source dataset HDF5 file.")
@@ -104,6 +114,7 @@ from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.env import (  # noqa: E402
+    EnvironmentProfile,
     env_loop,
     get_env_name_from_dataset,
     setup_env_config,
@@ -209,18 +220,23 @@ def setup_async_generation(
     }
 
 
-def _build_motion_planners(datastream, num_envs: int, env_name: str) -> dict:
+def _build_motion_planners(datastream, num_envs: int, env_name: str, planner_profile: str | None = None) -> dict:
     """Construct one cuRobo v1 motion planner per env_id satisfying the SkillGen interface.
 
     Planners read all world state (collision-geometry source, object poses, joint configuration)
     through the shared :class:`Datastream`, so they never touch the env/robot handles directly.
+    The planner config comes from ``planner_profile`` (named by the environment profile) when
+    given, else from task-name matching.
     """
     from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner
     from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
 
     planners: dict[int, CuroboPlanner] = {}
     for env_id in range(num_envs):
-        planner_config = CuroboPlannerCfg.from_task_name(env_name)
+        if planner_profile is not None:
+            planner_config = CuroboPlannerCfg.from_profile(planner_profile)
+        else:
+            planner_config = CuroboPlannerCfg.from_task_name(env_name)
         # Visualization is rerun-based; limit to env_id 0 to keep simulation responsive.
         if env_id != 0:
             planner_config.visualize_spheres = False
@@ -266,6 +282,10 @@ def main() -> None:
     alg_cls = REGISTERED_ALGORITHMS[args_cli.alg]
     generation_policy_params.use_skillgen = alg_cls.uses_subtask_start_signals
 
+    # The environment profile, when given, overlays scene/reset changes onto the base task and
+    # names the motion-planner profile tuned for the resulting scene.
+    env_profile = EnvironmentProfile.from_yaml(args_cli.env_profile) if args_cli.env_profile else None
+
     env_cfg, success_term = setup_env_config(
         env_name=env_name,
         output_dir=output_dir,
@@ -273,6 +293,7 @@ def main() -> None:
         num_envs=args_cli.num_envs,
         device=args_cli.device,
         generation_policy_params=generation_policy_params,
+        env_profile=env_profile,
     )
 
     env = gym.make(env_name, cfg=env_cfg).unwrapped
@@ -295,7 +316,12 @@ def main() -> None:
     motion_planners: dict | None = None
     alg_kwargs: dict = {}
     if args_cli.alg == "skillgen":
-        motion_planners = _build_motion_planners(datastream, args_cli.num_envs, env_name)
+        motion_planners = _build_motion_planners(
+            datastream,
+            args_cli.num_envs,
+            env_name,
+            planner_profile=env_profile.planner if env_profile else None,
+        )
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 
@@ -338,6 +364,11 @@ def main() -> None:
                 algorithm=args_cli.alg,
                 requested_trials=generation_policy_params.num_trials,
                 stats=async_components["stats"],
+                env_profile=(
+                    {"name": env_profile.name, "path": args_cli.env_profile, "planner": env_profile.planner}
+                    if env_profile
+                    else None
+                ),
             )
     finally:
         env.close()

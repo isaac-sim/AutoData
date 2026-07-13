@@ -21,6 +21,7 @@ class _TestPaths:
         self.generate_dataset_script = os.path.join(self.examples_dir, "generate_dataset.py")
         self.tasks_dir = os.path.join(self.examples_dir, "tasks")
         self.embodiments_dir = os.path.join(self.examples_dir, "embodiments")
+        self.environments_dir = os.path.join(self.examples_dir, "environments")
 
         self.python_path = sys.executable
 

@@ -10,6 +10,7 @@ python scripts/annotate_demos.py \
 --task <ENV_ID> \
 --task_descriptor <TASK_DESCRIPTOR_YAML> \
 --embodiment <EMBODIMENT_YAML> \
+--env_profile <ENVIRONMENT_PROFILE_YAML> \
 --input_file ./datasets/source.hdf5 \
 --output_file ./datasets/source_annotated.hdf5
 
@@ -56,6 +57,15 @@ parser.add_argument(
     type=str,
     required=True,
     help="Path to the embodiment YAML (defines the robot's pose <-> action transforms).",
+)
+parser.add_argument(
+    "--env_profile",
+    type=str,
+    default=None,
+    help=(
+        "Optional environment profile YAML overlaid on the base task before env creation. "
+        "Required to replay datasets that were generated with the same profile."
+    ),
 )
 parser.add_argument(
     "--input_file",
@@ -107,7 +117,12 @@ from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa:
 from isaac_autodata_core.pool import DataGenInfoPool  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
-from isaac_autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
+from isaac_autodata_interfaces.env import (  # noqa: E402
+    EnvironmentProfile,
+    get_env_name_from_dataset,
+    setup_env_config,
+    setup_output_paths,
+)
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
 is_paused = False
@@ -243,6 +258,8 @@ def main() -> int:
 
     output_dir, output_file_name = setup_output_paths(args_cli.output_file)
 
+    env_profile = EnvironmentProfile.from_yaml(args_cli.env_profile) if args_cli.env_profile else None
+
     # Build the env config for replay+recording
     env_cfg, success_term = setup_env_config(
         env_name=env_name,
@@ -252,6 +269,7 @@ def main() -> int:
         device=args_cli.device,
         generation_policy_params=generation_policy,
         recorder_cfg=AnnotationRecorderManagerCfg(),
+        env_profile=env_profile,
     )
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
     env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY

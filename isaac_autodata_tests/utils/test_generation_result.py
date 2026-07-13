@@ -30,3 +30,27 @@ def test_write_generation_result_writes_completed_stats_atomically(tmp_path):
         "requested_trials": 10,
     }
     assert not list(result_file.parent.glob(f".{result_file.name}.*.tmp"))
+
+
+def test_write_generation_result_records_env_profile_when_given(tmp_path):
+    result_file = tmp_path / "generation_result.json"
+
+    write_generation_result(
+        result_file=str(result_file),
+        algorithm="skillgen",
+        requested_trials=1,
+        stats={"num_success": 1, "num_failures": 0, "num_attempts": 1},
+        env_profile={
+            "name": "franka_bin_stack",
+            "path": "isaac_autodata_examples/environments/franka_bin_stack.yaml",
+            "planner": "franka_stack_cube_bin",
+        },
+    )
+
+    with result_file.open(encoding="utf-8") as result_handle:
+        result = json.load(result_handle)
+    assert result["env_profile"] == {
+        "name": "franka_bin_stack",
+        "path": "isaac_autodata_examples/environments/franka_bin_stack.yaml",
+        "planner": "franka_stack_cube_bin",
+    }
