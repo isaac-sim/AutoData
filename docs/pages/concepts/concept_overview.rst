@@ -54,7 +54,7 @@ the world through:
 
 Writes deliberately stay out: controller-side operations — stepping the env, resetting,
 driving the recorder — go through the ``get_env()`` escape hatch, keeping the read surface
-honest and the mutation points easy to audit.
+honest and the mutation points easy to audit. See :doc:`datastream` for the full surface.
 
 DataGenInfoPool
 ^^^^^^^^^^^^^^^
@@ -81,6 +81,7 @@ Generation is **asynchronous**: one generator task per environment produces acti
 queue, and a single synchronous ``env_loop`` drains one action per env, steps the simulator
 in batch, and services reset requests. This keeps the simulator stepping in lockstep while
 each environment's trial logic runs independently — including retries after failed trials.
+See :doc:`data_generator` for the generator's interface and the algorithm plug-in surface.
 
 Data Flow
 ---------

@@ -33,6 +33,30 @@ The ``type:`` field selects the adapter class from ``EMBODIMENT_TYPE_REGISTRY``:
 
 New morphology + controller combinations register a new adapter class in the registry.
 
+What the Adapter Does at Runtime
+--------------------------------
+
+Every adapter is bound to the live environment once (``bind_env()``, done automatically when
+the :doc:`Datastream <datastream>` is built) and then serves five queries. The first four are
+the generator's entire view of the robot:
+
+* ``get_eef_poses()`` — read each end-effector's current pose from the configured
+  observation keys (``pose_obs_keys``).
+* ``target_eef_pose_to_action()`` — the *forward* direction: turn per-EEF target poses plus
+  the passthrough channels into one action for ``env.step()``, optionally adding action
+  noise.
+* ``action_to_target_eef_pose()`` — the *inverse* direction: recover the target poses encoded
+  in a recorded action. This is how the source demos' controller targets are extracted.
+* ``actions_to_passthrough_actions()`` — pull the non-pose channels (gripper or hand joints)
+  out of recorded actions so the generator can replay them verbatim.
+
+**Passthrough actions** are the action dimensions that carry no pose information — gripper
+actuation, hand joints — and are copied from the source segment rather than recomputed.
+
+The adapter also owns the robot's raw joint state (``get_joint_positions()``,
+``get_joint_names()``), which motion planners read as their planning start state. Nothing
+else in the framework touches the robot articulation directly.
+
 Single-Arm Example (Franka, relative IK)
 ----------------------------------------
 
@@ -108,7 +132,8 @@ Writing a New Embodiment
 ------------------------
 
 1. **Identify the observations.** Find the observation keys holding each end-effector's
-   position and quaternion (``pose_obs_keys``).
+   position and quaternion (``pose_obs_keys``). The quaternion observation must be
+   (w, x, y, z) ordered.
 2. **Map the action vector.** Work out the pose slice(s), gripper dims/indices, and whether
    pose actions are relative or absolute — this picks the adapter ``type``.
 3. **Determine ``eef_offset``.** Compare the env's reported EEF frame with the frame your

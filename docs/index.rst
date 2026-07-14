@@ -48,8 +48,10 @@ Four pieces cooperate to generate data:
   environment's action vector. See :doc:`pages/concepts/embodiments`.
 * **Datastream** — the single read interface the generator uses to observe the world: object
   poses, end-effector poses, subtask signals, and the pool of annotated source demonstrations.
+  See :doc:`pages/concepts/datastream`.
 * **Generation algorithms** — MimicGen (single arm), DexMimicGen (two arms with coordination
   constraints), and SkillGen (motion-planned transit). See :doc:`pages/concepts/algorithms`.
+  All three plug into one data generator — see :doc:`pages/concepts/data_generator`.
 
 .. todo::
 
@@ -113,7 +115,9 @@ TABLE OF CONTENTS
    pages/concepts/concept_overview
    pages/concepts/task_descriptors
    pages/concepts/embodiments
+   pages/concepts/datastream
    pages/concepts/algorithms
+   pages/concepts/data_generator
 
 .. toctree::
    :maxdepth: 1

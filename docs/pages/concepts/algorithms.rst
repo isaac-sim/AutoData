@@ -1,8 +1,10 @@
 Generation Algorithms
 =====================
 
-Isaac AutoData ships three generation algorithms, selected with ``--alg`` on the CLI and
-matched by the task descriptor's ``algo`` field. All three share the same skeleton — split
+Isaac AutoData ships three generation algorithms, selected with ``--alg`` on the CLI (the
+task descriptor's ``algo`` field independently selects which per-subtask ``algo_params``
+schema the descriptor is parsed with — keep the two consistent). All three plug into the
+:doc:`data generator <data_generator>` and share the same skeleton — split
 source demos into subtask segments, select a segment per subtask, transform it to the current
 scene, execute, and keep successful trials — and differ in how segments are bridged and how
 multiple arms are handled.
