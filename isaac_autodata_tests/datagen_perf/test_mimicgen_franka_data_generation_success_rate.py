@@ -34,7 +34,7 @@ def test_mimicgen_franka_data_generation_success_rate():
         args = [
             TestPaths.python_path,
             TestPaths.generate_dataset_script,
-            "--task",
+            "--env_name",
             "Isaac-Stack-Cube-Franka-IK-Rel-v0",
             "--alg",
             "mimicgen",
