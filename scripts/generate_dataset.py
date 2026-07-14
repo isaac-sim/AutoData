@@ -8,8 +8,8 @@
 
 Usage::
 
-    python isaac_autodata_examples/generate_dataset.py \\
-        --task <task_name> \\
+    python scripts/generate_dataset.py \\
+        --env_name <env_id> \\
         --alg {mimicgen|dexmimicgen|skillgen} \\
         --task_descriptor <task_descriptor.yaml> \\
         --embodiment <embodiment.yaml> \\
@@ -41,7 +41,12 @@ from isaaclab.app import AppLauncher
 _ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument(
+    "--env_name",
+    type=str,
+    default=None,
+    help="Environment name. Overrides the env name recorded in the source dataset.",
+)
 parser.add_argument(
     "--alg",
     type=str,
@@ -80,6 +85,11 @@ parser.add_argument(
     "--pause_subtask",
     action="store_true",
     help="Pause after every subtask for interactive debugging.",
+)
+parser.add_argument(
+    "--visualize_plan",
+    action="store_true",
+    help="Visualize SkillGen motion plans in a Rerun viewer (env 0 only; requires the rerun package).",
 )
 
 AppLauncher.add_app_launcher_args(parser)
@@ -209,11 +219,12 @@ def setup_async_generation(
     }
 
 
-def _build_motion_planners(datastream, num_envs: int, env_name: str) -> dict:
+def _build_motion_planners(datastream, num_envs: int, env_name: str, *, visualize_plan: bool = False) -> dict:
     """Construct one cuRobo v1 motion planner per env_id satisfying the SkillGen interface.
 
     Planners read all world state (collision-geometry source, object poses, joint configuration)
     through the shared :class:`Datastream`, so they never touch the env/robot handles directly.
+    Rerun plan visualization is opt-in via ``visualize_plan`` and limited to env 0.
     """
     from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner
     from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
@@ -222,7 +233,9 @@ def _build_motion_planners(datastream, num_envs: int, env_name: str) -> dict:
     for env_id in range(num_envs):
         planner_config = CuroboPlannerCfg.from_task_name(env_name)
         # Visualization is rerun-based; limit to env_id 0 to keep simulation responsive.
-        if env_id != 0:
+        if env_id == 0:
+            planner_config.visualize_plan = planner_config.visualize_plan or visualize_plan
+        else:
             planner_config.visualize_spheres = False
             planner_config.visualize_plan = False
         planners[env_id] = CuroboPlanner(
@@ -246,11 +259,8 @@ def _close_motion_planners(planners: dict | None) -> None:
 
 def main() -> None:
     output_dir, output_file_name = setup_output_paths(args_cli.output_file)
-    # The task name, if provided, overrides the environment name recorded in the dataset.
-    if args_cli.task:
-        env_name = args_cli.task.split(":")[-1]
-    else:
-        env_name = get_env_name_from_dataset(args_cli.input_file)
+    # The env name (CLI override) falls back to the name recorded in the source dataset.
+    env_name = args_cli.env_name.split(":")[-1] if args_cli.env_name else get_env_name_from_dataset(args_cli.input_file)
 
     # The task descriptor's GenerationPolicy is the source for generation policy parameters.
     task_descriptor = TaskDescriptor.from_yaml(args_cli.task_descriptor)
@@ -295,7 +305,9 @@ def main() -> None:
     motion_planners: dict | None = None
     alg_kwargs: dict = {}
     if args_cli.alg == "skillgen":
-        motion_planners = _build_motion_planners(datastream, args_cli.num_envs, env_name)
+        motion_planners = _build_motion_planners(
+            datastream, args_cli.num_envs, env_name, visualize_plan=args_cli.visualize_plan
+        )
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 

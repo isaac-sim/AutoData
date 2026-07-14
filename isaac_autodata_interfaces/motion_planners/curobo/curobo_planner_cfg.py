@@ -432,8 +432,8 @@ class CuroboPlannerCfg:
         """Create configuration for Franka stacking a normal cube."""
         config = cls.franka_config()
         config.static_objects = ["table"]
-        config.visualize_plan = True
-        config.debug_planner = True
+        config.visualize_plan = False
+        config.debug_planner = False
         config.motion_noise_scale = 0.02
         config.collision_activation_distance = 0.01
         config.approach_distance = 0.05
