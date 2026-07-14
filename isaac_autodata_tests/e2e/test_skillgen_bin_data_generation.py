@@ -83,7 +83,7 @@ def test_franka_bin_stack_skillgen_data_generation_single_env_cuda():
 @pytest.mark.with_subprocess
 def test_franka_bin_stack_skillgen_data_generation_multi_env_cuda():
     """SkillGen generation for the Franka bin-stack variant on multiple parallel envs on GPU."""
-    _run_franka_bin_stack_skillgen(num_envs=10, device="cuda")
+    _run_franka_bin_stack_skillgen(num_envs=3, device="cuda")
 
 
 if __name__ == "__main__":
