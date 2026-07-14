@@ -63,11 +63,12 @@ and marking boundaries with the keyboard.
 .. code-block:: bash
 
    python scripts/annotate_demos.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
-       --input_file ./datasets/dataset_franka.hdf5 \
-       --output_file ./datasets/dataset_franka_annotated.hdf5
+      --viz kit \
+      --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+      --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
+      --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+      --input_file ./datasets/dataset_franka.hdf5 \
+      --output_file ./datasets/dataset_franka_annotated.hdf5
 
 Each episode replays in the viewer and is paused at the start. Control playback and mark boundaries
 with the keyboard:

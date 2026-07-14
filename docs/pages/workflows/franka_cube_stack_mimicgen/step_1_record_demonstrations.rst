@@ -56,10 +56,11 @@ Isaac Lab supports the **SpaceMouse Wireless** and **SpaceMouse Compact** from
 .. code-block:: bash
 
    python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
-       --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
-       --teleop_device spacemouse \
-       --dataset_file ./datasets/dataset_franka.hdf5 \
-       --num_demos 10
+      --viz kit \
+      --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+      --teleop_device spacemouse \
+      --dataset_file ./datasets/dataset_franka.hdf5 \
+      --num_demos 10
 
 The SpaceMouse controls the arm as follows:
 
@@ -113,10 +114,11 @@ A keyboard can be used as an alternative if no SpaceMouse is available. No extra
 .. code-block:: bash
 
    python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
-       --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
-       --teleop_device keyboard \
-       --dataset_file ./datasets/dataset_franka.hdf5 \
-       --num_demos 10
+      --viz kit \
+      --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+      --teleop_device keyboard \
+      --dataset_file ./datasets/dataset_franka.hdf5 \
+      --num_demos 10
 
 .. list-table::
    :widths: 40 60
