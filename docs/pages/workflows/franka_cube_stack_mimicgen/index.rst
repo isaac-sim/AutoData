@@ -15,7 +15,7 @@ annotating their subtask boundaries, generating a large dataset with MimicGen, a
 Task Overview
 -------------
 
-**Enviornment name:** ``Isaac-Stack-Cube-Franka-IK-Rel-v0``
+**Environment name:** ``Isaac-Stack-Cube-Franka-IK-Rel-v0``
 
 **Task Description:** A Franka arm stacks three cubes on a table — red on blue, then green
 on red.
@@ -38,7 +38,7 @@ on red.
      - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/franka_ik_rel.yaml>`
    * - **Subtasks**
      - Grasp red cube (``grasp_1``) → stack red on blue (``stack_1``) → grasp green cube
-       (``grasp_2``) → place green on red (end of trajectory)
+       (``grasp_2``) → place green on red (``end of trajectory``)
    * - **Pre-annotated source dataset**
      - ``datasets/annotated_datasets/dataset_annotated_franka.hdf5``
 

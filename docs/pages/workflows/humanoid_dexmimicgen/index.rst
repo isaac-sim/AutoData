@@ -1,103 +1,149 @@
 Humanoid Pick & Place with DexMimicGen
 ======================================
 
-This example demonstrates multi-end-effector data generation with **DexMimicGen** for humanoid
-robots — the GR1T2 and the G1 — performing a pick-and-place task. DexMimicGen extends MimicGen
-with per-arm subtask sequences and optional cross-arm coordination constraints.
+This example demonstrates the Isaac AutoData workflow using DexMimicGen to generate a
+synthetic pick-and-place dataset for a bimanual humanoid robot. It covers recording source
+demonstrations by Apple Vision Pro teleoperation, annotating their per-arm subtask boundaries,
+generating a large dataset with DexMimicGen, and validating the result.
 
-.. todo::
+This tutorial supports two humanoids through the same workflow — the **Fourier GR-1** and the
+**Unitree G1** (shown below). Throughout this tutorial, use the tabs to switch every
+command on the page to the desired robot.
 
-   Add a task GIF (GR1/G1 pick-and-place).
+.. list-table::
+   :widths: 50 50
+   :header-rows: 0
+
+   * - .. figure:: ../../../images/gr1_pick_place_static.png
+          :width: 100%
+          :align: center
+          :alt: GR-1 humanoid performing the pick-and-place task
+
+          The GR-1 pick-and-place task.
+     - .. figure:: ../../../images/g1_pick_place_static.png
+          :width: 100%
+          :align: center
+          :alt: G1 humanoid performing the pick-and-place task
+
+          The G1 pick-and-place task.
+
 
 Task Overview
 -------------
 
-.. list-table::
-   :widths: 30 70
-   :header-rows: 1
+A humanoid grasps a steering wheel with its left hand, transfers it to its right hand, and places it
+into a bin. Both arms are driven together (two end-effectors), which is
+what makes this a DexMimicGen rather than a MimicGen task.
 
-   * - Property
-     - Value
-   * - **Algorithm**
-     - DexMimicGen (two end-effectors)
-   * - **Task IDs**
-     - ``Isaac-PickPlace-GR1T2-Abs-v0`` (GR1),
-       ``Isaac-PickPlace-Locomanipulation-G1-Abs-v0`` (G1)
-   * - **Embodiments**
-     - Whole-body IK with absolute-pose actions and 11-DOF dexterous hands per arm
-   * - **Task descriptors**
-     - :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/gr1_pick_place.yaml>`,
-       :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/g1_pick_place.yaml>`
-   * - **Embodiment configs**
-     - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/gr1_ik_abs.yaml>`,
-       :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/g1_ik_abs.yaml>`
-   * - **Pre-annotated source datasets**
-     - ``isaac_autodata_tests/test_data/annotated_dataset_gr1_pick_place_dexmimicgen.hdf5``,
-       ``isaac_autodata_tests/test_data/annotated_dataset_g1_pick_place_dexmimicgen.hdf5``
+.. tabs::
 
-In the GR1 task, the right arm has two subtasks — approach and grasp the object
-(``idle_right`` termination signal), then transport and place it (end of trajectory) — while
-the left arm has a single full-trajectory subtask providing support motion. Segments are
-selected and transformed **per arm**.
+   .. group-tab:: GR-1
 
-Generate a Dataset
-------------------
+      .. list-table::
+         :widths: 30 70
+         :header-rows: 1
 
-Both humanoids use the same command shape; only the task id, descriptor, embodiment, and
-source dataset change.
+         * - Property
+           - Value
+         * - **Algorithm**
+           - DexMimicGen (two end-effectors)
+         * - **Environment name**
+           - ``Isaac-PickPlace-GR1T2-Abs-v0``
+         * - **Embodiment**
+           - Upper-body IK with absolute-pose actions and dexterous hands per arm
+         * - **Task descriptor**
+           - :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/gr1_pick_place.yaml>`
+         * - **Embodiment config**
+           - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/gr1_ik_abs.yaml>`
+         * - **Subtasks**
+           - Right arm: idle then grasp (``idle_right``) → transport & place (``end of trajectory``).
+             Left arm: grasp and transport (``end of trajectory``).
+         * - **Pre-annotated source dataset**
+           - ``isaac_autodata_tests/test_data/annotated_dataset_gr1_pick_place_dexmimicgen.hdf5``
 
-**GR1:**
+   .. group-tab:: G1
 
-.. code-block:: bash
+      .. list-table::
+         :widths: 30 70
+         :header-rows: 1
 
-   python isaac_autodata_examples/generate_dataset.py \
-       --task Isaac-PickPlace-GR1T2-Abs-v0 \
-       --alg dexmimicgen \
-       --task_descriptor isaac_autodata_examples/tasks/gr1_pick_place.yaml \
-       --embodiment isaac_autodata_examples/embodiments/gr1_ik_abs.yaml \
-       --input_file isaac_autodata_tests/test_data/annotated_dataset_gr1_pick_place_dexmimicgen.hdf5 \
-       --output_file datasets/generated_gr1_pick_place.hdf5 \
-       --generation_num_trials 10 \
-       --num_envs 1 \
-       --viz none
+         * - Property
+           - Value
+         * - **Algorithm**
+           - DexMimicGen (two end-effectors)
+         * - **Environment name**
+           - ``Isaac-PickPlace-Locomanipulation-G1-Abs-v0``
+         * - **Embodiment**
+           - Upper-body IK with absolute-pose actions and dexterous hands per arm. Lower body balancing policy.
+         * - **Task descriptor**
+           - :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/g1_pick_place.yaml>`
+         * - **Embodiment config**
+           - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/g1_ik_abs.yaml>`
+         * - **Subtasks**
+           - Right arm: idle then grasp (``idle_right``) → transport & place (``end of trajectory``).
+             Left arm: grasp and transport (``end of trajectory``).
+         * - **Pre-annotated source dataset**
+           - ``isaac_autodata_tests/test_data/annotated_dataset_g1_pick_place_dexmimicgen.hdf5``
 
-**G1:**
 
-.. code-block:: bash
+Why Multi-End-Effector Generation Differs
+-----------------------------------------
 
-   python isaac_autodata_examples/generate_dataset.py \
-       --task Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
-       --alg dexmimicgen \
-       --task_descriptor isaac_autodata_examples/tasks/g1_pick_place.yaml \
-       --embodiment isaac_autodata_examples/embodiments/g1_ik_abs.yaml \
-       --input_file isaac_autodata_tests/test_data/annotated_dataset_g1_pick_place_dexmimicgen.hdf5 \
-       --output_file datasets/generated_g1_pick_place.hdf5 \
-       --generation_num_trials 10 \
-       --num_envs 1 \
-       --viz none
-
-Annotating Multi-EEF Demonstrations
------------------------------------
-
-Annotation works exactly as in the :doc:`single-arm workflow
-<../franka_cube_stack_mimicgen/step_2_annotate_demonstrations>`, except the episode replays
-**once per end-effector**: the tool announces which arm's signals are being marked, and you
-mark that arm's boundaries only. Arms whose subtask list needs no marks (like the GR1's left
-arm, whose single subtask spans the whole trajectory) are skipped automatically.
-
-What Makes Multi-EEF Generation Different?
-------------------------------------------
+Follow the :doc:`Franka cube-stacking workflow <../franka_cube_stack_mimicgen/index>` for an
+overview of the single arm (MimicGen) case. This section highlights what changes for the
+humanoid (DexMimicGen) case.
 
 * **Per-arm subtask sequences.** Each end-effector declares its own subtask list in the task
   descriptor (``subtasks.right``, ``subtasks.left``), each with its own reference objects,
   boundary signals, and generation knobs. Segment selection and transformation happen
-  independently per arm; by default all arms reuse the demo picked by the first arm to
-  choose (``generation_policy.select_src_per_arm: false``), keeping the arms' motions
-  mutually consistent.
-* **Coordination constraints.** For tasks where arms must interact — handovers, bimanual
-  lifts — the descriptor's ``constraints`` section synchronizes specific subtask pairs across
-  arms at runtime (``sequential`` ordering or ``coordination`` with a configurable scheme).
-  The pick-and-place examples here need none. See :doc:`../../concepts/task_descriptors`.
-* **Absolute-pose embodiments.** The humanoid adapters expose one pose slice and one set of
-  hand-joint indices per arm (see :doc:`../../concepts/embodiments`); the action vector is
+  independently per arm; by default all arms reuse the demo picked by the first arm to choose
+  (``generation_policy.select_src_per_arm: false``), keeping the arms' motions mutually
+  consistent.
+* **Coordination constraints.** For tasks where the arms must interact (handovers, bimanual
+  lifts) the task descriptor's ``constraints`` section synchronizes specific subtask pairs across
+  arms at runtime. The pick-and-place examples here need none. See
+  :doc:`../../concepts/task_descriptors`.
+* **Absolute-pose embodiments.** The humanoid embodiment adapters expose one pose slice and one set of
+  hand-joint indices per arm (see :doc:`../../concepts/embodiments`). The action vector is
   reassembled from per-arm targets each step.
+
+
+Workflow
+--------
+
+The tutorial covers the pipeline to go from a handful of human demonstrations to a large
+synthetically generated dataset ready for policy training. You can follow the whole pipeline, or
+skip directly to :doc:`step_3_generate_dataset` using the pre-annotated dataset that ships with the repository.
+
+
+Prerequisites
+^^^^^^^^^^^^^
+
+Start the dev container (see :doc:`../../quickstart/installation`):
+
+:docker_run_default:
+
+Recording humanoid demonstrations additionally requires an **Apple Vision Pro** and the CloudXR
+runtime. :doc:`step_1_record_demonstrations` covers the setup and links the Isaac Lab teleop
+guides. If you don't have an Apple Vision Pro, skip to :doc:`step_3_generate_dataset` and use the
+pre-annotated source dataset.
+
+
+Workflow Steps
+^^^^^^^^^^^^^^
+
+Follow the following steps to complete the workflow:
+
+- :doc:`step_1_record_demonstrations`
+- :doc:`step_2_annotate_demonstrations`
+- :doc:`step_3_generate_dataset`
+- :doc:`step_4_validate_dataset`
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   step_1_record_demonstrations
+   step_2_annotate_demonstrations
+   step_3_generate_dataset
+   step_4_validate_dataset

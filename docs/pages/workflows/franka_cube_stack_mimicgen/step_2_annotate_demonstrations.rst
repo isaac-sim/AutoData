@@ -5,13 +5,13 @@ Before Isaac AutoData generation, each source demonstration must be annotated wi
 signals**: the action indices where one subtask ends and the next begins. The subtasks and
 their termination signal names are declared by the task descriptor (see
 :doc:`../../concepts/task_descriptors`). For this task, the subtasks are ``grasp_1``, ``stack_1``, and
-``grasp_2`` (the final subtask ends with the trajectory and needs no explict signal).
+``grasp_2`` (the final subtask ends with the trajectory and needs no explicit signal).
 
 Isaac AutoData supports two annotation modes:
 
 * **Manual** — replay each episode in the simulator viewer and mark boundaries with the keyboard.
 * **Automatic** (``--auto``) — sample the environment's boolean subtask-term observations
-  during replay. each signal's first rising edge becomes the boundary. Runs headless. Requires 
+  during replay. each signal's first rising edge becomes the boundary. Runs headless. Requires
   the environment to publish per-subtask boolean observation terms.
 
 Automatic annotation is recommended for the Franka cube stacking task as the environment supports it.
@@ -35,7 +35,7 @@ Automatic Annotation (Recommended)
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
        --input_file ./datasets/dataset_franka.hdf5 \
        --output_file ./datasets/dataset_franka_annotated.hdf5 \
-       --auto 
+       --auto
 
 Each replay step samples the observation terms named by the task descriptor's
 ``subtask_term_signal`` entries (a signal's first rising edge becomes the subtask boundary).
@@ -51,7 +51,7 @@ and marking boundaries with the keyboard.
 
 .. note::
 
-  Manual annotation is not required for this workflow if 
+  Manual annotation is not required for this workflow if
   automatic annotation is used.
 
 **Start the dev container:**

@@ -46,7 +46,7 @@ From ``/workspaces/isaac_autodata`` inside the container, run:
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
        --input_file TBD.hdf5 \
        --output_file datasets/generated_dataset_franka_quickstart.hdf5 \
-       
+
 
 While it runs, the console reports the number of source episodes loaded into the pool and a
 running tally after every attempt to generate a new demonstration:

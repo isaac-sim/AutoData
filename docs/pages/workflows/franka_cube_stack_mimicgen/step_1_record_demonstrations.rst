@@ -40,9 +40,9 @@ Isaac Lab supports the **SpaceMouse Wireless** and **SpaceMouse Compact** from
           | grep -oE 'hidraw[0-9]+' \
           | xargs -r -I{} sudo chmod 666 /dev/{}
 
-.. note ::
+.. note::
 
-   If the command above grants access to nothing, the device name may differ. Find the node manually by listing all 
+   If the command above grants access to nothing, the device name may differ. Find the node manually by listing all
    available hidraw nodes with ``ls -l /dev/hidraw*``. Inspect each node's device name by running
    ``cat /sys/class/hidraw/hidraw<N>/device/uevent`` (for each ``<N>`` that was listed).
    Then ``sudo chmod 666 /dev/hidrawN`` on the one whose ``HID_NAME`` is the SpaceMouse.
@@ -94,7 +94,7 @@ Tips for demonstrations that generate (and train) well:
 * **Take a direct path.** Move straight toward the goal instead of following axes.
 * **Don't have extended pauses.** Smooth, continuous motion is easier to learn than unexplained stops.
 
-Collect 10 succcessful demonstrations of the cube stacking task. The recording script will
+Collect 10 successful demonstrations of the cube stacking task. The recording script will
 automatically shutdown after all 10 are recorded.
 
 .. _franka-record-keyboard:
