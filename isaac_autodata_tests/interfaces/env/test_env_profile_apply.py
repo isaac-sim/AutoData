@@ -84,7 +84,7 @@ def test_apply_rejects_base_env_mismatch():
 def test_apply_rejects_removing_unknown_event_term():
     env_cfg = _parse_base_cfg()
     profile = _load_bin_profile()
-    profile.reset_events.remove = ["no_such_term"]
+    profile.events.remove = ["no_such_term"]
     with pytest.raises(AssertionError, match="Cannot remove event term"):
         apply_env_profile(env_cfg, profile, BASE_ENV)
 
@@ -92,7 +92,7 @@ def test_apply_rejects_removing_unknown_event_term():
 def test_apply_rejects_adding_colliding_scene_asset():
     env_cfg = _parse_base_cfg()
     profile = _load_bin_profile()
-    profile.scene.rigid_objects["cube_1"] = copy.deepcopy(profile.scene.rigid_objects["blue_sorting_bin"])
+    profile.scene.rigid_objects.add["cube_1"] = copy.deepcopy(profile.scene.rigid_objects.add["blue_sorting_bin"])
     with pytest.raises(AssertionError, match="already defines it"):
         apply_env_profile(env_cfg, profile, BASE_ENV)
 
@@ -100,16 +100,20 @@ def test_apply_rejects_adding_colliding_scene_asset():
 def test_apply_rejects_event_params_referencing_unknown_asset():
     env_cfg = _parse_base_cfg()
     profile = _load_bin_profile()
-    profile.reset_events.add["reset_cube_pose"].params["asset_cfgs"] = ["cube_2", "no_such_asset"]
+    profile.events.add["reset_cube_pose"].params["asset_cfgs"] = ["cube_2", "no_such_asset"]
     with pytest.raises(AssertionError, match="no_such_asset"):
         apply_env_profile(env_cfg, profile, BASE_ENV)
 
 
-def test_apply_rejects_patching_unknown_asset_properties():
+def test_apply_rejects_overriding_unknown_scene_asset():
+    from isaac_autodata_interfaces.env.env_profile import RigidObjectOverrideSpec
+
     env_cfg = _parse_base_cfg()
     profile = _load_bin_profile()
-    profile.scene.rigid_body_properties["no_such_asset"] = {"solver_position_iteration_count": 40}
-    with pytest.raises(AssertionError, match="no scene asset"):
+    profile.scene.rigid_objects.override["no_such_asset"] = RigidObjectOverrideSpec(
+        rigid_props={"solver_position_iteration_count": 40}
+    )
+    with pytest.raises(AssertionError, match="Cannot override scene asset"):
         apply_env_profile(env_cfg, profile, BASE_ENV)
 
 
@@ -119,7 +123,7 @@ def test_apply_override_merges_existing_term_params():
     profile = EnvironmentProfile.from_dict({
         "name": "wide",
         "base_env": BASE_ENV,
-        "reset_events": {
+        "events": {
             "override": {"randomize_cube_positions": {"params": {"pose_range": {**original_range, "y": [-0.23, 0.23]}}}}
         },
     })

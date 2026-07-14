@@ -17,19 +17,20 @@ planner: franka_stack_cube_bin
 
 scene:
   rigid_objects:
-    blue_sorting_bin:
-      prim_path: "{ENV_REGEX_NS}/BlueSortingBin"
-      usd_path: "{ISAACLAB_NUCLEUS_DIR}/Mimic/nut_pour_task/nut_pour_assets/sorting_bin_blue.usd"
-      position: [0.4, 0.0, 0.0203]
-      rotation: [0.0, 0.0, 0.0, 1.0]  # identity (x, y, z, w)
-      scale: [1.1, 1.6, 3.3]
-  # Stiffer contact solving for cubes settling against the bin walls (base task uses 16).
-  rigid_body_properties:
-    cube_1: {solver_position_iteration_count: 40}
-    cube_2: {solver_position_iteration_count: 40}
-    cube_3: {solver_position_iteration_count: 40}
+    add:
+      blue_sorting_bin:
+        prim_path: "{ENV_REGEX_NS}/BlueSortingBin"
+        usd_path: "{ISAACLAB_NUCLEUS_DIR}/Mimic/nut_pour_task/nut_pour_assets/sorting_bin_blue.usd"
+        position: [0.4, 0.0, 0.0203]
+        rotation: [0.0, 0.0, 0.0, 1.0]  # identity (x, y, z, w)
+        scale: [1.1, 1.6, 3.3]
+    # Stiffer contact solving for cubes settling against the bin walls (base task uses 16).
+    override:
+      cube_1: {rigid_props: {solver_position_iteration_count: 40}}
+      cube_2: {rigid_props: {solver_position_iteration_count: 40}}
+      cube_3: {rigid_props: {solver_position_iteration_count: 40}}
 
-reset_events:
+events:
   remove: [randomize_cube_positions]
   add:
     # Bin and cube_1 (the stack base) are pinned at the table center; cube_2/cube_3 randomize

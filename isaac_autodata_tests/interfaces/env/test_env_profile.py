@@ -30,18 +30,20 @@ def _full_valid() -> dict:
         "planner": "franka_stack_cube_bin",
         "scene": {
             "rigid_objects": {
-                "bin": {
-                    "prim_path": "{ENV_REGEX_NS}/Bin",
-                    "usd_path": "{ISAACLAB_NUCLEUS_DIR}/bin.usd",
-                    "position": [0.4, 0.0, 0.02],
-                    "rotation": [0.0, 0.0, 0.0, 1.0],
-                    "scale": [1.1, 1.6, 3.3],
-                    "rigid_props": {"solver_position_iteration_count": 40},
-                }
+                "add": {
+                    "bin": {
+                        "prim_path": "{ENV_REGEX_NS}/Bin",
+                        "usd_path": "{ISAACLAB_NUCLEUS_DIR}/bin.usd",
+                        "position": [0.4, 0.0, 0.02],
+                        "rotation": [0.0, 0.0, 0.0, 1.0],
+                        "scale": [1.1, 1.6, 3.3],
+                        "rigid_props": {"solver_position_iteration_count": 40},
+                    }
+                },
+                "override": {"cube_1": {"rigid_props": {"solver_position_iteration_count": 40}}},
             },
-            "rigid_body_properties": {"cube_1": {"solver_position_iteration_count": 40}},
         },
-        "reset_events": {
+        "events": {
             "remove": ["randomize_cube_positions"],
             "override": {"init_franka_arm_pose": {"params": {"default_pose": [0.0]}}},
             "add": {
@@ -88,51 +90,72 @@ def test_validate_unknown_scene_key_fails():
         validate_profile_dict(data)
 
 
-def test_validate_rigid_object_missing_required_keys_fails():
+def test_validate_unknown_rigid_objects_key_fails():
     data = _minimal_valid()
-    data["scene"] = {"rigid_objects": {"bin": {"prim_path": "{ENV_REGEX_NS}/Bin"}}}
+    data["scene"] = {"rigid_objects": {"remove": []}}
+    with pytest.raises(AssertionError, match="'scene.rigid_objects' has unknown keys"):
+        validate_profile_dict(data)
+
+
+def test_validate_added_rigid_object_missing_required_keys_fails():
+    data = _minimal_valid()
+    data["scene"] = {"rigid_objects": {"add": {"bin": {"prim_path": "{ENV_REGEX_NS}/Bin"}}}}
     with pytest.raises(AssertionError, match="missing required keys"):
         validate_profile_dict(data)
 
 
-def test_validate_rigid_object_unknown_key_fails():
+def test_validate_added_rigid_object_unknown_key_fails():
     data = _full_valid()
-    data["scene"]["rigid_objects"]["bin"]["pose"] = [0, 0, 0]
+    data["scene"]["rigid_objects"]["add"]["bin"]["pose"] = [0, 0, 0]
     with pytest.raises(AssertionError, match="has unknown keys"):
         validate_profile_dict(data)
 
 
-def test_validate_unknown_reset_events_key_fails():
+def test_validate_rigid_object_override_unknown_key_fails():
+    data = _full_valid()
+    data["scene"]["rigid_objects"]["override"]["cube_1"]["prim_path"] = "{ENV_REGEX_NS}/Cube_1"
+    with pytest.raises(AssertionError, match="has unknown keys"):
+        validate_profile_dict(data)
+
+
+def test_validate_rigid_object_override_requires_rigid_props():
+    data = _full_valid()
+    data["scene"]["rigid_objects"]["override"]["cube_1"] = {}
+    with pytest.raises(AssertionError, match="non-empty 'rigid_props'"):
+        validate_profile_dict(data)
+
+
+def test_validate_unknown_events_key_fails():
     data = _minimal_valid()
-    data["reset_events"] = {"delete": []}
-    with pytest.raises(AssertionError, match="'reset_events' has unknown keys"):
+    data["events"] = {"delete": []}
+    with pytest.raises(AssertionError, match="'events' has unknown keys"):
         validate_profile_dict(data)
 
 
 def test_validate_added_event_requires_func():
     data = _full_valid()
-    del data["reset_events"]["add"]["reset_bin_pose"]["func"]
+    del data["events"]["add"]["reset_bin_pose"]["func"]
     with pytest.raises(AssertionError, match="missing required key 'func'"):
         validate_profile_dict(data)
 
 
 def test_validate_added_event_func_must_be_module_colon_function():
     data = _full_valid()
-    data["reset_events"]["add"]["reset_bin_pose"]["func"] = "some.module.some_function"
+    data["events"]["add"]["reset_bin_pose"]["func"] = "some.module.some_function"
     with pytest.raises(AssertionError, match="'<module>:<function>'"):
         validate_profile_dict(data)
 
 
 def test_validate_added_event_bad_mode_fails():
     data = _full_valid()
-    data["reset_events"]["add"]["reset_bin_pose"]["mode"] = "always"
+    data["events"]["add"]["reset_bin_pose"]["mode"] = "always"
     with pytest.raises(AssertionError, match="mode must be one of"):
         validate_profile_dict(data)
 
 
-def test_validate_override_requires_params():
+def test_validate_event_override_requires_params():
     data = _full_valid()
-    data["reset_events"]["override"]["init_franka_arm_pose"] = {}
+    data["events"]["override"]["init_franka_arm_pose"] = {}
     with pytest.raises(AssertionError, match="non-empty 'params'"):
         validate_profile_dict(data)
 
@@ -147,24 +170,26 @@ def test_from_dict_builds_specs_and_coerces_vectors():
     assert profile.base_env == "Isaac-Stack-Cube-Franka-IK-Rel-v0"
     assert profile.planner == "franka_stack_cube_bin"
 
-    bin_spec = profile.scene.rigid_objects["bin"]
+    bin_spec = profile.scene.rigid_objects.add["bin"]
     assert bin_spec.position == (0.4, 0.0, 0.02)
     assert bin_spec.rotation == (0.0, 0.0, 0.0, 1.0)
     assert bin_spec.scale == (1.1, 1.6, 3.3)
     assert bin_spec.rigid_props == {"solver_position_iteration_count": 40}
+    assert profile.scene.rigid_objects.override["cube_1"].rigid_props == {"solver_position_iteration_count": 40}
 
-    assert profile.reset_events.remove == ["randomize_cube_positions"]
-    assert profile.reset_events.add["reset_bin_pose"].mode == "reset"
+    assert profile.events.remove == ["randomize_cube_positions"]
+    assert profile.events.add["reset_bin_pose"].mode == "reset"
     # Event params pass through untouched at load time; asset-name conversion happens at apply.
-    assert profile.reset_events.add["reset_bin_pose"].params["asset_cfgs"] == ["bin"]
+    assert profile.events.add["reset_bin_pose"].params["asset_cfgs"] == ["bin"]
 
 
 def test_from_dict_defaults_for_minimal_profile():
     profile = EnvironmentProfile.from_dict(_minimal_valid())
     assert profile.description == ""
     assert profile.planner is None
-    assert profile.scene.rigid_objects == {}
-    assert profile.reset_events.remove == []
+    assert profile.scene.rigid_objects.add == {}
+    assert profile.scene.rigid_objects.override == {}
+    assert profile.events.remove == []
 
 
 def test_from_dict_does_not_mutate_input():
@@ -174,12 +199,18 @@ def test_from_dict_does_not_mutate_input():
     assert data == snapshot
 
 
+def test_referenced_asset_names_collects_event_asset_refs():
+    profile = EnvironmentProfile.from_dict(_full_valid())
+    assert profile.referenced_asset_names() == {"bin"}
+
+
 def test_shipped_bin_stack_profile_parses():
     path = os.path.join(TestPaths.environments_dir, "franka_bin_stack.yaml")
     profile = EnvironmentProfile.from_yaml(path)
     assert profile.name == "franka_bin_stack"
     assert profile.base_env == "Isaac-Stack-Cube-Franka-IK-Rel-v0"
     assert profile.planner == "franka_stack_cube_bin"
-    assert "blue_sorting_bin" in profile.scene.rigid_objects
-    assert profile.reset_events.remove == ["randomize_cube_positions"]
-    assert set(profile.reset_events.add) == {"reset_blue_bin_pose", "reset_cube_1_pose", "reset_cube_pose"}
+    assert "blue_sorting_bin" in profile.scene.rigid_objects.add
+    assert set(profile.scene.rigid_objects.override) == {"cube_1", "cube_2", "cube_3"}
+    assert profile.events.remove == ["randomize_cube_positions"]
+    assert set(profile.events.add) == {"reset_blue_bin_pose", "reset_cube_1_pose", "reset_cube_pose"}

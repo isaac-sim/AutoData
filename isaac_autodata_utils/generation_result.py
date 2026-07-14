@@ -29,9 +29,10 @@ def write_generation_result(
         algorithm: Name of the generation algorithm that ran.
         requested_trials: Number of trials or successful demos requested by the generation policy.
         stats: Final ``num_success``, ``num_failures``, and ``num_attempts`` counters.
-        env_profile: Environment-profile provenance (``name``, ``path``, ``planner``) when the run
-            overlaid a profile on the base task. The generated dataset records only the base env
-            id, so this is where the scene modifications are traceable from.
+        env_profile: The ``name``, ``path``, and ``planner`` of the environment profile applied
+            during generation, or None when the run used the unmodified base task. Recorded here
+            because the generated dataset stores only the base env id and would otherwise not
+            reveal that the scene was modified.
     """
     required_stats = ("num_success", "num_failures", "num_attempts")
     for stat_name in required_stats:
