@@ -25,7 +25,7 @@ def _run_gr1_pick_place_dexmimicgen(num_envs: int, device: str) -> None:
         args = [
             TestPaths.python_path,
             TestPaths.generate_dataset_script,
-            "--task",
+            "--env_name",
             "Isaac-PickPlace-GR1T2-Abs-v0",
             "--alg",
             "dexmimicgen",
@@ -60,7 +60,7 @@ def _run_g1_pick_place_dexmimicgen(num_envs: int, device: str) -> None:
         args = [
             TestPaths.python_path,
             TestPaths.generate_dataset_script,
-            "--task",
+            "--env_name",
             "Isaac-PickPlace-Locomanipulation-G1-Abs-v0",
             "--alg",
             "dexmimicgen",
