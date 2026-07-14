@@ -31,7 +31,7 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         output_file = os.path.join(temp_dir, "generated.hdf5")
         result_file = os.path.join(temp_dir, "generation_result.json")
-        env_profile = os.path.join(TestPaths.environments_dir, "franka_bin_stack.yaml")
+        env_profile = os.path.join(TestPaths.env_profiles_dir, "franka_bin_stack.yaml")
 
         args = [
             TestPaths.python_path,

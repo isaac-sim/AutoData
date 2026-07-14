@@ -5,7 +5,7 @@
 
 """Declarative environment-profile schema for base-task variants.
 
-An :class:`EnvironmentProfile` describes scene additions, event-term changes, and the
+An :class:`EnvironmentProfile` describes scene changes, event-term changes, and the
 motion-planner profile of a task variant. It is overlaid on the parsed env config before
 ``gym.make`` by :func:`~isaac_autodata_interfaces.env.isaaclab_env_interface.apply_env_profile`;
 this module holds only the schema and its validation and does not import ``isaaclab``.

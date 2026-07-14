@@ -29,7 +29,7 @@ def _parse_base_cfg():
 
 
 def _load_bin_profile() -> EnvironmentProfile:
-    return EnvironmentProfile.from_yaml(os.path.join(TestPaths.environments_dir, "franka_bin_stack.yaml"))
+    return EnvironmentProfile.from_yaml(os.path.join(TestPaths.env_profiles_dir, "franka_bin_stack.yaml"))
 
 
 def test_apply_bin_stack_profile_overlays_scene_and_events():

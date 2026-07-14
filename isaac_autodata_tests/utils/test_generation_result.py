@@ -42,7 +42,7 @@ def test_write_generation_result_records_env_profile_when_given(tmp_path):
         stats={"num_success": 1, "num_failures": 0, "num_attempts": 1},
         env_profile={
             "name": "franka_bin_stack",
-            "path": "isaac_autodata_examples/environments/franka_bin_stack.yaml",
+            "path": "isaac_autodata_examples/env_profiles/franka_bin_stack.yaml",
             "planner": "franka_stack_cube_bin",
         },
     )
@@ -51,6 +51,6 @@ def test_write_generation_result_records_env_profile_when_given(tmp_path):
         result = json.load(result_handle)
     assert result["env_profile"] == {
         "name": "franka_bin_stack",
-        "path": "isaac_autodata_examples/environments/franka_bin_stack.yaml",
+        "path": "isaac_autodata_examples/env_profiles/franka_bin_stack.yaml",
         "planner": "franka_stack_cube_bin",
     }
