@@ -6,6 +6,7 @@
 import os
 import tempfile
 import yaml
+from collections.abc import Callable
 
 from curobo.geom.sdf.world import CollisionCheckerType
 from curobo.geom.types import WorldConfig
@@ -456,13 +457,10 @@ class CuroboPlannerCfg:
         Returns:
             CuroboPlannerCfg: Configuration for the specified profile
         """
-        profiles = {
-            "franka": cls.franka_config,
-            "franka_stack_cube": cls.franka_stack_cube_config,
-            "franka_stack_cube_bin": cls.franka_stack_cube_bin_config,
-        }
-        assert profile_name in profiles, f"Unknown planner profile {profile_name!r}. Registered: {sorted(profiles)}"
-        return profiles[profile_name]()
+        assert (
+            profile_name in PLANNER_PROFILES
+        ), f"Unknown planner profile {profile_name!r}. Registered: {sorted(PLANNER_PROFILES)}"
+        return PLANNER_PROFILES[profile_name]()
 
     @classmethod
     def from_task_name(cls, task_name: str) -> "CuroboPlannerCfg":
@@ -484,3 +482,15 @@ class CuroboPlannerCfg:
             # Default to Franka configuration
             print(f"Warning: Unknown robot in task '{task_name}', using Franka configuration")
             return cls.franka_config()
+
+
+PLANNER_PROFILES: dict[str, Callable[[], CuroboPlannerCfg]] = {
+    "franka": CuroboPlannerCfg.franka_config,
+    "franka_stack_cube": CuroboPlannerCfg.franka_stack_cube_config,
+    "franka_stack_cube_bin": CuroboPlannerCfg.franka_stack_cube_bin_config,
+}
+"""Maps a planner-profile name to the factory building its :class:`CuroboPlannerCfg`.
+
+Environment profiles reference these names to select planner tuning independently of task
+ids (see :meth:`CuroboPlannerCfg.from_profile`). New planner profiles register themselves
+here."""
