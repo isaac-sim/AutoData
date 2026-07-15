@@ -21,8 +21,13 @@ from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import 
 
 
 def test_planner_profile_registry_contents():
-    assert set(PLANNER_PROFILES) == {"franka", "franka_stack_cube", "franka_stack_cube_bin"}
-    assert all(callable(factory) for factory in PLANNER_PROFILES.values())
+    # Bound-classmethod equality verifies each name dispatches to the expected factory
+    # without invoking it (no robot-asset downloads).
+    assert PLANNER_PROFILES == {
+        "franka": CuroboPlannerCfg.franka_config,
+        "franka_stack_cube": CuroboPlannerCfg.franka_stack_cube_config,
+        "franka_stack_cube_bin": CuroboPlannerCfg.franka_stack_cube_bin_config,
+    }
 
 
 def test_from_profile_rejects_unknown_profile_name():
