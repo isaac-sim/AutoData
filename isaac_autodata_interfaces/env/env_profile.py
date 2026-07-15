@@ -141,6 +141,9 @@ class EnvironmentProfile:
     def from_yaml(cls, path: str) -> EnvironmentProfile:
         """Load and validate an environment profile from a YAML file.
 
+        Args:
+            path: Path to the profile YAML file.
+
         Expected schema::
 
             name: <str>
@@ -176,7 +179,11 @@ class EnvironmentProfile:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EnvironmentProfile:
-        """Build a validated :class:`EnvironmentProfile` from a parsed dict."""
+        """Build a validated :class:`EnvironmentProfile` from a parsed dict.
+
+        Args:
+            data: Parsed profile dict; see :meth:`from_yaml` for the expected schema.
+        """
         validate_profile_dict(data)
 
         objects_data = data.get("scene", {}).get("rigid_objects", {})
@@ -261,6 +268,7 @@ def _validate_scene_dict(scene: dict[str, Any]) -> None:
     assert isinstance(add, dict), f"'scene.rigid_objects.add' must be a dict, got {type(add).__name__}"
     add_keys = {f.name for f in fields(RigidObjectAddSpec)}
     required_add_keys = {"prim_path", "usd_path"}
+    vector_lengths = {"position": 3, "rotation": 4, "scale": 3}
     for name, spec in add.items():
         assert isinstance(spec, dict), f"scene.rigid_objects.add[{name!r}] must be a dict, got {type(spec).__name__}"
         missing = required_add_keys - set(spec)
@@ -269,6 +277,19 @@ def _validate_scene_dict(scene: dict[str, Any]) -> None:
         assert (
             not unknown
         ), f"scene.rigid_objects.add[{name!r}] has unknown keys {sorted(unknown)}. Allowed: {sorted(add_keys)}"
+        for vector_key, length in vector_lengths.items():
+            if vector_key not in spec:
+                continue
+            value = spec[vector_key]
+            assert (
+                isinstance(value, (list, tuple))
+                and len(value) == length
+                and all(isinstance(v, (int, float)) for v in value)
+            ), f"scene.rigid_objects.add[{name!r}].{vector_key} must be a list of {length} numbers, got {value!r}"
+        rigid_props = spec.get("rigid_props", {})
+        assert isinstance(
+            rigid_props, dict
+        ), f"scene.rigid_objects.add[{name!r}].rigid_props must be a dict, got {type(rigid_props).__name__}"
 
     override = rigid_objects.get("override", {})
     assert isinstance(override, dict), f"'scene.rigid_objects.override' must be a dict, got {type(override).__name__}"
@@ -282,9 +303,10 @@ def _validate_scene_dict(scene: dict[str, Any]) -> None:
             f"scene.rigid_objects.override[{name!r}] has unknown keys {sorted(unknown)}. "
             f"Allowed: {sorted(override_keys)}"
         )
-        assert spec.get(
-            "rigid_props"
-        ), f"scene.rigid_objects.override[{name!r}] must provide a non-empty 'rigid_props' dict"
+        rigid_props = spec.get("rigid_props")
+        assert (
+            isinstance(rigid_props, dict) and rigid_props
+        ), f"scene.rigid_objects.override[{name!r}] must provide a non-empty 'rigid_props' dict, got {rigid_props!r}"
 
 
 def _validate_events_dict(events: dict[str, Any]) -> None:

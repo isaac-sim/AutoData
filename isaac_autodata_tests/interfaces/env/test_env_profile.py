@@ -93,7 +93,7 @@ def test_validate_unknown_scene_key_fails():
 def test_validate_unknown_rigid_objects_key_fails():
     data = _minimal_valid()
     data["scene"] = {"rigid_objects": {"remove": []}}
-    with pytest.raises(AssertionError, match="'scene.rigid_objects' has unknown keys"):
+    with pytest.raises(AssertionError, match=r"'scene\.rigid_objects' has unknown keys"):
         validate_profile_dict(data)
 
 
@@ -121,6 +121,26 @@ def test_validate_rigid_object_override_unknown_key_fails():
 def test_validate_rigid_object_override_requires_rigid_props():
     data = _full_valid()
     data["scene"]["rigid_objects"]["override"]["cube_1"] = {}
+    with pytest.raises(AssertionError, match="non-empty 'rigid_props'"):
+        validate_profile_dict(data)
+
+
+def test_validate_added_rigid_object_bad_vector_shapes_fail():
+    for key, bad_value in (("position", [0.0, 0.0]), ("rotation", "abc"), ("scale", [1.0, 1.0, 1.0, 1.0])):
+        data = _full_valid()
+        data["scene"]["rigid_objects"]["add"]["bin"][key] = bad_value
+        with pytest.raises(AssertionError, match=f"{key} must be a list of"):
+            validate_profile_dict(data)
+
+
+def test_validate_rigid_props_must_be_dicts():
+    data = _full_valid()
+    data["scene"]["rigid_objects"]["add"]["bin"]["rigid_props"] = ["solver_position_iteration_count"]
+    with pytest.raises(AssertionError, match="rigid_props must be a dict"):
+        validate_profile_dict(data)
+
+    data = _full_valid()
+    data["scene"]["rigid_objects"]["override"]["cube_1"]["rigid_props"] = ["solver_position_iteration_count"]
     with pytest.raises(AssertionError, match="non-empty 'rigid_props'"):
         validate_profile_dict(data)
 
