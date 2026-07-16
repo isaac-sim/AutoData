@@ -176,7 +176,7 @@ Once connected, complete the pick-and-place task:
 Performing the Demonstrations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The humanoid pick-and-place task is set up so the **left hand has a single subtask** 
+The humanoid pick-and-place task is set up so the **left hand has a single subtask**
 (a pick up and transport) while the
 **right hand has two** (an idle phase, then the place). During the idle phase the right hand should
 stay still while the left hand brings the object to a position where the right hand will

@@ -153,7 +153,7 @@ Key Parameters
      - Visualizer backend (``kit`` for an Isaac Sim window, ``none`` for headless).
 
 The descriptor's ``generation_policy.select_src_per_arm`` (``false`` by default) controls whether
-each arm may draw from a different source demo; keeping it ``false`` keeps the arms coordinated 
+each arm may draw from a different source demo; keeping it ``false`` keeps the arms coordinated
 without subtask timing constraints. See :doc:`../../concepts/task_descriptors` for the full set of per-arm generation knobs.
 
 Continue to :doc:`step_4_validate_dataset`.

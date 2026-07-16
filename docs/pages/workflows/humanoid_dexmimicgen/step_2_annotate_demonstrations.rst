@@ -74,7 +74,7 @@ being annotated and its expected signals. Control playback and mark boundaries w
    * - ``Q``
      - Skip the current episode
 
-For each episode, press ``S`` **once** when the **right** arm finishes idling and 
+For each episode, press ``S`` **once** when the **right** arm finishes idling and
 starts moving toward the object (the ``idle_right`` boundary).
 The left-arm pass takes no marks and advances automatically. Pause with ``B`` and resume with ``N``
 to place the mark precisely.
@@ -94,7 +94,7 @@ not exported. Only fully annotated, successful episodes end up in the output fil
 .. note::
 
    Automatic annotation (``--auto``) samples per-subtask boolean observation terms and is used for
-   environments that publish them (like the Franka cube-stacking task). The humanoid pick-and-place 
+   environments that publish them (like the Franka cube-stacking task). The humanoid pick-and-place
    environments do not publish automatic annotation observations so they are annotated manually as shown above.
 
 Expected Output

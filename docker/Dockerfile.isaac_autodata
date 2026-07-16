@@ -51,7 +51,7 @@ RUN chmod 777 -R /isaac-sim/kit/ && chmod a+x /isaac-sim
 # Ensure the visualizer extension is present so "--viz kit" works.
 RUN /isaac-sim/python.sh -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_visualizers
 RUN ${ISAACLAB_PATH}/isaaclab.sh -i
-# Pin daqp for Pink IK (matches installer.sh).
+# Pin daqp for Pink IK (matches conda_installer.sh).
 RUN /isaac-sim/python.sh -m pip install --force-reinstall daqp==0.8.5
 # Install Isaac Teleop python APIs
 RUN /isaac-sim/python.sh -m pip install isaacteleop~=1.1.0 --extra-index-url https://pypi.nvidia.com
