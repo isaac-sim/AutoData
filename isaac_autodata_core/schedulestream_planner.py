@@ -32,8 +32,8 @@ from isaaclab_tasks.manager_based.manipulation.stack.mdp import cubes_stacked
 
 from schedulestream.applications.custream2.animate import animate_commands
 from schedulestream.applications.custream2.command import Commands
-from schedulestream.applications.custream2.example import Attached
 from schedulestream.applications.custream2.franka import load_franka_config
+from schedulestream.applications.custream2.tamp import Attached, Holding
 from schedulestream.applications.custream2.object import GraspConfig, MeshObject
 from schedulestream.applications.custream2.policy import Planner
 from schedulestream.applications.custream2.scene import CAMERA_POSE
@@ -46,6 +46,12 @@ from schedulestream.applications.custream2.utils import (
 )
 from schedulestream.applications.custream2.world import World
 from schedulestream.common.utils import apply_mapping, profiler
+
+# Side-effect import: patches curobo's usd_scene_parser.get_mesh_attrs to fan-triangulate
+# quad/n-gon mesh faces in-place (in-memory stage only) before parsing. Arena/RoboLab assets
+# (bowls, bins, tables) are not triangle-only and otherwise fail USD obstacle extraction with
+# "Unsupported mesh face with N vertices". The triangulation preserves geometry.
+import schedulestream.applications.robolab.usd_utils  # noqa: F401
 
 from isaac_autodata_core.waypoint import Waypoint
 
@@ -90,9 +96,9 @@ class ScheduleStreamPlanner(Planner):
         self.hold = hold
         self.verbose = verbose
         world = self._create_world()
+        goal = self.create_goal(success_term)
         # collisions/profile and any extra kwargs flow through **solve_kwargs into solve_tamp.
-        super().__init__(world, max_time=max_time, animate=animate, collisions=collisions, profile=profile, **kwargs)
-        self.set_goal(self.create_goal(success_term))
+        super().__init__(world, goal=goal, max_time=max_time, animate=animate, collisions=collisions, profile=profile, **kwargs)
         # The IK action's control link + body offset are invariant, so resolve them once.
         self.body_name, self.body_offset = self._eef_action_info()
         # Calibrated per get_waypoints() call, at the synced start configuration.
@@ -141,8 +147,18 @@ class ScheduleStreamPlanner(Planner):
     def get_env_object_pose(self, obj: str) -> Pose:
         """Return the named object's world pose."""
         for body_type, bodies in self.scene.state.items():
-            if (body_type != "articulation") and (obj in bodies):
-                return self._to_pose(bodies[obj]["root_pose"])
+            if (body_type == "articulation") or (obj not in bodies):
+                continue
+            body = bodies[obj]
+            if "root_pose" in body:
+                return self._to_pose(body["root_pose"])
+            if "nodal_position" in body:
+                # Deformable objects expose nodal state only: approximate the pose as the mean
+                # nodal position, keeping the world model's current orientation (re-expressed in
+                # the env world frame) since deformables carry no root orientation.
+                position = self.world.to_device(body["nodal_position"][self.env_id]).mean(dim=0, keepdim=True)
+                world_pose = multiply_poses(self.get_env_robot_pose(), self.world.get_object_pose(obj))
+                return Pose(position=position, quaternion=world_pose.quaternion)
         raise KeyError(f"Object {obj!r} not in the env scene state")
 
     def get_env_joint_state(self) -> JointState:
@@ -158,9 +174,15 @@ class ScheduleStreamPlanner(Planner):
 
     def _convert_objects(self, scene_cfg: Any) -> list[Any]:
         name_from_path: dict[str, str] = {}
-        for name, rigid_object in self.scene.rigid_objects.items():
-            for prim in find_matching_prims(rigid_object.cfg.prim_path):
+        # Deformable assets (e.g. the lift teddy bear) are movable objects too; map their prim
+        # paths so the world object is named by the env asset name ("object"), not the USD path.
+        env_assets = {**dict(self.scene.rigid_objects), **dict(self.scene.deformable_objects)}
+        for name, asset in env_assets.items():
+            for prim in find_matching_prims(asset.cfg.prim_path):
                 name_from_path[prim.GetPath().pathString] = name
+        # Kept for prim-path -> world-name lookups after construction (e.g. resolving an Arena
+        # contact sensor's destination prim into a goal object name in create_goal).
+        self._name_from_path = dict(name_from_path)
 
         objects = []
         for i, obstacle in enumerate(scene_cfg.objects):
@@ -171,13 +193,26 @@ class ScheduleStreamPlanner(Planner):
                     name = _name
                     break
 
-            floating = True
+            # Only env-registered assets can be movable: matched rigid objects unless kinematic,
+            # and matched deformables. Unmatched prims (background scenery, tables, fixtures —
+            # common in Arena scenes) are static collision-only obstacles; treating them as
+            # movable would grasp-config and sphere-fit arbitrary scenery meshes.
             if name in self.scene.rigid_objects:
                 rigid_object = self.scene.rigid_objects[name]
+                floating = True
                 if (rigid_object.cfg.spawn is not None) and (rigid_object.cfg.spawn.rigid_props is not None):
                     floating = not rigid_object.cfg.spawn.rigid_props.kinematic_enabled
+            elif name in self.scene.deformable_objects:
+                floating = True
+            else:
+                floating = False
 
             mesh = obstacle.get_trimesh_mesh()
+            # Some Arena/USD assets parse into degenerate meshes (empty, non-finite vertices, or
+            # too few points for a hull); they break sphere fitting (NaN into cKDTree) — skip.
+            if (mesh.vertices.size == 0) or (not np.isfinite(mesh.vertices).all()) or (len(mesh.vertices) < 4):
+                print(f"[schedulestream] WARNING: skipping obstacle {name!r} ({path}) with degenerate mesh")
+                continue
             pose = to_pose(obstacle.pose)
             # Floating objects (cubes) get a top-down grasp config (custream2/scene.py idiom);
             # static objects (e.g. the table) are collision-only.
@@ -219,8 +254,10 @@ class ScheduleStreamPlanner(Planner):
 
         usd_name = os.path.basename(self.articulation.cfg.spawn.usd_path)
 
-        # Franka-stack scope: only the standard panda is supported.
-        if usd_name != "panda_instanceable.usd":
+        # Franka scope: the standard panda (isaaclab_tasks) and Arena's panda-on-stand variant.
+        # Note the Arena stand itself is part of the robot USD and is NOT in cuRobo's collision
+        # model (custream2's Franka URDF has no stand link).
+        if usd_name not in ("panda_instanceable.usd", "franka_panda_hand_on_stand.usd"):
             raise NotImplementedError(
                 f"schedulestream currently supports only the Franka panda, got robot USD {usd_name!r}"
             )
@@ -279,11 +316,18 @@ class ScheduleStreamPlanner(Planner):
     # ------------------------------------------------------------------
 
     def create_goal(self, success_term: Any) -> Any:
-        """Derive the symbolic ScheduleStream goal from the task success term (cube stacking)."""
+        """Derive the symbolic ScheduleStream goal from the task success term.
+
+        With no success term (e.g. the lift family defines none), fall back on the movable-object
+        count: one movable → hold it (lift); several → stack the two highest-indexed.
+        """
         if success_term is None:
-            # Fall back to stacking the two highest-indexed movable objects.
-            self.world.dump()
-            obj1, obj2 = sorted(self.world.movable_names, reverse=True)[:2]
+            movable = self.world.movable_names
+            if len(movable) == 1:
+                # [arm] = self.world.arms
+                arm = World.ARM
+                return Holding(arm) <= movable[0]
+            obj1, obj2 = sorted(movable, reverse=True)[:2]
             return Attached(obj1) == obj2
 
         if success_term.func == cubes_stacked:
@@ -301,7 +345,61 @@ class ScheduleStreamPlanner(Planner):
             if cube3 is not None:
                 goal = goal & (Attached(cube3) == cube2)
             return goal
+
+        arena_goal = self._create_arena_goal(success_term)
+        if arena_goal is not None:
+            return arena_goal
         raise NotImplementedError(f"schedulestream goal not implemented for {success_term.func}")
+
+    def _create_arena_goal(self, success_term: Any) -> Any:
+        """Map IsaacLab-Arena task success terms to symbolic goals; None if not an Arena term.
+
+        Covered: PickAndPlaceTask (``object_on_destination`` → Attached(obj) == destination),
+        SortMultiObjectTask (``objects_on_destinations`` → conjunction over the pairs), and
+        LiftObjectTask (``lift_object_il_success`` → hold the object; the goal-position tolerance
+        is left to the lift executed by the hold).
+        """
+        try:
+            from isaaclab_arena.tasks import terminations as arena_terminations
+        except ImportError:
+            return None
+        params = success_term.params
+
+        if success_term.func is arena_terminations.object_on_destination:
+            destination = self._destination_name(params["contact_sensor_cfg"].name)
+            return Attached(params["object_cfg"].name) == destination
+
+        if success_term.func is arena_terminations.objects_on_destinations:
+            goal = None
+            for object_cfg, sensor_cfg in zip(params["object_cfg_list"], params["contact_sensor_cfg_list"]):
+                clause = Attached(object_cfg.name) == self._destination_name(sensor_cfg.name)
+                goal = clause if goal is None else (goal & clause)
+            return goal
+
+        if success_term.func is arena_terminations.lift_object_il_success:
+            # [arm] = self.world.arms
+            arm = World.ARM
+            return Holding(arm) == params["object_cfg"].name
+
+        return None
+
+    def _destination_name(self, contact_sensor_name: str) -> str:
+        """Resolve an Arena contact sensor's filtered destination prim into a world object name.
+
+        The pick-and-place success terms identify the destination only through the contact
+        sensor's ``filter_prim_paths_expr``; match it against the prim-path -> asset-name mapping
+        recorded during object conversion.
+        """
+        sensor = self.scene.sensors[contact_sensor_name]
+        [filter_expr] = sensor.cfg.filter_prim_paths_expr
+        path = filter_expr.replace(".*", f"{self.env_id}")
+        for prim_path, name in self._name_from_path.items():
+            if path.startswith(prim_path) or prim_path.startswith(path):
+                return name
+        raise KeyError(
+            f"Contact sensor {contact_sensor_name!r} destination {path!r} matches no parsed world "
+            f"object (known: {sorted(set(self._name_from_path.values()))})"
+        )
 
     # ------------------------------------------------------------------
     # EEF frame calibration + action extraction

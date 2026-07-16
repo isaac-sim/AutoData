@@ -320,4 +320,7 @@ class MultiWaypoint:
             await env_action_queue.put((env_id, play_action[0]))
             await env_action_queue.join()
 
+        # Envs without a success termination cannot be scored; report not-succeeded.
+        if success_term is None:
+            return False
         return bool(success_term.func(env, **success_term.params)[env_id])
