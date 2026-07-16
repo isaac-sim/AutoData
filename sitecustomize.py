@@ -5,6 +5,6 @@
 
 """Install temporary compatibility patches for AutoData Python workflows."""
 
-from isaac_autodata_utils.isaaclab_compat import apply_franka_asset_path_patch
+from isaac_autodata_utils.isaaclab_compat import install_franka_asset_path_patch
 
-apply_franka_asset_path_patch()
+install_franka_asset_path_patch()
