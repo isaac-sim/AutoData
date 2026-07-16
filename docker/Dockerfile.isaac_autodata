@@ -53,6 +53,8 @@ RUN /isaac-sim/python.sh -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isa
 RUN ${ISAACLAB_PATH}/isaaclab.sh -i
 # Pin daqp for Pink IK (matches installer.sh).
 RUN /isaac-sim/python.sh -m pip install --force-reinstall daqp==0.8.5
+# Install Isaac Teleop python APIs
+RUN /isaac-sim/python.sh -m pip install isaacteleop~=1.1.0 --extra-index-url https://pypi.nvidia.com
 
 # --- IsaacLab - Arena ---
 RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
@@ -61,7 +63,7 @@ RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
 # Isaac AutoData
 ##################
 # Copy the package sources + packaging metadata (exclude submodules installed above).
-COPY setup.py pyproject.toml README.md ${WORKDIR}/
+COPY setup.py pyproject.toml README.md sitecustomize.py ${WORKDIR}/
 COPY isaac_autodata_core ${WORKDIR}/isaac_autodata_core
 COPY isaac_autodata_interfaces ${WORKDIR}/isaac_autodata_interfaces
 COPY isaac_autodata_utils ${WORKDIR}/isaac_autodata_utils
