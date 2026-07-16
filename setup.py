@@ -23,6 +23,7 @@ setup(
     name="isaac_auto_data",
     version=ISAAC_AUTO_DATA_VERSION_NUMBER,
     description="Isaac Auto Data.",
+    py_modules=["sitecustomize"],
     packages=find_packages(
         include=[
             "isaac_autodata_core*",
