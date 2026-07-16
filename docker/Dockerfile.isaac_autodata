@@ -53,6 +53,8 @@ RUN /isaac-sim/python.sh -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isa
 RUN ${ISAACLAB_PATH}/isaaclab.sh -i
 # Pin daqp for Pink IK (matches installer.sh).
 RUN /isaac-sim/python.sh -m pip install --force-reinstall daqp==0.8.5
+# Install Isaac Teleop python APIs
+RUN /isaac-sim/python.sh -m pip install isaacteleop~=1.1.0 --extra-index-url https://pypi.nvidia.com
 
 # --- IsaacLab - Arena ---
 RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
