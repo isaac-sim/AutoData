@@ -24,8 +24,8 @@ from isaaclab.envs.mdp.actions.task_space_actions import DifferentialInverseKine
 from isaaclab.utils.math import convert_quat
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import cubes_stacked
 
-from schedulestream.applications.custream2.animate import animate_commands
-from schedulestream.applications.custream2.command import Commands
+from schedulestream.applications.custream2.animate import process_task_commands
+from schedulestream.applications.custream2.command import Attach, Detach, LinkPath
 from schedulestream.applications.custream2.franka import load_franka_config
 from schedulestream.applications.custream2.tamp import Attached, Holding, movable_from_goal
 from schedulestream.applications.custream2.policy import Planner
@@ -35,7 +35,7 @@ from schedulestream.applications.custream2.utils import (
     multiply_poses,
     to_cpu,
 )
-from schedulestream.applications.custream2.world import World
+from schedulestream.applications.custream2.world import TAMPConfig, World
 from schedulestream.common.utils import apply_mapping, profiler
 
 # Side effect: patches curobo's USD parser to fan-triangulate quad/n-gon faces;
@@ -170,12 +170,16 @@ class ScheduleStreamPlanner(Planner):
                 f"schedulestream currently supports only the Franka panda, got robot USD {usd_name!r}"
             )
         robot_config = load_franka_config(base_poses=None)
+        tamp_config = TAMPConfig()
+        tamp_config.approach_rest_steps = 50
+        # tamp_config.position_velocity /= 2
+        # tamp_config.orientation_velocity /= 2
 
         # env_loop runs under torch.inference_mode(); building the World there allocates
         # cuRobo "inference tensors" that can't be backward()'d (IK) or updated in-place.
         # autograd_enabled() makes them normal tensors throughout.
         with profiler(field="cumtime" if self.profile else None, num=25), autograd_enabled():
-            world = World(robot_config, objects, debug=True, **kwargs)
+            world = World(robot_config, objects, tamp_config=tamp_config, debug=True, **kwargs)
 
             # The observation hooks read self.world (Planner.__init__ re-assigns the same World).
             self.world = world
@@ -334,8 +338,63 @@ class ScheduleStreamPlanner(Planner):
             raise RuntimeError(f"solve_tamp found no plan for env {self.env_id}.")
         return commands
 
+    def waypoints_from_execution(self, commands: list[Any]) -> list[Waypoint]:
+        """Roll the plan out open loop in the world model, one Waypoint per step.
+
+        Task-space commands run IK during execute, so this needs autograd.
+        """
+        with autograd_enabled():
+            return list(self.get_controller(commands))
+
+    def _waypoint_from_link_pose(self, link_pose: Pose, gripper: float) -> Waypoint:
+        """Build the Waypoint for a planned tool-link pose (mirrors extract_action
+        without reading the world state)."""
+        if self.body_offset is not None:
+            link_pose = link_pose.multiply(self.body_offset)
+        link_pose = multiply_poses(self.get_env_robot_pose(), link_pose)
+        matrix = link_pose.get_matrix().squeeze(0).to(device=self.datastream.device, dtype=torch.float32)
+        gripper_action = torch.tensor([gripper], dtype=torch.float32, device=self.datastream.device)
+        return Waypoint(pose=matrix @ self._correction, gripper_action=gripper_action, noise=self.noise)
+
+    def waypoints_from_commands(self, commands: list[Any]) -> list[Waypoint]:
+        """Extract Waypoints directly from the plan without executing it.
+
+        Supports only LinkPath (one Waypoint per pose), Attach, and Detach
+        (gripper flips, each repeating the last pose with the new gripper).
+        """
+        assert self._correction is not None, "get_waypoints() calibrates the frame correction first"
+        # Convert the whole plan to task space so trajectories become LinkPaths.
+        commands = process_task_commands(commands, task_space=True)
+        waypoints: list[Waypoint] = []
+        gripper = OPEN_ACTION
+        last_pose = None
+        for command in commands:
+            print(command)
+            if isinstance(command, LinkPath):
+                # cuStream's tool frame may be a programmatically added frame that
+                # differs from the IK action's body link; both are rigid on the hand,
+                # so map between them with the constant offset from the world model.
+                tool_from_body = multiply_poses(
+                    self.world.get_node_pose(command.link).inverse(),
+                    self.world.get_node_pose(self.body_name),
+                )
+                for index in range(command.length):
+                    last_pose = multiply_poses(command.pose(index), tool_from_body)
+                    waypoints.append(self._waypoint_from_link_pose(last_pose, gripper))
+            elif isinstance(command, (Attach, Detach)):
+                gripper = CLOSE_ACTION if isinstance(command, Attach) else OPEN_ACTION
+                if last_pose is not None:
+                    waypoints.append(self._waypoint_from_link_pose(last_pose, gripper))
+            # Other commands (Open/HandCommand, Configuration, ...) carry no EEF pose.
+        return waypoints
+
     def get_waypoints(self) -> list[Waypoint]:
-        """Sync the world, plan (or hold), and roll the plan out open loop into Waypoints."""
+        """Sync the world, plan (or hold), and turn the plan into Waypoints.
+
+        ``execute`` rolls the plan out in the world model; otherwise the
+        Waypoints are read directly off the commands (LinkPath/Attach/Detach
+        plans only).
+        """
         self.update_state()
         # Calibrate the cuRobo->ee_frame correction at the synced start configuration.
         self._correction = self._eef_frame_correction()
@@ -346,8 +405,5 @@ class ScheduleStreamPlanner(Planner):
         else:
             commands = self.plan()
 
-        # Open-loop rollout: step the plan purely in the world model. Task-space
-        # commands run IK during execute, so this also needs autograd.
-        with autograd_enabled():
-            waypoints = list(self.get_controller(commands))
+        waypoints = self.waypoints_from_commands(commands)
         return waypoints
