@@ -23,7 +23,7 @@ Start with a small scale run with simulation viewer enabled to sanity-check the 
 
 .. code-block:: bash
 
-   python isaac_autodata_examples/generate_dataset.py \
+   python scripts/generate_dataset.py \
        --viz kit \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --num_envs 20 \
@@ -59,7 +59,7 @@ For dataset-scale generation, run without the simulation viewer and with paralle
 
 .. code-block:: bash
 
-   python isaac_autodata_examples/generate_dataset.py \
+   python scripts/generate_dataset.py \
        --viz none \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --num_envs 1000 \

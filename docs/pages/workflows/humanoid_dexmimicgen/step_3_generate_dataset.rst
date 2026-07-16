@@ -39,7 +39,7 @@ Start with a small run with the simulation viewer enabled to sanity-check the se
 
       .. code-block:: bash
 
-         python isaac_autodata_examples/generate_dataset.py \
+         python scripts/generate_dataset.py \
             --viz kit \
             --env_name Isaac-PickPlace-GR1T2-Abs-v0 \
             --num_envs 5 \
@@ -54,7 +54,7 @@ Start with a small run with the simulation viewer enabled to sanity-check the se
 
       .. code-block:: bash
 
-         python isaac_autodata_examples/generate_dataset.py \
+         python scripts/generate_dataset.py \
             --viz kit \
             --task Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
             --num_envs 5 \
@@ -93,7 +93,7 @@ For dataset-scale generation, run without the simulation viewer and with paralle
 
       .. code-block:: bash
 
-         python isaac_autodata_examples/generate_dataset.py \
+         python scripts/generate_dataset.py \
             --viz none \
             --env_name Isaac-PickPlace-GR1T2-Abs-v0 \
             --num_envs 100 \
@@ -108,7 +108,7 @@ For dataset-scale generation, run without the simulation viewer and with paralle
 
       .. code-block:: bash
 
-         python isaac_autodata_examples/generate_dataset.py \
+         python scripts/generate_dataset.py \
             --viz none \
             --env_name Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
             --num_envs 100 \
