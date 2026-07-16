@@ -39,6 +39,9 @@ SUBPROCESS_TIMEOUT="${ISAAC_AUTODATA_SUBPROCESS_TIMEOUT:-1200}"
 # cache env vars at a writable, container-local /tmp path sidesteps the mounted
 # host cache entirely. The tools create these dirs themselves (makedirs).
 CONTAINER_CACHE_DIR="${CONTAINER_CACHE_DIR:-/tmp/isaac_autodata_ci_cache}"
+# Optional JUnit report dir (repo-relative). The repo is bind-mounted, so a report
+# written here lands on the host for CI to collect.
+RESULTS_DIR="${ISAAC_AUTODATA_RESULTS_DIR-}"
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
@@ -64,6 +67,11 @@ PYTEST_ARGS=(
     "WARP_CACHE_PATH=${CONTAINER_CACHE_DIR}/warp"
     /isaac-sim/python.sh -m pytest -sv --durations=0
 )
+if [ -n "${RESULTS_DIR}" ]; then
+    # Pre-create on the host so the container can write into the bind-mounted dir.
+    mkdir -p "${RESULTS_DIR}"
+    PYTEST_ARGS+=("--junitxml=${RESULTS_DIR}/junit.xml")
+fi
 if [ -n "${PYTEST_MARK}" ]; then
     PYTEST_ARGS+=(-m "${PYTEST_MARK}")
 fi
