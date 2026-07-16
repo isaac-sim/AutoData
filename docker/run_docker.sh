@@ -151,6 +151,8 @@ DOCKER_RUN_ARGS=(
     "--env" "ACCEPT_EULA=Y"
     "--env" "PRIVACY_CONSENT=Y"
     "--env" "ISAACLAB_PATH=${ISAACLAB_PATH}"
+    # Make AutoData's sitecustomize compatibility hook visible to direct upstream script entrypoints.
+    "--env" "PYTHONPATH=${WORKDIR}"
     # Used by the entrypoint to recreate the host user inside the container.
     "--env" "DOCKER_RUN_USER_ID=$(id -u)"
     "--env" "DOCKER_RUN_USER_NAME=$(id -un)"
