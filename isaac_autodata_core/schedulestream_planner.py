@@ -5,13 +5,10 @@
 
 """ScheduleStream TAMP planner grounded in an Isaac AutoData env.
 
-Subclasses cuStream2's :class:`Planner` (``custream2.policy``) in the style of
-``robolab/policy.py``: the observation hooks read the live IsaacLab scene, ``extract_action``
-emits Isaac AutoData :class:`Waypoint`\\ s, and the base class supplies world/state sync,
-planning (timeout, animation, error tally), and the open-loop command rollout.
+Subclasses cuStream2's :class:`Planner`: the observation hooks read the live
+IsaacLab scene and ``extract_action`` emits Isaac AutoData :class:`Waypoint`\\ s.
 
-Import only after the Isaac app is launched (the isaaclab imports require the running app);
-``schedulestream_algorithm`` imports this lazily when a run selects ``--alg schedulestream``.
+Import only after the Isaac app is launched (the isaaclab imports require it).
 """
 
 from __future__ import annotations
@@ -19,55 +16,41 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import torch
 
-from curobo._src.util.usd_scene_parser import UsdSceneParser
 from curobo.types import JointState, Pose
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.envs.mdp.actions.task_space_actions import DifferentialInverseKinematicsAction
-from isaaclab.sim import find_matching_prims
-from isaaclab.utils.math import axis_angle_from_quat, convert_quat, quat_from_matrix
+from isaaclab.utils.math import convert_quat
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import cubes_stacked
 
 from schedulestream.applications.custream2.animate import animate_commands
 from schedulestream.applications.custream2.command import Commands
 from schedulestream.applications.custream2.franka import load_franka_config
-from schedulestream.applications.custream2.tamp import Attached, Holding
-from schedulestream.applications.custream2.object import GraspConfig, MeshObject
+from schedulestream.applications.custream2.tamp import Attached, Holding, movable_from_goal
 from schedulestream.applications.custream2.policy import Planner
 from schedulestream.applications.custream2.scene import CAMERA_POSE
 from schedulestream.applications.custream2.utils import (
     autograd_enabled,
     multiply_poses,
-    position_from_pose,
     to_cpu,
-    to_pose,
 )
 from schedulestream.applications.custream2.world import World
 from schedulestream.common.utils import apply_mapping, profiler
 
-# Side-effect import: patches curobo's usd_scene_parser.get_mesh_attrs to fan-triangulate
-# quad/n-gon mesh faces in-place (in-memory stage only) before parsing. Arena/RoboLab assets
-# (bowls, bins, tables) are not triangle-only and otherwise fail USD obstacle extraction with
-# "Unsupported mesh face with N vertices". The triangulation preserves geometry.
+# Side effect: patches curobo's USD parser to fan-triangulate quad/n-gon faces;
+# Arena/RoboLab assets otherwise fail obstacle extraction.
 import schedulestream.applications.robolab.usd_utils  # noqa: F401
 
+from isaac_autodata_core.schedulestream_utils import create_objects, destination_from_contact_sensor
 from isaac_autodata_core.waypoint import Waypoint
 
 if TYPE_CHECKING:
     from isaac_autodata_interfaces.datastream.datastream import Datastream
 
-# Binary gripper action for the trailing action dim, inferred from world attachments (closed
-# while the arm holds an object). Flip OPEN_ACTION if the env's convention is inverted.
+# Binary gripper action; flip OPEN_ACTION if the env's convention is inverted.
 OPEN_ACTION = 1.0
 CLOSE_ACTION = -OPEN_ACTION
-
-
-def _reorder_positions(src_names: list[str], src_positions: Any, dst_names: list[str]) -> Any:
-    """Reorder ``src_positions`` (indexed by ``src_names``) into ``dst_names`` order."""
-    mapping = dict(zip(src_names, to_cpu(src_positions)))
-    return np.asarray(apply_mapping(mapping, dst_names), dtype=np.float32)
 
 
 class ScheduleStreamPlanner(Planner):
@@ -84,20 +67,21 @@ class ScheduleStreamPlanner(Planner):
         max_time: float = 60.0,
         profile: bool = False,
         hold: int | None = None,
+        noise: float = 0.0,
         animate: bool = False,
-        verbose: bool = False,
+        verbose: bool = True,
         **kwargs: Any,
     ) -> None:
         self.datastream = datastream
         self.env = datastream.get_env()
         self.env_id = env_id
-        self.batch_size = batch_size
         self.profile = profile
         self.hold = hold
+        self.noise = noise
         self.verbose = verbose
-        world = self._create_world()
         goal = self.create_goal(success_term)
-        # collisions/profile and any extra kwargs flow through **solve_kwargs into solve_tamp.
+        world = self._create_world(goal, ik_batch=batch_size)
+        # collisions/profile and extra kwargs flow through **solve_kwargs into solve_tamp.
         super().__init__(world, goal=goal, max_time=max_time, animate=animate, collisions=collisions, profile=profile, **kwargs)
         # The IK action's control link + body offset are invariant, so resolve them once.
         self.body_name, self.body_offset = self._eef_action_info()
@@ -132,10 +116,7 @@ class ScheduleStreamPlanner(Planner):
     # ------------------------------------------------------------------
 
     def _to_pose(self, root_pose: Any) -> Pose:
-        """Convert a batched IsaacLab ``root_pose`` (``[pos(3), quat]``) row to a cuRobo Pose.
-
-        IsaacLab's warp ``root_pose_w`` quaternion is xyzw; cuRobo wants wxyz.
-        """
+        """Convert a batched IsaacLab ``root_pose`` row to a cuRobo Pose (xyzw -> wxyz)."""
         root_pose = self.world.to_device(root_pose[self.env_id : self.env_id + 1])
         root_pose[..., 3:7] = convert_quat(root_pose[..., 3:7], to="wxyz")
         return Pose(position=root_pose[:, :3], quaternion=root_pose[:, 3:])
@@ -153,9 +134,8 @@ class ScheduleStreamPlanner(Planner):
             if "root_pose" in body:
                 return self._to_pose(body["root_pose"])
             if "nodal_position" in body:
-                # Deformable objects expose nodal state only: approximate the pose as the mean
-                # nodal position, keeping the world model's current orientation (re-expressed in
-                # the env world frame) since deformables carry no root orientation.
+                # Deformables expose nodal state only: use the mean nodal position and keep
+                # the world model's current orientation (they carry no root orientation).
                 position = self.world.to_device(body["nodal_position"][self.env_id]).mean(dim=0, keepdim=True)
                 world_pose = multiply_poses(self.get_env_robot_pose(), self.world.get_object_pose(obj))
                 return Pose(position=position, quaternion=world_pose.quaternion)
@@ -164,151 +144,48 @@ class ScheduleStreamPlanner(Planner):
     def get_env_joint_state(self) -> JointState:
         """Return the robot's current joint state in world joint order."""
         positions = self.scene.state["articulation"][self.robot]["joint_position"][self.env_id]
-        positions = _reorder_positions(list(self.articulation.joint_names), positions, self.world.all_joints)
-        positions = torch.tensor(positions, dtype=torch.float32, device=self.world.device)
+        mapping = dict(zip(self.articulation.joint_names, to_cpu(positions)))
+        positions = torch.tensor(
+            apply_mapping(mapping, self.world.all_joints), dtype=torch.float32, device=self.world.device
+        )
         return JointState.from_position(positions.unsqueeze(0), joint_names=self.world.all_joints)
 
     # ------------------------------------------------------------------
     # World construction
     # ------------------------------------------------------------------
 
-    def _convert_objects(self, scene_cfg: Any) -> list[Any]:
-        name_from_path: dict[str, str] = {}
-        # Deformable assets (e.g. the lift teddy bear) are movable objects too; map their prim
-        # paths so the world object is named by the env asset name ("object"), not the USD path.
-        env_assets = {**dict(self.scene.rigid_objects), **dict(self.scene.deformable_objects)}
-        for name, asset in env_assets.items():
-            for prim in find_matching_prims(asset.cfg.prim_path):
-                name_from_path[prim.GetPath().pathString] = name
-        # Kept for prim-path -> world-name lookups after construction (e.g. resolving an Arena
-        # contact sensor's destination prim into a goal object name in create_goal).
-        self._name_from_path = dict(name_from_path)
-
-        objects = []
-        for i, obstacle in enumerate(scene_cfg.objects):
-            path = obstacle.name
-            name = path
-            for _path, _name in name_from_path.items():
-                if path.startswith(_path):
-                    name = _name
-                    break
-
-            # Only env-registered assets can be movable: matched rigid objects unless kinematic,
-            # and matched deformables. Unmatched prims (background scenery, tables, fixtures —
-            # common in Arena scenes) are static collision-only obstacles; treating them as
-            # movable would grasp-config and sphere-fit arbitrary scenery meshes.
-            if name in self.scene.rigid_objects:
-                rigid_object = self.scene.rigid_objects[name]
-                floating = True
-                if (rigid_object.cfg.spawn is not None) and (rigid_object.cfg.spawn.rigid_props is not None):
-                    floating = not rigid_object.cfg.spawn.rigid_props.kinematic_enabled
-            elif name in self.scene.deformable_objects:
-                floating = True
-            else:
-                floating = False
-
-            mesh = obstacle.get_trimesh_mesh()
-            # Some Arena/USD assets parse into degenerate meshes (empty, non-finite vertices, or
-            # too few points for a hull); they break sphere fitting (NaN into cKDTree) — skip.
-            if (mesh.vertices.size == 0) or (not np.isfinite(mesh.vertices).all()) or (len(mesh.vertices) < 4):
-                print(f"[schedulestream] WARNING: skipping obstacle {name!r} ({path}) with degenerate mesh")
-                continue
-            pose = to_pose(obstacle.pose)
-            # Floating objects (cubes) get a top-down grasp config (custream2/scene.py idiom);
-            # static objects (e.g. the table) are collision-only.
-            grasp_config = GraspConfig(roll_interval="top") if floating else None
-            objects.append(MeshObject(name, mesh, pose=pose, grasp_config=grasp_config, surface_config=None))
-            if self.verbose:
-                print(
-                    f"{i}/{len(scene_cfg.objects)}) Name: {name} | Path: {path} | Floating: {floating} "
-                    f"| Position: {np.round(position_from_pose(pose), 2)}"
-                )
-        return objects
-
-    def _create_objects(self) -> list[Any]:
-        usd_parser = UsdSceneParser()
-        usd_parser.load_stage(self.scene.stage)
-
-        env_path = self.scene.env_regex_ns.replace(".*", f"{self.env_id}")
-        robot_path = f"{env_path}/Robot"
-        ignore_list = [
-            f"{env_path}/Robot",
-            f"{env_path}/target",
-            "/World/defaultGroundPlane",
-            "/curobo",
-        ]
-        scene_cfg = usd_parser.get_obstacles_from_stage(
-            only_paths=[env_path],
-            reference_prim_path=robot_path,
-            ignore_substring=ignore_list,
-            timecode=0,
+    def _create_world(self, goal: Any = None, **kwargs: Any) -> World:
+        # Only the goal's Attached/Holding objects need to float; an empty set
+        # falls back to the env's default movability.
+        objects = create_objects(
+            self.scene, env_id=self.env_id, floating=movable_from_goal(goal) or None, verbose=self.verbose
         )
-        obstacle_names = [obj.name for obj in scene_cfg.objects]
-        assert obstacle_names, f"no obstacles parsed under {env_path}"
-        if self.verbose:
-            print(f"Obstacles ({len(obstacle_names)}): {obstacle_names}")
-        return self._convert_objects(scene_cfg)
-
-    def _create_world(self) -> World:
-        objects = self._create_objects()
 
         usd_name = os.path.basename(self.articulation.cfg.spawn.usd_path)
 
-        # Franka scope: the standard panda (isaaclab_tasks) and Arena's panda-on-stand variant.
-        # Note the Arena stand itself is part of the robot USD and is NOT in cuRobo's collision
-        # model (custream2's Franka URDF has no stand link).
+        # The Arena stand is part of the robot USD but NOT in cuRobo's collision model
+        # (custream2's Franka URDF has no stand link).
         if usd_name not in ("panda_instanceable.usd", "franka_panda_hand_on_stand.usd"):
             raise NotImplementedError(
                 f"schedulestream currently supports only the Franka panda, got robot USD {usd_name!r}"
             )
         robot_config = load_franka_config(base_poses=None)
 
-        # The World and ALL cuRobo operations must run with inference mode OFF. The Isaac AutoData
-        # env_loop runs the whole generation under torch.inference_mode(); if the World is built in
-        # that context, cuRobo allocates "inference tensors" (e.g. kinematics link_spheres) that can
-        # neither be backward()'d (IK) nor updated in-place outside inference mode (grasp sphere
-        # context) -- producing "Inplace update to inference tensor outside InferenceMode" errors.
-        # Building everything under autograd_enabled() makes them normal tensors throughout.
-        #
-        # World creation is profiled separately from solving (see plan()): cProfile when
-        # self.profile is set, else a no-op.
-        if self.profile:
-            print(f"{'=' * 30} PROFILE: world creation {'=' * 30}")
+        # env_loop runs under torch.inference_mode(); building the World there allocates
+        # cuRobo "inference tensors" that can't be backward()'d (IK) or updated in-place.
+        # autograd_enabled() makes them normal tensors throughout.
         with profiler(field="cumtime" if self.profile else None, num=25), autograd_enabled():
-            # ik_batch: the IK stream batch size (custream2's -b/--batch; its example defaults to 128).
-            world = World(robot_config, objects, ik_batch=self.batch_size)
+            world = World(robot_config, objects, debug=True, **kwargs)
 
-            state_dict = self.scene.state
-            positions = state_dict["articulation"][self.robot]["joint_position"][self.env_id]
-            # Reorder env joint positions into the world's joint ordering by name.
-            env_joint_names = list(self.articulation.joint_names)
-            ordered = _reorder_positions(env_joint_names, positions, world.all_joints)
-            world.set_joint_positions(world.all_joints, ordered)
+            # The observation hooks read self.world (Planner.__init__ re-assigns the same World).
+            self.world = world
+            self.update_joint_state()
             world.set_camera_pose(CAMERA_POSE)
 
-            # Warm up the IK / motion-planning solvers, which CAPTURES cuRobo's CUDA graphs. Without
-            # this, the first solve_tamp replays a never-captured graph and crashes in seed_ik_solver
-            # ('NoneType' has no attribute 'replay'). custream2's example.py and the upstream isaaclab
-            # planner both warm up before solving (the latter via its now-removed v1 initialize()).
+            # Captures cuRobo's CUDA graphs; without it the first solve replays a
+            # never-captured graph and crashes in seed_ik_solver.
             world.warmup()
 
-        # Diagnostic (outside autograd_enabled — just toggles collision-active state, no backward):
-        # every movable object must be registered in the cuRobo scene_collision_checker, else grasp
-        # sampling (grasp.py active_context -> set_object_active) raises KeyError. Toggling active
-        # forces the strict container walk (is_object_active defaults True, so a no-op set wouldn't
-        # probe membership). Restores state and never raises.
-        missing = []
-        for name in world.movable_names:
-            try:
-                world.set_object_active(name, False)
-                world.set_object_active(name, True)
-            except KeyError:
-                missing.append(name)
-        if missing:
-            print(
-                f"[schedulestream] WARNING: movable objects missing from scene_collision_checker: "
-                f"{missing} | movable_names={world.movable_names} | fixed_names={world.fixed_names}"
-            )
         return world
 
     # ------------------------------------------------------------------
@@ -316,49 +193,45 @@ class ScheduleStreamPlanner(Planner):
     # ------------------------------------------------------------------
 
     def create_goal(self, success_term: Any) -> Any:
-        """Derive the symbolic ScheduleStream goal from the task success term.
-
-        With no success term (e.g. the lift family defines none), fall back on the movable-object
-        count: one movable → hold it (lift); several → stack the two highest-indexed.
-        """
+        """Derive the symbolic goal from the task success term."""
         if success_term is None:
-            movable = self.world.movable_names
-            if len(movable) == 1:
-                # [arm] = self.world.arms
-                arm = World.ARM
-                return Holding(arm) <= movable[0]
-            obj1, obj2 = sorted(movable, reverse=True)[:2]
-            return Attached(obj1) == obj2
-
+            return self._create_default_goal()
         if success_term.func == cubes_stacked:
-            cubes: list[str | None] = [f"cube_{i}" for i in range(1, 3 + 1)]
-            for i, cube in enumerate(cubes):
-                cube_cfg = f"{cube}_cfg"
-                if cube_cfg not in success_term.params:
-                    continue
-                if success_term.params[cube_cfg] is None:
-                    cubes[i] = None
-                else:
-                    cubes[i] = success_term.params[cube_cfg].name
-            cube1, cube2, cube3 = cubes
-            goal = Attached(cube2) == cube1
-            if cube3 is not None:
-                goal = goal & (Attached(cube3) == cube2)
-            return goal
-
+            return self._create_stack_goal(success_term)
         arena_goal = self._create_arena_goal(success_term)
         if arena_goal is not None:
             return arena_goal
         raise NotImplementedError(f"schedulestream goal not implemented for {success_term.func}")
 
-    def _create_arena_goal(self, success_term: Any) -> Any:
-        """Map IsaacLab-Arena task success terms to symbolic goals; None if not an Arena term.
+    def _create_default_goal(self) -> Any:
+        """No success term: one movable -> hold it (lift); several -> stack the two highest-indexed."""
+        movable = self.world.movable_names
+        if len(movable) == 1:
+            # [arm] = self.world.arms
+            arm = World.ARM
+            return Holding(arm) <= movable[0]
+        obj1, obj2 = sorted(movable, reverse=True)[:2]
+        return Attached(obj1) == obj2
 
-        Covered: PickAndPlaceTask (``object_on_destination`` → Attached(obj) == destination),
-        SortMultiObjectTask (``objects_on_destinations`` → conjunction over the pairs), and
-        LiftObjectTask (``lift_object_il_success`` → hold the object; the goal-position tolerance
-        is left to the lift executed by the hold).
-        """
+    def _create_stack_goal(self, success_term: Any) -> Any:
+        """Goal for isaaclab_tasks' ``cubes_stacked``: cube2 on cube1, then cube3 on cube2."""
+        cubes: list[str | None] = [f"cube_{i}" for i in range(1, 3 + 1)]
+        for i, cube in enumerate(cubes):
+            cube_cfg = f"{cube}_cfg"
+            if cube_cfg not in success_term.params:
+                continue
+            if success_term.params[cube_cfg] is None:
+                cubes[i] = None
+            else:
+                cubes[i] = success_term.params[cube_cfg].name
+        cube1, cube2, cube3 = cubes
+        goal = Attached(cube2) == cube1
+        if cube3 is not None:
+            goal = goal & (Attached(cube3) == cube2)
+        return goal
+
+    def _create_arena_goal(self, success_term: Any) -> Any:
+        """Map IsaacLab-Arena success terms to symbolic goals; None if not an Arena term."""
         try:
             from isaaclab_arena.tasks import terminations as arena_terminations
         except ImportError:
@@ -366,13 +239,17 @@ class ScheduleStreamPlanner(Planner):
         params = success_term.params
 
         if success_term.func is arena_terminations.object_on_destination:
-            destination = self._destination_name(params["contact_sensor_cfg"].name)
+            destination = destination_from_contact_sensor(
+                self.scene, params["contact_sensor_cfg"].name, env_id=self.env_id
+            )
             return Attached(params["object_cfg"].name) == destination
 
         if success_term.func is arena_terminations.objects_on_destinations:
             goal = None
             for object_cfg, sensor_cfg in zip(params["object_cfg_list"], params["contact_sensor_cfg_list"]):
-                clause = Attached(object_cfg.name) == self._destination_name(sensor_cfg.name)
+                clause = Attached(object_cfg.name) == destination_from_contact_sensor(
+                    self.scene, sensor_cfg.name, env_id=self.env_id
+                )
                 goal = clause if goal is None else (goal & clause)
             return goal
 
@@ -382,24 +259,6 @@ class ScheduleStreamPlanner(Planner):
             return Holding(arm) == params["object_cfg"].name
 
         return None
-
-    def _destination_name(self, contact_sensor_name: str) -> str:
-        """Resolve an Arena contact sensor's filtered destination prim into a world object name.
-
-        The pick-and-place success terms identify the destination only through the contact
-        sensor's ``filter_prim_paths_expr``; match it against the prim-path -> asset-name mapping
-        recorded during object conversion.
-        """
-        sensor = self.scene.sensors[contact_sensor_name]
-        [filter_expr] = sensor.cfg.filter_prim_paths_expr
-        path = filter_expr.replace(".*", f"{self.env_id}")
-        for prim_path, name in self._name_from_path.items():
-            if path.startswith(prim_path) or prim_path.startswith(path):
-                return name
-        raise KeyError(
-            f"Contact sensor {contact_sensor_name!r} destination {path!r} matches no parsed world "
-            f"object (known: {sorted(set(self._name_from_path.values()))})"
-        )
 
     # ------------------------------------------------------------------
     # EEF frame calibration + action extraction
@@ -422,11 +281,8 @@ class ScheduleStreamPlanner(Planner):
         raise NotImplementedError("schedulestream requires a DifferentialInverseKinematicsAction (IK env)")
 
     def _raw_eef_pose(self) -> torch.Tensor:
-        """World-frame EEF target as cuRobo sees it: ``robot_root * node_pose(body) * body_offset``.
-
-        This is in cuRobo's ``panda_hand`` frame convention; :meth:`_eef_frame_correction` maps it
-        into the env's ee_frame convention.
-        """
+        """World-frame EEF target as cuRobo sees it: ``robot_root * node_pose(body) * body_offset``
+        (cuRobo's ``panda_hand`` convention; :meth:`_eef_frame_correction` maps to the env's ee_frame)."""
         link_pose = self.world.get_node_pose(self.body_name)
         if self.body_offset is not None:
             link_pose = link_pose.multiply(self.body_offset)
@@ -434,26 +290,13 @@ class ScheduleStreamPlanner(Planner):
         return link_pose.get_matrix().squeeze(0).to(device=self.datastream.device, dtype=torch.float32)
 
     def _eef_frame_correction(self) -> torch.Tensor:
-        """Constant body-frame transform mapping cuRobo's EEF frame to the env's ee_frame.
+        """Constant body-frame transform mapping cuRobo's EEF frame to the env's ee_frame,
+        measured once at the current config: ``inv(raw_eef) @ obs_eef``.
 
-        Measured once with the world at the current config: ``inv(raw_eef) @ obs_eef``.
-
-        Root cause (IsaacLab-version asset difference, NOT a quaternion-convention bug here):
-        cuStream2 builds the World from its own Franka URDF (``custream2.franka.load_franka_config``),
-        whose ``panda_hand`` link frame is defined ~180 deg about z relative to the ``panda_hand``
-        frame in the Franka USD shipped with *this* IsaacLab version. The env's ee_frame observation
-        (FrameTransformer on ``panda_hand`` + pos [0,0,0.1034], identity rot) therefore differs from
-        cuRobo's ``panda_hand``-derived target by that constant 180-deg-z link-frame redefinition
-        (plus the 0.107-vs-0.1034 z offset). The standalone ``applications/isaaclab`` agent does not
-        need this correction only because it runs against an IsaacLab whose Franka USD ``panda_hand``
-        happens to match custream2's URDF.
-
-        Because the mismatch is a constant BODY-frame (link-local) transform, ``inv(raw0) @ obs0``
-        measured at one config reproduces the true EEF pose at EVERY config (obs(q) = raw(q) @ C), so
-        this is correct for full trajectories, not just a static hold. (The base ``reference_pose``
-        is computed correctly: ``_to_pose`` converts the xyzw warp ``root_pose_w`` to wxyz for cuRobo,
-        so there is no world-frame error that a body-frame correction would fail to cancel.) The
-        ``[schedulestream] EEF frame check`` print validates the result reads ~0 after correction.
+        custream2's Franka URDF defines ``panda_hand`` ~180 deg about z (and a slightly
+        different z offset) relative to this IsaacLab version's Franka USD. The mismatch is a
+        constant link-local transform, so one measurement reproduces the true EEF pose at
+        every config (obs(q) = raw(q) @ C) — valid for full trajectories, not just holds.
         """
         eef_name = self.datastream.get_eef_names()[0]
         obs_eef = self.datastream.get_robot_eef_pose(env_ids=[self.env_id], eef_name=eef_name)[0].to(
@@ -461,42 +304,17 @@ class ScheduleStreamPlanner(Planner):
         )
         return torch.linalg.inv(self._raw_eef_pose()) @ obs_eef
 
-    def _debug_eef_frame_check(self, waypoints: list[Waypoint]) -> None:
-        """Compare the first computed waypoint pose to the adapter's CURRENT EEF pose.
-
-        For a hold (and the first step of any plan, which starts at the current config) these should
-        be identical. Any nonzero delta — especially a pure z-axis rotation — exposes a frame /
-        quaternion-convention mismatch between cuRobo's ``panda_hand`` and the env's ``ee_frame``
-        observation. Prints translation delta and the relative rotation as axis*angle (rad).
-        """
-        if not waypoints:
-            return
-        eef_name = self.datastream.get_eef_names()[0]
-        current = self.datastream.get_robot_eef_pose(env_ids=[self.env_id], eef_name=eef_name)[0]
-        target = waypoints[0].pose.to(device=current.device, dtype=current.dtype)
-        cur_rot, tgt_rot = current[:3, :3], target[:3, :3]
-        rel = tgt_rot @ cur_rot.transpose(-1, -2)
-        axis_angle = axis_angle_from_quat(quat_from_matrix(rel.unsqueeze(0)))[0]
-        delta_pos = target[:3, 3] - current[:3, 3]
-        print(
-            "[schedulestream] EEF frame check (first waypoint vs current obs EEF; hold => ~0):\n"
-            f"  delta_pos = {[round(v, 4) for v in delta_pos.tolist()]}\n"
-            f"  delta_rot axis*angle (rad) = {[round(v, 4) for v in axis_angle.tolist()]}"
-            f"  | |angle| = {float(axis_angle.norm()):.4f}"
-        )
-
     def extract_action(self) -> Waypoint:
         """Extract the :class:`Waypoint` (EEF pose target + binary gripper) implied by the world state.
 
-        The gripper is inferred from the world's arm attachments (closed while holding an object),
-        not from the command stream — RoboLabPolicy style. ``noise`` must be a float (not the
-        Waypoint default ``None``): the embodiment adapter does ``noise > 0.0``.
+        The gripper closes while the arm holds an attachment. ``noise`` must be a
+        float, not None: the embodiment adapter does ``noise > 0.0``.
         """
         assert self._correction is not None, "get_waypoints() calibrates the frame correction first"
         pose = self._raw_eef_pose() @ self._correction
         gripper = CLOSE_ACTION if self.get_world_arm_attachments() else OPEN_ACTION
         gripper_action = torch.tensor([gripper], dtype=torch.float32, device=self.datastream.device)
-        return Waypoint(pose=pose, gripper_action=gripper_action, noise=0.0)
+        return Waypoint(pose=pose, gripper_action=gripper_action, noise=self.noise)
 
     # ------------------------------------------------------------------
     # Planning
@@ -505,10 +323,8 @@ class ScheduleStreamPlanner(Planner):
     def plan(self) -> list[Any]:
         """Base planning under autograd (cuRobo IK/trajopt call ``backward()``); raise on failure.
 
-        The base returns None on failure, but returning an empty result to the data generator would
-        livelock ``env_loop`` (a failed attempt enqueues no action, so the attempt-count stop check
-        is never reached) — see ``ScheduleStream.plan_subtask_trajectory``. The base has already
-        printed the solver traceback and animated the initial state when ``self.animate``.
+        Returning an empty result would livelock ``env_loop``: a failed attempt
+        enqueues no action, so its attempt-count stop check is never reached.
         """
         if self.profile:
             print(f"{'=' * 30} PROFILE: solve_tamp {'=' * 30}")
@@ -521,18 +337,17 @@ class ScheduleStreamPlanner(Planner):
     def get_waypoints(self) -> list[Waypoint]:
         """Sync the world, plan (or hold), and roll the plan out open loop into Waypoints."""
         self.update_state()
-        # Calibrate the constant cuRobo->ee_frame correction at the synced start configuration.
+        # Calibrate the cuRobo->ee_frame correction at the synced start configuration.
         self._correction = self._eef_frame_correction()
 
         if self.hold is not None:
-            # Null plan: hold the current configuration (mirrors the isaaclab planner's hold).
+            # Null plan: hold the current configuration.
             commands = self.hold * [self.world.configuration()]
-            if self.animate or self.record:
-                self.frames.extend(animate_commands(self.state, Commands(self.world, commands), record=self.record))
         else:
             commands = self.plan()
 
-        # Open-loop rollout (update=False): step the plan purely in the world model.
-        waypoints = list(self.get_controller(commands))
-        self._debug_eef_frame_check(waypoints)
+        # Open-loop rollout: step the plan purely in the world model. Task-space
+        # commands run IK during execute, so this also needs autograd.
+        with autograd_enabled():
+            waypoints = list(self.get_controller(commands))
         return waypoints
