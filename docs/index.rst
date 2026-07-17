@@ -5,7 +5,7 @@ Welcome to Isaac AutoData!
 `Isaac Lab <https://isaac-sim.github.io/IsaacLab/main/index.html>`_ and
 `Isaac Lab Arena <https://github.com/isaac-sim/IsaacLab-Arena>`_.
 Given a handful of annotated human demonstrations, it uses parallel simulation environments to
-synthesizes large datasets of new demonstrations by transforming and recombining the human 
+synthesizes large datasets of new demonstrations by transforming and recombining the human
 demonstration segments.
 
 .. figure:: images/autodata.gif
@@ -26,7 +26,7 @@ same skill, repeated under different object placements.
 
 Isaac AutoData exploits that redundancy. A human demonstration is split into **subtasks** (each
 a contiguous segment in which the robot's end-effector motion is driven by a single reference
-object). Because each segment is object-relative, it can be *transformed* to a new scene 
+object). Because each segment is object-relative, it can be *transformed* to a new scene
 configuration and replayed. Stitching transformed segments together turns a
 handful of demonstrations into an arbitrarily large dataset.
 

@@ -36,7 +36,7 @@ From ``/workspaces/isaac_autodata`` inside the container, run:
 
 .. code-block:: bash
 
-   python isaac_autodata_examples/generate_dataset.py \
+   python scripts/generate_dataset.py \
        --viz kit \
        --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --alg mimicgen \
