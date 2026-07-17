@@ -8,6 +8,7 @@
 Native ports of the env-configuration and synchronous step-loop helpers that the generation
 entrypoint needs, so the CLI no longer depends on ``isaaclab_mimic.datagen.generation``.
 
+* :func:`apply_env_profile` — overlay an :class:`EnvironmentProfile` onto a parsed env config.
 * :func:`setup_env_config` — parse and adapt an env config for recording generated demos.
 * :func:`env_loop` — synchronous step loop that drives the env while async data generators feed
   actions through queues.
@@ -21,12 +22,17 @@ import os
 import torch
 from typing import Any
 
+import isaaclab.sim as sim_utils
+from isaaclab.assets import RigidObjectCfg
 from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
-from isaaclab.managers import DatasetExportMode
+from isaaclab.managers import DatasetExportMode, EventTermCfg, SceneEntityCfg
 from isaaclab.managers.recorder_manager import RecorderManagerBaseCfg
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.datasets import HDF5DatasetFileHandler
+from isaaclab.utils.string import string_to_callable
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
+from isaac_autodata_interfaces.env.env_profile import EnvironmentProfile, convert_event_params
 from isaac_autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 
 
@@ -58,6 +64,88 @@ def get_env_name_from_dataset(input_file_path: str) -> str:
     return env_name
 
 
+def apply_env_profile(env_cfg: Any, profile: EnvironmentProfile, env_name: str) -> None:
+    """Overlay ``profile`` onto a parsed env config in place, before ``gym.make``.
+
+    The scene and event managers build entities from the config instance's ``__dict__``, so
+    assets and event terms set here are consumed like class-declared ones, and event terms set
+    to None are skipped.
+
+    Args:
+        env_cfg: Parsed env config instance returned by ``parse_env_cfg``.
+        profile: The environment profile to apply.
+        env_name: Env id the config was parsed from; must equal ``profile.base_env``.
+    """
+    assert env_name == profile.base_env, (
+        f"Environment profile {profile.name!r} is written against base env {profile.base_env!r} "
+        f"but is being applied to {env_name!r}."
+    )
+
+    # Scene: add rigid objects.
+    for asset_name, add_spec in profile.scene.rigid_objects.add.items():
+        assert (
+            getattr(env_cfg.scene, asset_name, None) is None
+        ), f"Cannot add scene asset {asset_name!r}: the base env already defines it."
+        usd_path = add_spec.usd_path.replace("{ISAACLAB_NUCLEUS_DIR}", ISAACLAB_NUCLEUS_DIR).replace(
+            "{ISAAC_NUCLEUS_DIR}", ISAAC_NUCLEUS_DIR
+        )
+        setattr(
+            env_cfg.scene,
+            asset_name,
+            RigidObjectCfg(
+                prim_path=add_spec.prim_path,
+                init_state=RigidObjectCfg.InitialStateCfg(pos=add_spec.position, rot=add_spec.rotation),
+                spawn=sim_utils.UsdFileCfg(
+                    usd_path=usd_path,
+                    scale=add_spec.scale,
+                    rigid_props=sim_utils.RigidBodyPropertiesCfg(**add_spec.rigid_props),
+                ),
+            ),
+        )
+
+    # Scene: override rigid-body properties of existing objects.
+    for asset_name, object_override in profile.scene.rigid_objects.override.items():
+        asset_cfg = getattr(env_cfg.scene, asset_name, None)
+        assert asset_cfg is not None, f"Cannot override scene asset {asset_name!r}: the base env does not define it."
+        rigid_props = getattr(asset_cfg.spawn, "rigid_props", None)
+        assert rigid_props is not None, f"Scene asset {asset_name!r} has no spawn rigid-body properties to override."
+        for prop_name, value in object_override.rigid_props.items():
+            assert hasattr(
+                rigid_props, prop_name
+            ), f"Rigid-body properties of {asset_name!r} have no field {prop_name!r}."
+            setattr(rigid_props, prop_name, value)
+
+    # Events: remove, override, then add.
+    events_cfg = env_cfg.events
+    for term_name in profile.events.remove:
+        assert (
+            getattr(events_cfg, term_name, None) is not None
+        ), f"Cannot remove event term {term_name!r}: the base env does not define it."
+        setattr(events_cfg, term_name, None)
+    for term_name, event_override in profile.events.override.items():
+        term_cfg = getattr(events_cfg, term_name, None)
+        assert term_cfg is not None, f"Cannot override event term {term_name!r}: the base env does not define it."
+        term_cfg.params.update(convert_event_params(event_override.params, SceneEntityCfg))
+    for term_name, event_add in profile.events.add.items():
+        assert (
+            getattr(events_cfg, term_name, None) is None
+        ), f"Cannot add event term {term_name!r}: the base env already defines it."
+        term_cfg = EventTermCfg(
+            func=string_to_callable(event_add.func),
+            mode=event_add.mode,
+            params=convert_event_params(event_add.params, SceneEntityCfg),
+        )
+        setattr(events_cfg, term_name, term_cfg)
+
+    # The event manager fails on unknown asset references anyway, but only at env construction;
+    # raise a profile-level error at apply time instead.
+    for asset_name in sorted(profile.referenced_asset_names()):
+        assert getattr(env_cfg.scene, asset_name, None) is not None, (
+            f"Event params of profile {profile.name!r} reference scene asset {asset_name!r}, "
+            "which does not exist on the base env or the profile's scene additions."
+        )
+
+
 def setup_env_config(
     env_name: str,
     output_dir: str,
@@ -66,6 +154,7 @@ def setup_env_config(
     device: str,
     generation_policy_params: GenerationPolicy,
     recorder_cfg: RecorderManagerBaseCfg | None = None,
+    env_profile: EnvironmentProfile | None = None,
 ) -> tuple[Any, Any]:
     """Configure the environment for data generation.
 
@@ -82,12 +171,17 @@ def setup_env_config(
         device: Device to run on.
         generation_policy_params: The task descriptor's generation config (source of truth).
         recorder_cfg: Optional recorder manager config; defaults to an action/state recorder.
+        env_profile: Optional environment profile overlaid on the parsed config (scene additions,
+            reset-event changes) before the generation-specific adjustments below.
 
     Returns:
         A tuple of the environment configuration and the success termination condition.
     """
     env_cfg = parse_env_cfg(env_name, device=device, num_envs=num_envs)
     env_cfg.env_name = env_name
+
+    if env_profile is not None:
+        apply_env_profile(env_cfg, env_profile, env_name)
 
     # Extract success checking function
     assert hasattr(env_cfg.terminations, "success"), "No success termination term was found in the environment."
