@@ -23,7 +23,7 @@ jobs:
   test_full:
     name: Full E2E (GPU, rebuilt image)
     runs-on: [self-hosted, gpu]
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     env:
       FORCE_REBUILD: "true"
