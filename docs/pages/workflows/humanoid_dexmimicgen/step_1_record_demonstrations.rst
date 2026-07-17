@@ -20,11 +20,11 @@ the robot's hands. The AutoData development container includes Isaac Teleop so t
 
       .. group-tab:: GR-1
 
-         ``isaac_autodata_tests/test_data/annotated_dataset_gr1_pick_place_dexmimicgen.hdf5``
+         ``datasets/annotated_datasets/dataset_gr1_annotated.hdf5``
 
       .. group-tab:: G1
 
-         ``isaac_autodata_tests/test_data/annotated_dataset_g1_pick_place_dexmimicgen.hdf5``
+         ``datasets/annotated_datasets/dataset_g1_annotated.hdf5``
 
 .. note::
 

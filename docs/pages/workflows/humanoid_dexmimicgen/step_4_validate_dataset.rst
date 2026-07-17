@@ -12,13 +12,13 @@ Check the generated HDF5 for structural problems and summarize its contents:
 
       .. code-block:: bash
 
-         python scripts/validate_dataset.py datasets/generated_dataset_dexmimicgen_gr1.hdf5
+         python scripts/validate_dataset.py ./datasets/generated_dataset_dexmimicgen_gr1.hdf5
 
    .. group-tab:: G1
 
       .. code-block:: bash
 
-         python scripts/validate_dataset.py datasets/generated_dataset_dexmimicgen_g1.hdf5
+         python scripts/validate_dataset.py ./datasets/generated_dataset_dexmimicgen_g1.hdf5
 
 The validator prints one summary row per file (episode count, the env id recorded in the file's
 metadata, and the simulation args) followed by per-file issues. Every episode is checked for the
@@ -38,8 +38,8 @@ tool. CPU simulation matches how the humanoid demos were recorded:
       .. code-block:: bash
 
          python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
-            --viz kit \
             --task Isaac-PickPlace-GR1T2-Abs-v0 \
+            --viz kit \
             --device cpu \
             --dataset_file ./datasets/generated_dataset_dexmimicgen_gr1.hdf5
 
@@ -48,8 +48,8 @@ tool. CPU simulation matches how the humanoid demos were recorded:
       .. code-block:: bash
 
          python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
-            --viz kit \
             --task Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
+            --viz kit \
             --device cpu \
             --dataset_file ./datasets/generated_dataset_dexmimicgen_g1.hdf5
 

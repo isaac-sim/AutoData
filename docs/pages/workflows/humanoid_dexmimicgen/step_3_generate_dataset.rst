@@ -40,8 +40,9 @@ Start with a small run with the simulation viewer enabled to sanity-check the se
       .. code-block:: bash
 
          python scripts/generate_dataset.py \
-            --viz kit \
             --env_name Isaac-PickPlace-GR1T2-Abs-v0 \
+            --viz kit \
+            --device cpu \
             --num_envs 5 \
             --alg dexmimicgen \
             --generation_num_trials 10 \
@@ -55,8 +56,9 @@ Start with a small run with the simulation viewer enabled to sanity-check the se
       .. code-block:: bash
 
          python scripts/generate_dataset.py \
+            --env_name Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
             --viz kit \
-            --task Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
+            --device cpu \
             --num_envs 5 \
             --alg dexmimicgen \
             --generation_num_trials 10 \
@@ -94,9 +96,10 @@ For dataset-scale generation, run without the simulation viewer and with paralle
       .. code-block:: bash
 
          python scripts/generate_dataset.py \
-            --viz none \
             --env_name Isaac-PickPlace-GR1T2-Abs-v0 \
-            --num_envs 100 \
+            --viz none \
+            --device cpu \
+            --num_envs 50 \
             --alg dexmimicgen \
             --generation_num_trials 1000 \
             --task_descriptor isaac_autodata_examples/tasks/gr1_pick_place.yaml \
@@ -109,9 +112,10 @@ For dataset-scale generation, run without the simulation viewer and with paralle
       .. code-block:: bash
 
          python scripts/generate_dataset.py \
-            --viz none \
             --env_name Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
-            --num_envs 100 \
+            --viz none \
+            --device cpu \
+            --num_envs 50 \
             --alg dexmimicgen \
             --generation_num_trials 1000 \
             --task_descriptor isaac_autodata_examples/tasks/g1_pick_place.yaml \

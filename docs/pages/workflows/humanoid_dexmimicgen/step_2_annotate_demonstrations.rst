@@ -108,12 +108,12 @@ Verify the annotated dataset contains the annotated episodes:
 
       .. code-block:: bash
 
-         python scripts/validate_dataset.py datasets/dataset_gr1_annotated.hdf5
+         python scripts/validate_dataset.py ./datasets/dataset_gr1_annotated.hdf5
 
    .. group-tab:: G1
 
       .. code-block:: bash
 
-         python scripts/validate_dataset.py datasets/dataset_g1_annotated.hdf5
+         python scripts/validate_dataset.py ./datasets/dataset_g1_annotated.hdf5
 
 Continue to :doc:`step_3_generate_dataset`.

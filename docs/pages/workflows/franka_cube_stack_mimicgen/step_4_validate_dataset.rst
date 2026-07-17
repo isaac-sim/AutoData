@@ -8,7 +8,7 @@ Check the generated HDF5 for structural problems and summarize its contents:
 
 .. code-block:: bash
 
-   python scripts/validate_dataset.py datasets/generated_dataset_mimicgen_franka.hdf5
+   python scripts/validate_dataset.py ./datasets/generated_dataset_mimicgen_franka.hdf5
 
 The validator prints one summary row per file (episode count, the env id recorded in the
 file's metadata, and the simulation args) followed by per-file issues. Every episode is
@@ -24,10 +24,10 @@ replay tool:
 .. code-block:: bash
 
    python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
-       --viz kit \
        --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --viz kit \
        --num_envs 20 \
-       --dataset_file datasets/generated_dataset_mimicgen_franka.hdf5
+       --dataset_file ./datasets/generated_dataset_mimicgen_franka.hdf5
 
 A good generated demonstration looks like a plausible human one (clean and firm
 grasp, stable placement, etc). Common artifacts worth watching for are jerky transitions at

@@ -114,8 +114,8 @@ A keyboard can be used as an alternative if no SpaceMouse is available. No extra
 .. code-block:: bash
 
    python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
-      --viz kit \
       --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+      --viz kit \
       --teleop_device keyboard \
       --dataset_file ./datasets/dataset_franka.hdf5 \
       --num_demos 10

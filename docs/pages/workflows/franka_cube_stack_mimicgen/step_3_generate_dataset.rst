@@ -24,14 +24,14 @@ Start with a small scale run with simulation viewer enabled to sanity-check the 
 .. code-block:: bash
 
    python scripts/generate_dataset.py \
-       --viz kit \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --viz kit \
        --num_envs 20 \
        --alg mimicgen \
        --generation_num_trials 10 \
        --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
-       --input_file isaac_autodata_tests/test_data/annotated_dataset_franka_stack_mimicgen.hdf5 \
+       --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_mimicgen_franka_small.hdf5
 
 You will see the robot repeatedly attempt the task under new cube placements. Failed
@@ -60,14 +60,14 @@ For dataset-scale generation, run without the simulation viewer and with paralle
 .. code-block:: bash
 
    python scripts/generate_dataset.py \
-       --viz none \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
-       --num_envs 1000 \
+       --viz none \
+       --num_envs 500 \
        --alg mimicgen \
        --generation_num_trials 1000 \
        --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
-       --input_file isaac_autodata_tests/test_data/annotated_dataset_franka_stack_mimicgen.hdf5 \
+       --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_mimicgen_franka.hdf5
 
 Progress is printed after every attempt (successes / attempts and the running success rate).
