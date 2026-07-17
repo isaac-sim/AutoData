@@ -44,8 +44,8 @@ From ``/workspaces/isaac_autodata`` inside the container, run:
        --num_envs 10 \
        --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
-       --input_file TBD.hdf5 \
-       --output_file datasets/generated_dataset_franka_quickstart.hdf5 \
+       --input_file ./datasets/annotated_datasets/franka_cube_stack_annotated.hdf5 \
+       --output_file ./datasets/generated_dataset_franka_quickstart.hdf5
 
 
 While it runs, the console reports the number of source episodes loaded into the pool and a
