@@ -38,7 +38,7 @@ From ``/workspaces/isaac_autodata`` inside the container, run:
 
    python scripts/generate_dataset.py \
        --viz kit \
-       --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --alg mimicgen \
        --generation_num_trials 10 \
        --num_envs 10 \
