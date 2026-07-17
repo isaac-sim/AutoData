@@ -5,9 +5,10 @@
 
 name: Isaac AutoData Nightly
 
-# Manual trigger only. Add a `schedule:` cron block here when the team wants
-# automated nightly runs.
+# 03:30 UTC is off-peak and offset from other repos' nightlies to reduce GPU-runner contention.
 on:
+  schedule:
+    - cron: "30 3 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -22,17 +23,19 @@ jobs:
   test_full:
     name: Full E2E (GPU, rebuilt image)
     runs-on: [self-hosted, gpu]
-    timeout-minutes: 120
+    timeout-minutes: 180
 
-    # Force an image rebuild (run_docker.sh -r; reuses valid Docker layer cache)
-    # and run the whole suite (no marker filter, default
-    # TEST_PATH=isaac_autodata_tests/), including the heavy datagen_perf/
-    # success-rate benchmarks that premerge skips.
     env:
       FORCE_REBUILD: "true"
       PYTEST_MARK: ""
+      ISAAC_AUTODATA_RESULTS_DIR: test-results
 
     steps:
+      # Self-hosted runners persist the workspace; clear prior results so an early
+      # failure can't upload a stale report.
+      - name: Remove stale test results
+        run: rm -rf "${ISAAC_AUTODATA_RESULTS_DIR:-test-results}"
+
       - name: nvidia-smi
         run: nvidia-smi
 
@@ -56,3 +59,16 @@ jobs:
 
       - name: Run full E2E suite
         run: ./scripts/ci/run_tests.sh
+
+      - name: Test results summary
+        if: always()
+        run: python3 scripts/ci/summarize_test_results.py "${ISAAC_AUTODATA_RESULTS_DIR:-test-results}/junit.xml"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-test-results
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 30
