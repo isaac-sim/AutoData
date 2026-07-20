@@ -108,11 +108,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           submodules: false
-
-      - name: Pull LFS doc assets
-        run: |
-          git lfs install --local
-          git lfs pull
+          lfs: true
 
       - name: Build multi-version docs
         run: ./scripts/ci/run_docs_build.sh publish

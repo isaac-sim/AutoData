@@ -120,16 +120,14 @@ jobs:
       - name: Mark repo as safe for git
         run: git config --global --add safe.directory "$PWD"
 
+      # Fetch LFS during checkout; persist-credentials stays false so later
+      # repo-controlled steps cannot reuse the token for a separate git lfs pull.
       - name: Checkout
         uses: actions/checkout@v5
         with:
           submodules: false
+          lfs: true
           persist-credentials: false
-
-      - name: Pull LFS doc assets
-        run: |
-          git lfs install --local
-          git lfs pull
 
       - name: Build docs (verify)
         run: ./scripts/ci/run_docs_build.sh verify
