@@ -72,14 +72,6 @@ When a run dies silently or hangs, work down this list:
 4. **Unmute USD diagnostics.** Isaac Sim mutes USD warnings by default; add
    ``--/persistent/app/usd/muteUsdDiagnostics=false`` to ``--kit_args``.
 
-Continuous Integration
-----------------------
-
-.. todo::
-
-   Once the CI workflows land, document them here: the pre-commit job, the GPU end-to-end
-   job (scoped to ``e2e/``), the nightly full suite including ``datagen_perf/``, the
-   prebuilt-image fast path, and the one-command local reproduction of a CI failure.
 
 Linting
 -------
