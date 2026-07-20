@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 980" font-family="'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif">
+  <title>Isaac AutoData system architecture: contracts, typed data flow, modular generation and direct execution</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a6b85"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8e44ad"/>
+    </marker>
+  </defs>
+
+  <!-- background -->
+  <rect x="0" y="0" width="1400" height="980" fill="#ffffff"/>
+
+  <!-- ═══ header band ═══ -->
+  <rect x="0" y="0" width="1400" height="96" fill="#0e2433"/>
+  <rect x="26" y="20" width="56" height="56" rx="12" fill="#173650"/>
+  <g stroke="#76b900" stroke-width="4" stroke-linecap="round">
+    <line x1="40" y1="38" x2="68" y2="38"/>
+    <line x1="40" y1="48" x2="68" y2="48"/>
+    <line x1="40" y1="58" x2="68" y2="58"/>
+  </g>
+  <circle cx="60" cy="38" r="4.5" fill="#76b900"/>
+  <circle cx="46" cy="48" r="4.5" fill="#76b900"/>
+  <circle cx="54" cy="58" r="4.5" fill="#76b900"/>
+  <text x="102" y="48" font-size="28" font-weight="700" fill="#ffffff">AutoData — System Architecture</text>
+  <text x="102" y="74" font-size="15" fill="#b8cddd">Contracts, typed data flow, modular generation and direct execution</text>
+
+  <!-- ═══ 01 · contracts and sources ═══ -->
+  <text x="40" y="140" font-size="15" font-weight="700" letter-spacing="2" fill="#5c9a1e">01 · CONTRACTS AND SOURCES</text>
+
+  <!-- task contract -->
+  <rect x="40" y="156" width="315" height="118" rx="12" fill="#e8f1f8" stroke="#8fb8d4" stroke-width="1.5"/>
+  <text x="64" y="184" font-size="13" font-weight="700" letter-spacing="1.2" fill="#4a6172">TASK CONTRACT</text>
+  <text x="64" y="214" font-size="24" font-weight="700" fill="#14293a">TaskDescriptor</text>
+  <text x="64" y="240" font-size="15" fill="#4a6172">subtasks · signals · constraints</text>
+  <text x="64" y="262" font-size="15" fill="#4a6172">generation policy</text>
+
+  <!-- robot contract -->
+  <rect x="375" y="156" width="315" height="118" rx="12" fill="#e8f1f8" stroke="#8fb8d4" stroke-width="1.5"/>
+  <text x="399" y="184" font-size="13" font-weight="700" letter-spacing="1.2" fill="#4a6172">ROBOT CONTRACT</text>
+  <text x="399" y="214" font-size="24" font-weight="700" fill="#14293a">EmbodimentAdapter</text>
+  <text x="399" y="240" font-size="15" fill="#4a6172">EEF state · joints</text>
+  <text x="399" y="262" font-size="15" fill="#4a6172">pose ⇄ action</text>
+
+  <!-- source data -->
+  <rect x="710" y="156" width="315" height="118" rx="12" fill="#ffffff" stroke="#c8d3da" stroke-width="1.5"/>
+  <text x="734" y="184" font-size="13" font-weight="700" letter-spacing="1.2" fill="#4a6172">SOURCE DATA</text>
+  <text x="734" y="214" font-size="24" font-weight="700" fill="#14293a">DataGenInfoPool</text>
+  <text x="734" y="240" font-size="15" fill="#4a6172">episodes · annotations</text>
+  <text x="734" y="262" font-size="15" fill="#4a6172">subtask boundaries</text>
+
+  <!-- env / task platform -->
+  <rect x="1045" y="156" width="315" height="118" rx="12" fill="#f1f4f6" stroke="#c8d3da" stroke-width="1.5"/>
+  <text x="1069" y="184" font-size="13" font-weight="700" letter-spacing="1.2" fill="#4a6172">ENV / TASK PLATFORM</text>
+  <text x="1069" y="214" font-size="21" font-weight="700" fill="#14293a">Isaac Lab Arena</text>
+  <text x="1069" y="240" font-size="15" fill="#4a6172">tasks + embodiments</text>
+  <text x="1069" y="262" font-size="13.5" fill="#4a6172"><tspan font-weight="600" fill="#14293a">Isaac Lab</tspan>  simulation + environment runtime</text>
+
+  <!-- arrows into the spine -->
+  <g stroke="#4a6b85" stroke-width="2" fill="none">
+    <line x1="197" y1="274" x2="197" y2="318" marker-end="url(#arrow)"/>
+    <line x1="532" y1="274" x2="532" y2="318" marker-end="url(#arrow)"/>
+    <line x1="867" y1="274" x2="867" y2="318" marker-end="url(#arrow)"/>
+    <line x1="1202" y1="274" x2="1202" y2="318" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- ═══ 02 · data spine ═══ -->
+  <text x="40" y="312" font-size="15" font-weight="700" letter-spacing="2" fill="#5c9a1e">02 · DATA SPINE</text>
+  <rect x="40" y="324" width="1320" height="104" rx="14" fill="#eef6e4" stroke="#a9cf7f" stroke-width="2"/>
+  <text x="70" y="360" font-size="13" font-weight="700" letter-spacing="1.2" fill="#57703d">STABLE READ INTERFACE</text>
+  <text x="70" y="394" font-size="26" font-weight="700" fill="#14293a">Datastream</text>
+  <line x1="330" y1="346" x2="330" y2="406" stroke="#c3ddaa" stroke-width="1.5"/>
+  <g font-size="16" fill="#33501f">
+    <text x="372" y="382">task semantics</text>
+    <text x="586" y="382">robot + world state</text>
+    <text x="828" y="382">source pool</text>
+    <text x="1008" y="382">action encoding</text>
+  </g>
+  <g fill="#76b900">
+    <circle cx="568" cy="377" r="4"/>
+    <circle cx="810" cy="377" r="4"/>
+    <circle cx="990" cy="377" r="4"/>
+  </g>
+  <rect x="1198" y="356" width="132" height="40" rx="20" fill="#76b900"/>
+  <text x="1264" y="381" font-size="14" font-weight="700" letter-spacing="1" fill="#ffffff" text-anchor="middle">TYPED API</text>
+
+  <!-- arrow spine → orchestrator -->
+  <line x1="880" y1="428" x2="880" y2="466" stroke="#4a6b85" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ═══ 03 · generation core ═══ -->
+  <text x="40" y="462" font-size="15" font-weight="700" letter-spacing="2" fill="#5c9a1e">03 · GENERATION CORE</text>
+
+  <!-- algorithm plug-ins -->
+  <rect x="40" y="474" width="430" height="170" rx="14" fill="#f6effa" stroke="#c9a3dd" stroke-width="1.5"/>
+  <text x="70" y="506" font-size="13" font-weight="700" letter-spacing="1.2" fill="#7d3fa8">ALGORITHM PLUG-INS</text>
+  <text x="70" y="538" font-size="24" font-weight="700" fill="#14293a">GenerationAlgorithm</text>
+  <text x="70" y="564" font-size="15.5" fill="#4a6172">MimicGen · DexMimicGen · SkillGen</text>
+  <rect x="64" y="584" width="382" height="40" rx="10" fill="#ffffff" stroke="#d5b8e8" stroke-width="1.5"/>
+  <text x="84" y="609" font-size="14.5"><tspan font-weight="700" fill="#7d3fa8">SkillGen only</tspan><tspan fill="#4a6172">  → MotionPlannerBase · cuRobo</tspan></text>
+
+  <!-- plug-in arrow -->
+  <line x1="470" y1="559" x2="504" y2="559" stroke="#8e44ad" stroke-width="2.5" marker-end="url(#arrowPurple)"/>
+
+  <!-- orchestrator -->
+  <rect x="510" y="474" width="850" height="170" rx="14" fill="#12293c"/>
+  <text x="540" y="506" font-size="13" font-weight="700" letter-spacing="1.2" fill="#9ccb3b">ORCHESTRATOR</text>
+  <text x="540" y="542" font-size="26" font-weight="700" fill="#ffffff">DataGenerator</text>
+  <text x="540" y="568" font-size="15.5" fill="#bcd0de">source selection · transforms · constraints · waypoint synthesis</text>
+  <g>
+    <rect x="540" y="586" width="212" height="36" rx="18" fill="#1d3a52" stroke="#35566f" stroke-width="1"/>
+    <text x="646" y="609" font-size="14" fill="#cfe3f0" text-anchor="middle">per-EEF state machine</text>
+    <rect x="768" y="586" width="220" height="36" rx="18" fill="#1d3a52" stroke="#35566f" stroke-width="1"/>
+    <text x="878" y="609" font-size="14" fill="#cfe3f0" text-anchor="middle">trajectory coordination</text>
+    <rect x="1004" y="586" width="330" height="36" rx="18" fill="#1d3a52" stroke="#35566f" stroke-width="1"/>
+    <text x="1169" y="609" font-size="14" fill="#cfe3f0" text-anchor="middle">optional planning through algorithm contract</text>
+  </g>
+
+  <!-- elbow arrow orchestrator → execution -->
+  <path d="M 700 644 V 664 H 470 V 690" fill="none" stroke="#4a6b85" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ═══ 04 · execution and output ═══ -->
+  <text x="40" y="686" font-size="15" font-weight="700" letter-spacing="2" fill="#5c9a1e">04 · EXECUTION AND OUTPUT</text>
+  <rect x="40" y="696" width="1320" height="150" rx="14" fill="#fbfcfd" stroke="#d7dfe5" stroke-width="1.5"/>
+
+  <!-- trajectory -->
+  <rect x="64" y="716" width="290" height="110" rx="10" fill="#ffffff" stroke="#c8d3da" stroke-width="1.5"/>
+  <text x="86" y="744" font-size="13" font-weight="700" letter-spacing="1.2" fill="#4a6172">TRAJECTORY</text>
+  <text x="86" y="774" font-size="22" font-weight="700" fill="#14293a">Waypoints</text>
+  <text x="86" y="800" font-size="15" fill="#4a6172">pose · passthrough · noise</text>
+
+  <line x1="354" y1="771" x2="374" y2="771" stroke="#4a6b85" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- robot boundary -->
+  <rect x="378" y="716" width="290" height="110" rx="10" fill="#e8f1f8" stroke="#8fb8d4" stroke-width="1.5"/>
+  <text x="400" y="744" font-size="13" font-weight="700" letter-spacing="1.2" fill="#4a6172">ROBOT BOUNDARY</text>
+  <text x="400" y="774" font-size="22" font-weight="700" fill="#14293a">Action encoding</text>
+  <text x="400" y="800" font-size="15" fill="#4a6172">EEF targets → environment action</text>
+
+  <line x1="668" y1="771" x2="688" y2="771" stroke="#4a6b85" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- parallel runtime -->
+  <rect x="692" y="716" width="290" height="110" rx="10" fill="#ffffff" stroke="#c8d3da" stroke-width="1.5"/>
+  <text x="714" y="744" font-size="13" font-weight="700" letter-spacing="1.2" fill="#4a6172">PARALLEL RUNTIME</text>
+  <text x="714" y="774" font-size="22" font-weight="700" fill="#14293a">Queues → env.step</text>
+  <text x="714" y="800" font-size="15" fill="#4a6172">async workers · batched simulation</text>
+
+  <line x1="982" y1="771" x2="1002" y2="771" stroke="#4a6b85" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- deliverable -->
+  <rect x="1006" y="716" width="290" height="110" rx="10" fill="#eef6e4" stroke="#76b900" stroke-width="1.5"/>
+  <text x="1028" y="744" font-size="13" font-weight="700" letter-spacing="1.2" fill="#57703d">DELIVERABLE</text>
+  <text x="1028" y="774" font-size="22" font-weight="700" fill="#14293a">Recorder → HDF5</text>
+  <text x="1028" y="800" font-size="15" fill="#4a6172">episode · success · initial state</text>
+
+  <!-- ═══ legend ═══ -->
+  <rect x="40" y="876" width="1320" height="64" rx="12" fill="#fbfcfd" stroke="#d7dfe5" stroke-width="1.5"/>
+  <text x="70" y="914" font-size="14" font-weight="700" letter-spacing="1" fill="#14293a">LEGEND</text>
+  <g font-size="13.5" fill="#4a6172">
+    <rect x="160" y="898" width="18" height="18" rx="4" fill="#12293c"/>
+    <text x="186" y="912">orchestrator</text>
+    <rect x="285" y="898" width="18" height="18" rx="4" fill="#e8f1f8" stroke="#8fb8d4" stroke-width="1.5"/>
+    <text x="311" y="912">interface / contract</text>
+    <rect x="455" y="898" width="18" height="18" rx="4" fill="#eef6e4" stroke="#a9cf7f" stroke-width="1.5"/>
+    <text x="481" y="912">data spine / output</text>
+    <rect x="622" y="898" width="18" height="18" rx="4" fill="#f6effa" stroke="#c9a3dd" stroke-width="1.5"/>
+    <text x="648" y="912">plug-in / optional</text>
+    <rect x="778" y="898" width="18" height="18" rx="4" fill="#f1f4f6" stroke="#c8d3da" stroke-width="1.5"/>
+    <text x="804" y="912">external platform</text>
+  </g>
+  <text x="1330" y="912" font-size="13" fill="#4a6172" text-anchor="end">Foundation: Isaac Sim · Isaac Lab · Arena · PyTorch · HDF5 · cuRobo</text>
+</svg>
