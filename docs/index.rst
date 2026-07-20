@@ -49,9 +49,19 @@ Four pieces cooperate to generate data:
   See :doc:`pages/concepts/algorithms`.
   All three plug into one data generator — see :doc:`pages/concepts/data_generator`.
 
-.. todo::
+.. figure:: images/System_Architecture.svg
+   :width: 100%
+   :align: center
+   :target: _images/System_Architecture.svg
+   :alt: Isaac AutoData system architecture — contracts, typed data flow, modular generation and execution
 
-   Add an architecture diagram (source dataset -> pool -> algorithm -> env -> output dataset).
+   The Isaac AutoData architecture: declarative contracts feed the Datastream read interface,
+   which the data generator and its algorithm plug-ins consume to produce waypoints, actions,
+   and finally recorded HDF5 episodes.
+
+.. .. todo::
+..
+..    Add an architecture diagram (source dataset -> pool -> algorithm -> env -> output dataset).
 
 
 Usage Example

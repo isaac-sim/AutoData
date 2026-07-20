@@ -7,9 +7,9 @@ explicit interfaces — a task-descriptor YAML for the task, an embodiment YAML 
 and a read interface (the Datastream) for the live environment. New tasks, robots, and
 algorithms can therefore be added independently of one another.
 
-.. todo::
-
-   Add an architecture diagram (source dataset -> pool -> algorithm -> env -> output dataset).
+The architecture diagram on the :doc:`main page <../../index>` shows how these pieces fit
+together — from the declarative contracts, through the Datastream and the data generator,
+to the recorded output dataset.
 
 Packages
 --------
