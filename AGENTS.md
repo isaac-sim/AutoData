@@ -4,8 +4,8 @@ This file provides guidance to AI coding agents (Claude Code, OpenAI Codex, etc.
 
 ## Environment
 
-All scripts and commands from this repo must be run inside the `isaac_autodata` docker container. Users must manually
-start this container using the `./docker/run_docker.sh`. If the container does not exist, prompt the user to start it.
+All scripts and commands from this repo must be run inside the `isaac_autodata` or `isaac_autodata:curobo` docker container. Users must manually
+start this container using the `./docker/run_docker.sh` (or `./docker/run_docker.sh -c`). If the container does not exist, prompt the user to start it.
 
 ## Common Commands
 
