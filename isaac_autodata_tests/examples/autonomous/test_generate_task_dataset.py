@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import io
 import json
 import os
@@ -21,8 +23,10 @@ import pytest
 from isaac_autodata_examples.generate_task_dataset import (
     ExitCode,
     RuntimeStack,
+    _run_gui_generation_inline,
     _run_runtime_child_process,
     _RuntimeChildProcessResult,
+    build_argument_parser,
     run_cli,
 )
 from isaac_autodata_interfaces.autonomous.errors import AutonomousValidationError, ValidationIssue
@@ -526,6 +530,87 @@ print(json.dumps(sorted(
     assert json.loads(completed.stdout) == []
 
 
+def test_display_mode_defaults_headless_and_exposes_gui() -> None:
+    parser = build_argument_parser()
+
+    assert parser.parse_args(["request.yaml"]).headless is True
+    assert parser.parse_args(["request.yaml", "--headless"]).headless is True
+    assert parser.parse_args(["request.yaml", "--gui"]).headless is False
+    assert parser.parse_args(["request.yaml", "--no-headless"]).headless is False
+
+    help_text = parser.format_help()
+    assert "--gui" in help_text
+    assert "--headless" in help_text
+    assert "--no-headless" not in help_text
+
+
+@pytest.mark.parametrize(
+    "display_options",
+    [
+        ("--gui", "--headless"),
+        ("--gui", "--no-headless"),
+        ("--headless", "--no-headless"),
+    ],
+)
+def test_display_modes_are_mutually_exclusive(display_options: tuple[str, str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        build_argument_parser().parse_args(["request.yaml", *display_options])
+
+    assert exc_info.value.code == 2
+
+
+def test_gui_selects_kit_and_does_not_claim_the_main_thread_event_loop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _RuntimeHarness(_ResolvedRequest(tmp_path))
+
+    def reject_asyncio_run(awaitable: Any) -> None:
+        with suppress(BaseException):
+            awaitable.close()
+        raise AssertionError("GUI generation must not call asyncio.run")
+
+    monkeypatch.setattr(asyncio, "run", reject_asyncio_run)
+    exit_code, _stdout, stderr = _run_child(harness, "--gui")
+
+    assert exit_code == ExitCode.SUCCESS
+    assert stderr == ""
+    assert harness.app_options == {
+        "device": "cuda:0",
+        "enable_cameras": False,
+        "headless": False,
+        "visualizer": ["kit"],
+    }
+    assert "run:generation" in harness.events
+
+
+def test_gui_inline_generation_returns_without_suspending() -> None:
+    expected = object()
+
+    async def complete_inline() -> object:
+        return expected
+
+    assert _run_gui_generation_inline(complete_inline()) is expected
+
+
+def test_gui_inline_generation_rejects_suspension_and_closes_coroutine() -> None:
+    finalized = False
+
+    async def suspend() -> None:
+        nonlocal finalized
+        try:
+            await asyncio.sleep(0)
+        finally:
+            finalized = True
+
+    operation = suspend()
+    with pytest.raises(RuntimeError, match="GUI generation unexpectedly suspended"):
+        _run_gui_generation_inline(operation)
+
+    assert finalized
+    assert inspect.getcoroutinestate(operation) == inspect.CORO_CLOSED
+
+
 def test_parent_preflights_then_launches_an_attested_fresh_child(tmp_path: Path) -> None:
     harness = _RuntimeHarness(_ResolvedRequest(tmp_path))
     commands: list[tuple[str, ...]] = []
@@ -540,7 +625,7 @@ def test_parent_preflights_then_launches_an_attested_fresh_child(tmp_path: Path)
         launch_child,
         "--device",
         "cuda:3",
-        "--no-headless",
+        "--gui",
         "--enable-cameras",
     )
 

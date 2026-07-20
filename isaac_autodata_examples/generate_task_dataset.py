@@ -20,7 +20,7 @@ import asyncio
 import json
 import os
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import IntEnum
@@ -172,6 +172,37 @@ class _RuntimeChildStatusError(ValueError):
         super().__init__(message)
 
 
+def _run_gui_generation_inline(awaitable: Awaitable[Any]) -> Any:
+    """Run the current synchronous Isaac generation stack without claiming Kit's event loop.
+
+    Kit advances its own asyncio loop while GUI simulation steps update the application. The live
+    AutoData runtime uses async interfaces for orchestration and cancellation, but its Isaac calls
+    do not suspend. Driving that coroutine inline lets Kit retain main-thread loop ownership. A
+    future genuinely asynchronous runtime must provide a different integration instead of silently
+    moving simulator work to another thread.
+
+    Args:
+        awaitable: Generation operation that must complete without suspending.
+    """
+
+    iterator = awaitable.__await__()
+    try:
+        next(iterator)
+    except StopIteration as completion:
+        return completion.value
+    except BaseException:
+        with suppress(BaseException):
+            iterator.close()
+        raise
+
+    with suppress(BaseException):
+        iterator.close()
+    raise RuntimeError(
+        "GUI generation unexpectedly suspended; Kit owns the main-thread event loop and the "
+        "current Isaac generation runtime must complete inline"
+    )
+
+
 def build_argument_parser() -> argparse.ArgumentParser:
     """Build the complete lightweight CLI parser without importing Isaac or planner packages."""
 
@@ -214,12 +245,26 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default="cuda:0",
         help="Isaac simulation device: cpu, cuda, or cuda:N (default: cuda:0).",
     )
-    parser.add_argument(
-        "--headless",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Run without the Kit GUI (default: true).",
+    display_mode = parser.add_mutually_exclusive_group()
+    display_mode.add_argument(
+        "--gui",
+        action="store_false",
+        dest="headless",
+        help="Launch the Kit GUI instead of running headless.",
     )
+    display_mode.add_argument(
+        "--headless",
+        action="store_true",
+        dest="headless",
+        help="Run without the Kit GUI (default).",
+    )
+    display_mode.add_argument(
+        "--no-headless",
+        action="store_false",
+        dest="headless",
+        help=argparse.SUPPRESS,
+    )
+    parser.set_defaults(headless=True)
     parser.add_argument(
         "--enable-cameras",
         action="store_true",
@@ -738,7 +783,8 @@ def _run_runtime_child(  # noqa: C901 - explicit phase/cleanup boundary is inten
         )
 
         phase = "generation"
-        summary = asyncio.run(stack.run_loop(generator, generation_request, close=False))
+        generation = stack.run_loop(generator, generation_request, close=False)
+        summary = asyncio.run(generation) if args.headless else _run_gui_generation_inline(generation)
         summary_dict = _summary_to_dict(summary)
         if run_log_writer is not None:
             run_log_writer.append({
@@ -1414,11 +1460,16 @@ def _load_runtime_stack() -> RuntimeStack:
 
 
 def _app_launcher_options(args: argparse.Namespace) -> dict[str, Any]:
-    return {
+    options: dict[str, Any] = {
         "device": args.device,
         "enable_cameras": args.enable_cameras,
         "headless": args.headless,
     }
+    if not args.headless:
+        # Current Isaac Lab resolves an omitted visualizer to headless execution. Selecting the Kit
+        # visualizer is therefore the explicit GUI intent; ``headless=False`` alone is insufficient.
+        options["visualizer"] = ["kit"]
+    return options
 
 
 def _arena_runtime_args(args: argparse.Namespace, resolved: Any) -> argparse.Namespace:

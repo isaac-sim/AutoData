@@ -363,6 +363,18 @@ def test_cancellation_finalizes_attempt_as_failed_before_propagating():
     assert runtime.finished == [(False, True)]
 
 
+def test_cancellation_without_running_loop_finalizes_inline_before_propagating():
+    runtime = _CancellingRuntime()
+    generator = AttemptGenerator(runtime, _Planner(), _Executor())
+    operation = generator.generate_attempt(_request())
+
+    with pytest.raises(asyncio.CancelledError):
+        operation.send(None)
+
+    assert runtime.finished == [(False, True)]
+    assert operation.cr_frame is None
+
+
 def test_repeated_cancellation_does_not_detach_attempt_finalizer():
     async def run_scenario():
         runtime = _SlowFinalizingCancellingRuntime()

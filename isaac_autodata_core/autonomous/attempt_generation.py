@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Protocol
@@ -419,6 +420,20 @@ class AttemptGenerator:
 
 async def _finish_attempt_before_reraise(runtime: AttemptRuntime, request: AttemptRequest) -> None:
     """Retain and await one finalizer despite repeated cancellation of the caller."""
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # GUI generation is driven inline because Kit owns the main-thread event loop. The reviewed
+        # live finalizer does not suspend, so it can still preserve recorder state before an
+        # operator interrupt propagates. A finalization failure must not hide that interrupt.
+        with suppress(BaseException):
+            await runtime.finish_attempt(
+                request.env_id,
+                success=False,
+                keep_failed=request.keep_failed,
+            )
+        return
 
     finalizer = asyncio.create_task(
         runtime.finish_attempt(
