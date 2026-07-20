@@ -8,8 +8,8 @@ set -e
 
 DOCKER_IMAGE_NAME='isaac_autodata'
 DOCKER_VERSION_TAG='latest'
-# Override to e.g. nvcr.io/nvidia/isaac-sim:6.0.0 if the -dev2 tag is unavailable to you.
-BASE_IMAGE="${BASE_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.0-dev2}"
+# Override with BASE_IMAGE when testing against a different compatible Isaac Sim release.
+BASE_IMAGE="${BASE_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.1}"
 
 INSTALL_CUROBO=false
 CUROBO_VERSION_TAG='curobo'
