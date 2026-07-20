@@ -93,7 +93,7 @@ Key Parameters
      - Description
    * - ``--alg``
      - Generation algorithm: ``mimicgen``, ``dexmimicgen``, or ``skillgen``.
-   * - ``--task``
+   * - ``--env_name``
      - Env id; if omitted, read from the source dataset's metadata.
    * - ``--generation_num_trials``
      - Overrides the task descriptor's ``generation_policy.num_trials``.

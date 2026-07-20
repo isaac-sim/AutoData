@@ -214,7 +214,7 @@ Constraints are currently supported only by DexMimicGen.
        and indices are zero-based. Pair order matters for ``sequential`` constraints.
    * - ``sequential_min_time_diff``
      - ``-1``
-     - Sequential only. ``-1`` holds the second subtask and prevents it from startinguntil the first finishes.
+     - Sequential only. ``-1`` holds the second subtask and prevents it from starting until the first finishes.
        A positive value lets the second execute until that many steps remain, then holds it until
        the first finishes. ``0`` reserves no steps and adds no wait.
    * - ``coordination_scheme``
