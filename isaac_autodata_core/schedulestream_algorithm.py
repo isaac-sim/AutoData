@@ -102,7 +102,7 @@ class ScheduleStream(GenerationAlgorithm):
         if not waypoints:
             raise RuntimeError(
                 f"schedulestream planning produced no trajectory for env {env_id} "
-                f"(solve_tamp found no plan or returned empty commands)."
+                "(solve_tamp found no plan or returned empty commands)."
             )
         return waypoints, False
 

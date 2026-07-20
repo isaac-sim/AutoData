@@ -102,12 +102,11 @@ import torch  # noqa: E402
 import traceback  # noqa: E402
 from typing import Any  # noqa: E402
 
-from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
-from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
-
 # Importing this module self-registers the "schedulestream" algorithm (heavy cuStream2 / cuRobo
 # deps inside it are imported lazily, so this import stays cheap until a run selects it).
 import isaac_autodata_core.schedulestream_algorithm  # noqa: E402,F401
+from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
+from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.env import (  # noqa: E402

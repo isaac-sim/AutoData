@@ -17,11 +17,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isaac_autodata_interfaces.motion_planners.curobo import CuroboPlannerCfg
 from isaac_autodata_interfaces.motion_planners.motion_planner_base import MotionPlannerBase
 
 if TYPE_CHECKING:
-    from isaac_autodata_interfaces.motion_planners.curobo import CuroboPlanner
+    from isaac_autodata_interfaces.motion_planners.curobo import CuroboPlanner, CuroboPlannerCfg
 
 __all__ = [
     "MotionPlannerBase",
@@ -35,4 +34,8 @@ def __getattr__(name: str):
         from isaac_autodata_interfaces.motion_planners.curobo import CuroboPlanner as _CuroboPlanner
 
         return _CuroboPlanner
+    if name == "CuroboPlannerCfg":
+        from isaac_autodata_interfaces.motion_planners.curobo import CuroboPlannerCfg as _CuroboPlannerCfg
+
+        return _CuroboPlannerCfg
     raise AttributeError(f"module 'motion_planners' has no attribute {name!r}")

@@ -1,0 +1,54 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Local-only ScheduleStream/cuRobo-v1 development overlay. ScheduleStream is supplied as a named
+# build context because its restricted license does not permit AutoData to vendor or fetch it.
+# Build with docker/build_schedulestream_v1.sh; never use the frozen UMI image tag as the base/tag.
+ARG BASE_IMAGE=isaac_autodata:curobo
+FROM ${BASE_IMAGE}
+
+USER root
+
+ARG SCHEDULESTREAM_COMMIT
+ARG SCHEDULESTREAM_VERSION
+ARG BASE_IMAGE_ID
+RUN test -n "${SCHEDULESTREAM_COMMIT}" \
+    && test -n "${SCHEDULESTREAM_VERSION}" \
+    && test -n "${BASE_IMAGE_ID}"
+
+LABEL org.opencontainers.image.title="Isaac AutoData ScheduleStream cuRobo-v1 development overlay" \
+      org.opencontainers.image.description="Local research/evaluation image; not approved for redistribution" \
+      org.opencontainers.image.schedulestream.commit="${SCHEDULESTREAM_COMMIT}" \
+      org.opencontainers.image.schedulestream.application="custream" \
+      org.opencontainers.image.curobo.api-generation="v1" \
+      org.opencontainers.image.base.digest="${BASE_IMAGE_ID}"
+
+# ScheduleStream's `custream` extra requires structlog but does not constrain it. Pin a reviewed,
+# hash-verified universal wheel rather than mutating the host environment or resolving latest.
+COPY docker/schedulestream-v1.requirements.txt /tmp/schedulestream-v1.requirements.txt
+RUN /isaac-sim/python.sh -m pip install \
+      --disable-pip-version-check \
+      --no-cache-dir \
+      --only-binary=:all: \
+      --require-hashes \
+      --requirement /tmp/schedulestream-v1.requirements.txt \
+    && rm -f /tmp/schedulestream-v1.requirements.txt
+
+# The named context is an exact, locally available ScheduleStream checkout. Do not copy `.git` or
+# unrelated data into the image. Its commit is verified by the host build script and stamped above.
+COPY --from=schedulestream pyproject.toml LICENSE /opt/schedulestream/
+COPY --from=schedulestream src /opt/schedulestream/src
+RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_SCHEDULESTREAM="${SCHEDULESTREAM_VERSION}" \
+    /isaac-sim/python.sh -m pip install \
+      --disable-pip-version-check \
+      --no-build-isolation \
+      --no-deps \
+      /opt/schedulestream
+
+ENV SCHEDULESTREAM_SOURCE_COMMIT=${SCHEDULESTREAM_COMMIT} \
+    SCHEDULESTREAM_VERSION=${SCHEDULESTREAM_VERSION}
+
+# Importing the Isaac integration allocates cuRobo CUDA tensors, so the GPU/App smoke test is run
+# after the image build by docker/smoke_schedulestream_v1.py rather than in this CPU-only layer.

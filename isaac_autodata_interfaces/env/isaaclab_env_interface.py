@@ -122,6 +122,7 @@ def env_loop(
     generation_policy_params: GenerationPolicy,
     stats: dict,
     data_gen_tasks: asyncio.Future | None = None,
+    max_attempts: int | None = None,
 ) -> None:
     """Synchronous step loop for the environment.
 
@@ -143,17 +144,23 @@ def env_loop(
         stats: Shared dict with ``num_success``, ``num_failures``, and ``num_attempts`` counters.
         data_gen_tasks: Gathered future for all data generation tasks. When provided, the loop
             exits early if all tasks finish unexpectedly (e.g. due to an unhandled exception).
+        max_attempts: Optional hard attempt budget. Unlike ``num_trials``, this caps attempts even
+            when ``guarantee_success`` is true and includes failures that enqueue no action.
     """
-    num_trials = generation_policy_params.num_trials
-    guarantee_success = generation_policy_params.guarantee_success
     env_id_tensor = torch.tensor([0], dtype=torch.int64, device=env.device)
     prev_num_attempts = 0
     # simulate environment -- run everything in inference mode
     with contextlib.suppress(KeyboardInterrupt) and torch.inference_mode():
         while True:
+            if generation_stop_reason(generation_policy_params, stats, max_attempts=max_attempts) is not None:
+                return
             # check if any environment needs to be reset while waiting for actions
             while env_action_queue.qsize() != env.num_envs:
                 asyncio_event_loop.run_until_complete(asyncio.sleep(0))
+                # Planning can fail before producing an action. Observe attempt counters while
+                # waiting so these failures terminate normally instead of deadlocking here.
+                if generation_stop_reason(generation_policy_params, stats, max_attempts=max_attempts) is not None:
+                    return
                 if data_gen_tasks is not None and data_gen_tasks.done():
                     exc = data_gen_tasks.exception()
                     if exc is not None:
@@ -189,11 +196,15 @@ def env_loop(
                 print(f"{num_success}/{num_attempts} ({generated_success_rate:.1f}%) successful demos generated\033[K")
                 print("*" * 50, "\033[K")
 
-                # termination condition is on enough successes if guarantee_success else enough attempts
-                check_val = num_success if guarantee_success else num_attempts
-                if check_val >= num_trials:
-                    print(f"Reached {num_trials} {'successes' if guarantee_success else 'attempts'}. Exiting.")
-                    break
+                # Stop on the requested successes/attempts or the independent hard budget.
+                stop_reason = generation_stop_reason(
+                    generation_policy_params,
+                    stats,
+                    max_attempts=max_attempts,
+                )
+                if stop_reason is not None:
+                    print(f"Generation stop condition reached ({stop_reason}). Exiting.")
+                    return
 
             # check that simulation is stopped or not
             if env.sim.is_stopped():
@@ -201,3 +212,35 @@ def env_loop(
 
     # Do not close env here: async data generator tasks may still be running.
     # Caller must close env after cancelling and awaiting those tasks.
+
+
+def generation_stop_reason(
+    generation_policy_params: GenerationPolicy,
+    stats: dict,
+    *,
+    max_attempts: int | None = None,
+) -> str | None:
+    """Return the reached generation stop condition, or ``None``.
+
+    Args:
+        generation_policy_params: Desired success/attempt target.
+        stats: Current ``num_success``, ``num_failures``, and ``num_attempts`` counters.
+        max_attempts: Optional hard cap applied independently of ``guarantee_success``.
+    """
+
+    for name in ("num_success", "num_failures", "num_attempts"):
+        assert name in stats, f"generation stats missing {name!r}"
+        assert isinstance(stats[name], int) and stats[name] >= 0, f"generation stat {name!r} must be non-negative"
+    assert (
+        stats["num_success"] + stats["num_failures"] == stats["num_attempts"]
+    ), "generation successes and failures must sum to attempts"
+    if max_attempts is not None:
+        assert isinstance(max_attempts, int) and max_attempts > 0, "max_attempts must be positive"
+
+    target_value = stats["num_success"] if generation_policy_params.guarantee_success else stats["num_attempts"]
+    if target_value >= generation_policy_params.num_trials:
+        target_name = "successes" if generation_policy_params.guarantee_success else "attempts"
+        return f"requested_{target_name}={generation_policy_params.num_trials}"
+    if max_attempts is not None and stats["num_attempts"] >= max_attempts:
+        return f"max_attempts={max_attempts}"
+    return None

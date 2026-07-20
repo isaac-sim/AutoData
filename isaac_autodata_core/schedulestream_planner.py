@@ -14,33 +14,26 @@ Import only after the Isaac app is launched (the isaaclab imports require it).
 from __future__ import annotations
 
 import os
+import torch
 from typing import TYPE_CHECKING, Any
 
-import torch
-
+# Side effect: patches curobo's USD parser to fan-triangulate quad/n-gon faces;
+# Arena/RoboLab assets otherwise fail obstacle extraction.
+import schedulestream.applications.robolab.usd_utils  # noqa: F401
 from curobo.types import JointState, Pose
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.envs.mdp.actions.task_space_actions import DifferentialInverseKinematicsAction
 from isaaclab.utils.math import convert_quat
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import cubes_stacked
-
 from schedulestream.applications.custream2.animate import process_task_commands
 from schedulestream.applications.custream2.command import Attach, Detach, LinkPath
 from schedulestream.applications.custream2.franka import load_franka_config
-from schedulestream.applications.custream2.tamp import Attached, Holding, movable_from_goal
 from schedulestream.applications.custream2.policy import Planner
 from schedulestream.applications.custream2.scene import CAMERA_POSE
-from schedulestream.applications.custream2.utils import (
-    autograd_enabled,
-    multiply_poses,
-    to_cpu,
-)
+from schedulestream.applications.custream2.tamp import Attached, Holding, movable_from_goal
+from schedulestream.applications.custream2.utils import autograd_enabled, multiply_poses, to_cpu
 from schedulestream.applications.custream2.world import TAMPConfig, World
 from schedulestream.common.utils import apply_mapping, profiler
-
-# Side effect: patches curobo's USD parser to fan-triangulate quad/n-gon faces;
-# Arena/RoboLab assets otherwise fail obstacle extraction.
-import schedulestream.applications.robolab.usd_utils  # noqa: F401
 
 from isaac_autodata_core.schedulestream_utils import create_objects, destination_from_contact_sensor
 from isaac_autodata_core.waypoint import Waypoint
@@ -82,7 +75,9 @@ class ScheduleStreamPlanner(Planner):
         goal = self.create_goal(success_term)
         world = self._create_world(goal, ik_batch=batch_size)
         # collisions/profile and extra kwargs flow through **solve_kwargs into solve_tamp.
-        super().__init__(world, goal=goal, max_time=max_time, animate=animate, collisions=collisions, profile=profile, **kwargs)
+        super().__init__(
+            world, goal=goal, max_time=max_time, animate=animate, collisions=collisions, profile=profile, **kwargs
+        )
         # The IK action's control link + body offset are invariant, so resolve them once.
         self.body_name, self.body_offset = self._eef_action_info()
         # Calibrated per get_waypoints() call, at the synced start configuration.

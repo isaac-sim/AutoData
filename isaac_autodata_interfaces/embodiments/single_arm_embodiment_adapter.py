@@ -77,7 +77,10 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
         assert self.env is not None, "Call bind_env(env) before reading state."
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
         obs = self.env.obs_buf[self.obs_group]
-        rot = pose_math.matrix_from_quat(obs[self.pose_obs_keys.quat][index])
+        # Isaac Lab FrameTransformer observations such as ``target_quat_w`` are already XYZW;
+        # ``_w`` identifies the world frame, not the quaternion component order.
+        quaternion_xyzw = obs[self.pose_obs_keys.quat][index]
+        rot = pose_math.matrix_from_quat(quaternion_xyzw)
         pose = pose_math.make_pose(obs[self.pose_obs_keys.pos][index], rot)
         return {self.eef_name: self._observed_to_control_link(pose)}
 
@@ -148,8 +151,15 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
         assert (
             action.dim() == 2 and action.shape[-1] == self.action_dim
         ), f"action shape must be (num_envs, {self.action_dim}), got {tuple(action.shape)}"
-        delta_pos = action[:, :3]
-        delta_aa = action[:, 3:6]
+        # Isaac Lab applies the DifferentialInverseKinematicsAction term's scale *after* receiving
+        # raw environment actions. Decode the physical delta rather than treating raw policy units
+        # as metres/radians. Environments without a discoverable DIK term retain the legacy unit
+        # scale for compatibility.
+        pose_action = action[:, :_DELTA_POSE_ACTION_DIM] * self._get_pose_action_scale(
+            num_envs=action.shape[0], dtype=action.dtype, device=action.device
+        )
+        delta_pos = pose_action[:, :3]
+        delta_aa = pose_action[:, 3:6]
         curr_pos, curr_rot = pose_math.unmake_pose(self.get_eef_poses(env_ids=None)[self.eef_name])
         target_pos = curr_pos + delta_pos
         delta_rot = pose_math.matrix_from_quat(pose_math.quat_from_axis_angle_vec(delta_aa))
@@ -192,6 +202,14 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
         delta_rot = torch.matmul(target_rot, curr_rot.transpose(-1, -2))
         delta_aa = pose_math.axis_angle_from_quat(pose_math.quat_from_matrix(delta_rot))
         pose_action = torch.cat([delta_pos, delta_aa], dim=0)
+        # Encode physical deltas back into raw environment-action units. This is required for
+        # Franka IK-Rel, whose action term commonly uses scale=0.5.
+        pose_action = (
+            pose_action
+            / self._get_pose_action_scale(
+                num_envs=1, dtype=pose_action.dtype, device=pose_action.device, env_id=env_id
+            )[0]
+        )
         if action_noise_dict is not None:
             scale = action_noise_dict.get(self.eef_name, 0.0)
             if scale > 0.0:
@@ -203,6 +221,63 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
             self.gripper_action_dim,
         ), f"gripper action must be ({self.gripper_action_dim},), got {tuple(gripper_action.shape)}"
         return torch.cat([pose_action, gripper_action], dim=0)
+
+    def _get_pose_action_scale(
+        self,
+        *,
+        num_envs: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        env_id: int | None = None,
+    ) -> torch.Tensor:
+        """Return the live DIK action scale in pose-action order.
+
+        Args:
+            num_envs: Number of rows the caller needs.
+            dtype: Result dtype.
+            device: Result device.
+            env_id: Optional single environment row to select.
+        """
+
+        unit = torch.ones((num_envs, _DELTA_POSE_ACTION_DIM), dtype=dtype, device=device)
+        if self.env is None:
+            return unit
+        action_manager = getattr(self.env, "action_manager", None)
+        if action_manager is None:
+            return unit
+        for term_name in getattr(action_manager, "active_terms", ()):
+            term = action_manager.get_term(term_name)
+            # Use a name/shape capability check instead of importing Isaac's action class at module
+            # load time. This keeps embodiment parsing usable before SimulationApp starts.
+            if type(term).__name__ != "DifferentialInverseKinematicsAction":
+                continue
+            scale = getattr(term, "_scale", None)
+            if scale is None:
+                scale = getattr(getattr(term, "cfg", None), "scale", None)
+            if scale is None:
+                return unit
+            scale_tensor = torch.as_tensor(scale, dtype=dtype, device=device)
+            if scale_tensor.ndim == 1:
+                scale_tensor = scale_tensor.unsqueeze(0)
+            if scale_tensor.shape[-1] != _DELTA_POSE_ACTION_DIM:
+                raise ValueError(
+                    "DifferentialInverseKinematicsAction scale must have 6 pose dimensions, "
+                    f"got shape {tuple(scale_tensor.shape)}"
+                )
+            if torch.any(scale_tensor == 0):
+                raise ValueError("DifferentialInverseKinematicsAction scale must be non-zero")
+            if env_id is not None:
+                if not 0 <= env_id < scale_tensor.shape[0]:
+                    raise ValueError(f"env_id {env_id} is outside action-scale rows {scale_tensor.shape[0]}")
+                scale_tensor = scale_tensor[env_id : env_id + 1]
+            if scale_tensor.shape[0] == 1 and num_envs > 1:
+                scale_tensor = scale_tensor.expand(num_envs, -1)
+            if scale_tensor.shape[0] != num_envs:
+                raise ValueError(
+                    f"DIK action-scale rows {scale_tensor.shape[0]} do not match requested num_envs {num_envs}"
+                )
+            return scale_tensor
+        return unit
 
     def actions_to_gripper_actions(self, actions: torch.Tensor) -> dict[str, torch.Tensor]:
         """Slice the trailing gripper dims off a sequence of env actions.
@@ -218,7 +293,8 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
         assert (
             actions.shape[-1] == self.action_dim
         ), f"actions last dim must be {self.action_dim}, got {actions.shape[-1]}"
-        return {self.eef_name: actions[..., -self.gripper_action_dim :]}
+        gripper_start = self.action_dim - self.gripper_action_dim
+        return {self.eef_name: actions[..., gripper_start:]}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DeltaPoseIKSingleArmAdapter:

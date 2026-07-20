@@ -1,19 +1,21 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Standalone helpers for the schedulestream TAMP planner."""
 
 from __future__ import annotations
 
-from collections import Counter
-from typing import Any, List, Optional, Set
-
 import numpy as np
 import trimesh
-from isaaclab.sim import find_matching_prims
-from pxr import Usd, UsdGeom
-
-from curobo.types import Pose
+from collections import Counter
+from typing import Any
 
 from curobo._src.util.usd_scene_parser import UsdSceneParser
-
+from curobo.types import Pose
+from isaaclab.sim import find_matching_prims
+from pxr import Usd, UsdGeom
 from schedulestream.applications.custream2.object import GraspConfig, MeshObject
 from schedulestream.applications.custream2.utils import (
     multiply_poses,
@@ -55,14 +57,10 @@ def destination_from_contact_sensor(scene: Any, contact_sensor_name: str, env_id
     )
 
 
-def prim_relative_pose(
-    stage: Any, prim_path: str, reference_prim_path: str, timecode: float = 0.0
-) -> Pose:
+def prim_relative_pose(stage: Any, prim_path: str, reference_prim_path: str, timecode: float = 0.0) -> Pose:
     """The prim's stage xform re-expressed in the reference prim's frame."""
     time = Usd.TimeCode(timecode)
-    matrix = np.array(
-        UsdGeom.Xformable(stage.GetPrimAtPath(prim_path)).ComputeLocalToWorldTransform(time)
-    ).T
+    matrix = np.array(UsdGeom.Xformable(stage.GetPrimAtPath(prim_path)).ComputeLocalToWorldTransform(time)).T
     reference_matrix = np.array(
         UsdGeom.Xformable(stage.GetPrimAtPath(reference_prim_path)).ComputeLocalToWorldTransform(time)
     ).T
@@ -77,6 +75,7 @@ def is_degenerate_mesh(mesh: trimesh.Trimesh, name: str = "") -> bool:
         return True
     return False
 
+
 # Static obstacles larger than this (max bounding-box extent, metres) or named
 # like a floor are dropped from the world: Arena backgrounds (e.g.
 # pick_and_place_maple_table) parse the ground plane into a huge mesh that
@@ -88,10 +87,10 @@ FLOOR_NAME_SUBSTRINGS = ("floor", "ground")
 def create_objects(
     scene: Any,
     env_id: int = 0,
-    floating: Optional[Set[str]] = None,
+    floating: set[str] | None = None,
     verbose: bool = False,
     **simplify_kwargs: Any,
-) -> List[Any]:
+) -> list[Any]:
     """Parse the live composed stage into MeshObjects, merging every prim of
     the same env asset (rigid or deformable) into one object.
 
@@ -126,7 +125,7 @@ def create_objects(
 
     groups: dict[str, list[Any]] = {}
     roots: dict[str, str] = {}
-    statics: list[Any] = []
+    static_obstacles: list[Any] = []
     for obstacle in scene_cfg.objects:
         for prim_path, name in name_from_path.items():
             if obstacle.name.startswith(prim_path):
@@ -134,7 +133,7 @@ def create_objects(
                 roots.setdefault(name, prim_path)
                 break
         else:
-            statics.append(obstacle)
+            static_obstacles.append(obstacle)
 
     # Asset names are reserved; repeated static names get _1, _2, ... suffixes.
     name_counts = Counter(groups.keys())
@@ -142,18 +141,13 @@ def create_objects(
     objects = []
     # Unmatched prims (background scenery, tables, fixtures) are static
     # collision-only obstacles.
-    for obstacle in statics:
+    for obstacle in static_obstacles:
         mesh = obstacle.get_trimesh_mesh()
         if is_degenerate_mesh(mesh, obstacle.name):
             continue
         extent = float(max(mesh.extents))
-        if (extent > MAX_OBSTACLE_EXTENT) or any(
-            part in obstacle.name.lower() for part in FLOOR_NAME_SUBSTRINGS
-        ):
-            print(
-                f"[schedulestream] skipping floor/oversized obstacle {obstacle.name!r}"
-                f" (extent {extent:.1f} m)"
-            )
+        if (extent > MAX_OBSTACLE_EXTENT) or any(part in obstacle.name.lower() for part in FLOOR_NAME_SUBSTRINGS):
+            print(f"[schedulestream] skipping floor/oversized obstacle {obstacle.name!r} (extent {extent:.1f} m)")
             continue
         base = obstacle.name.replace("/", "_").lstrip("_")
         name_counts[base] += 1
@@ -183,9 +177,7 @@ def create_objects(
         elif name in scene.rigid_objects:
             spawn = scene.rigid_objects[name].cfg.spawn
             is_floating = not (
-                (spawn is not None)
-                and (spawn.rigid_props is not None)
-                and spawn.rigid_props.kinematic_enabled
+                (spawn is not None) and (spawn.rigid_props is not None) and spawn.rigid_props.kinematic_enabled
             )
         else:
             is_floating = True

@@ -15,8 +15,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner
-
-from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
+    from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
 
 __all__ = [
     "CuroboPlanner",
@@ -29,4 +28,10 @@ def __getattr__(name: str):
         from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner as _CuroboPlanner
 
         return _CuroboPlanner
+    if name == "CuroboPlannerCfg":
+        from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import (
+            CuroboPlannerCfg as _CuroboPlannerCfg,
+        )
+
+        return _CuroboPlannerCfg
     raise AttributeError(f"module 'curobo' has no attribute {name!r}")

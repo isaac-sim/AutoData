@@ -1,0 +1,66 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# AutoData owns this execution envelope. The nested `environment.intent` mapping is passed without
+# reinterpretation to Arena's EnvironmentIntentSpec and IntentCompiler before Isaac is launched.
+schema_version: 1
+name: franka_pick_cube_into_bowl
+
+environment:
+  intent:
+    reasoning: >-
+      Use Arena's registered Franka IK embodiment on the Maple table. Pick the registered Rubik's
+      cube object and place it into the registered YCB bowl.
+    background: maple_table_robolab
+    embodiment: franka_ik
+    items:
+      - query: rubiks_cube_hot3d_robolab
+        category_tags: [object]
+        instance_name: pick_cube
+      - query: bowl_ycb_robolab
+        category_tags: [object, bowl]
+        instance_name: destination_bowl
+    initial_state_graph:
+      - kind: is_anchor
+        subject: maple_table_robolab
+        params: {}
+      - kind: on
+        subject: pick_cube
+        reference: maple_table_robolab
+        params: {}
+      - kind: on
+        subject: destination_bowl
+        reference: maple_table_robolab
+        params: {}
+    tasks:
+      - kind: PickAndPlaceTask
+        params:
+          pick_up_object: pick_cube
+          destination_location: destination_bowl
+          background_scene: maple_table_robolab
+        description: Pick up the cube and place it into the bowl.
+
+planner:
+  backend: schedulestream
+  # `auto` selects custream on the current cuRobo-v1 image and custream2 on a reviewed v2 image.
+  motion_backend: auto
+  collisions: true
+  max_time_s: 60.0
+  batch_size: 128
+  # Arena's Franka IK environment advances one action every 4 x 0.005 s physics steps.
+  interpolation_dt_s: 0.02
+  profile: false
+  animate: false
+
+generation:
+  successful_episodes: 10
+  seed: 1
+  num_envs: 1
+  max_attempts: 50
+
+output:
+  dataset: outputs/franka_pick_cube_into_bowl.hdf5
+  keep_failed: false
+  run_log: outputs/franka_pick_cube_into_bowl_run_log.jsonl
