@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-ARG BASE_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.0-dev2
+ARG BASE_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.1
 FROM ${BASE_IMAGE}
 
 USER root
