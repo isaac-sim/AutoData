@@ -14,46 +14,16 @@ replays the segment. Compared to plain MimicGen this gives:
   demonstrations keep working when object placements move far from the source demonstration —
   or into cluttered scenes where interpolation would collide.
 
+This page walks through two tasks: plain **cube stacking**, and **cube stacking inside a
+bin** — a cluttered variant created from the same base task with an *environment profile*,
+generated from the *same* annotated dataset.
+
 .. figure:: ../../../images/cube_stack_data_gen_skillgen.gif
    :width: 75%
    :align: center
    :alt: Franka cube stacking demonstrations generated with SkillGen
 
    Cube stacking demonstrations generated with SkillGen.
-
-Task Overview
--------------
-
-**Environment name:** ``Isaac-Stack-Cube-Franka-IK-Rel-v0``
-
-**Task description:** A Franka arm stacks three cubes on a table — red on blue, then green on
-red. This is the same environment as the :doc:`MimicGen workflow
-<../franka_cube_stack_mimicgen/index>`; the SkillGen-specific end-effector frame is carried
-entirely by the embodiment config, not by a dedicated task.
-
-**Key specifications:**
-
-.. list-table::
-   :widths: 30 70
-   :header-rows: 1
-
-   * - Property
-     - Value
-   * - **Algorithm**
-     - SkillGen (single end-effector, cuRobo motion planning)
-   * - **Embodiment**
-     - Franka, relative IK task-space actions (7-D: delta pose (xyz, rpy) + binary gripper
-       open/close)
-   * - **Task descriptor**
-     - :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml>`
-   * - **Embodiment config**
-     - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml>`
-   * - **Subtasks**
-     - Grasp red cube (``grasp_1``) → stack red on blue (``stack_1``) → grasp green cube
-       (``grasp_2``) → stack green on red (``stack_2``); each subtask also carries a start
-       signal keyed by the same name
-   * - **Pre-annotated source dataset**
-     - ``isaac_autodata_tests/test_data/annotated_dataset_franka_stack_skillgen.hdf5``
 
 How SkillGen Works
 ------------------
@@ -92,6 +62,32 @@ duty as the key for that subtask's start signal. The final subtask itself still 
 trajectory, as in MimicGen, and never needs a termination mark. Cross-subtask constraints, if
 any, apply only during the skill phase; transit is constraint-free.
 
+Workflow at a Glance
+--------------------
+
+The SkillGen workflow has the same four steps as the
+:doc:`MimicGen workflow <../franka_cube_stack_mimicgen/index>` — but only the first and last
+are identical:
+
+.. list-table::
+   :widths: 22 78
+   :header-rows: 1
+
+   * - Step
+     - Compared to MimicGen
+   * - **1. Record**
+     - **Identical.** Teleoperate the robot and record demonstrations exactly as in
+       :doc:`../franka_cube_stack_mimicgen/step_1_record_demonstrations` — or skip this step
+       and use the pre-annotated dataset that ships with the repository.
+   * - **2. Annotate**
+     - **SkillGen-specific.** Manual annotation only, and each subtask needs a *start* mark
+       in addition to the termination marks (see below).
+   * - **3. Generate**
+     - **SkillGen-specific.** ``--alg skillgen`` auto-wires one cuRobo planner per
+       environment; transitions are planned, not interpolated.
+   * - **4. Validate**
+     - **Identical.** ``scripts/validate_dataset.py`` works on any generated dataset.
+
 Prerequisites
 -------------
 
@@ -101,16 +97,15 @@ GPU architecture at image build time (auto-detected via ``nvidia-smi``; override
 
 :docker_run_curobo:
 
+.. warning::
+
+   cuRobo kernels are compiled for the GPU you build the image on. If you later run on a
+   different GPU generation, rebuild with ``./docker/run_docker.sh -c -r``.
+
 .. note::
 
-   cuRobo kernels are compiled for the GPU you build on. If you later run on a different GPU
-   generation, rebuild with ``./docker/run_docker.sh -c -r``.
-
-A pre-annotated source dataset ships with the repository (see the table above), so you can
-run the whole workflow without recording anything. To start from your own demonstrations
-instead, record them exactly as in the MimicGen workflow
-(:doc:`../franka_cube_stack_mimicgen/step_1_record_demonstrations`), then annotate them as
-described below.
+   The first SkillGen run needs network access: the planner downloads the Franka robot model
+   (URDF) from the Nucleus asset server when it initializes.
 
 The Task Descriptor for SkillGen
 --------------------------------
@@ -180,6 +175,12 @@ four-subtask cube-stack task that is **7 marks** per episode, in this order:
    the termination. If the number of marks does not match the expected count, the episode
    simply replays for re-marking.
 
+.. tip::
+
+   A major advantage of SkillGen: because transitions are planned rather than replayed, one
+   annotated dataset can drive **multiple task variants**. Both tasks on this page — plain
+   stacking and stacking inside a bin — generate from the same annotated cube-stack dataset.
+
 .. note::
 
    Automatic annotation (``--auto``) only produces termination signals and therefore cannot
@@ -193,15 +194,44 @@ four-subtask cube-stack task that is **7 marks** per episode, in this order:
    ``panda_hand`` frame rather than the inter-fingertip frame, and the offset reconciles the
    two. See :doc:`../../concepts/embodiments`.
 
-Generating with SkillGen
-------------------------
+Task 1: Cube Stacking
+---------------------
 
-Start small to verify the setup, using the pre-annotated source dataset from the repository:
+**Environment name:** ``Isaac-Stack-Cube-Franka-IK-Rel-v0``
+
+A Franka arm stacks three cubes on a table — red on blue, then green on red. This is the same
+environment as the :doc:`MimicGen workflow <../franka_cube_stack_mimicgen/index>`; the
+SkillGen-specific end-effector frame is carried entirely by the embodiment config, not by a
+dedicated task.
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Property
+     - Value
+   * - **Algorithm**
+     - SkillGen (single end-effector, cuRobo motion planning)
+   * - **Embodiment**
+     - Franka, relative IK task-space actions (7-D: delta pose (xyz, rpy) + binary gripper
+       open/close)
+   * - **Task descriptor**
+     - :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml>`
+   * - **Embodiment config**
+     - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml>`
+   * - **Subtasks**
+     - Grasp red cube (``grasp_1``) → stack red on blue (``stack_1``) → grasp green cube
+       (``grasp_2``) → stack green on red (``stack_2``); each subtask also carries a start
+       signal keyed by the same name
+   * - **Pre-annotated source dataset**
+     - ``isaac_autodata_tests/test_data/annotated_dataset_franka_stack_skillgen.hdf5``
+
+Start small to verify the setup, using the pre-annotated source dataset:
 
 .. code-block:: bash
 
-   python isaac_autodata_examples/generate_dataset.py \
-       --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+   python scripts/generate_dataset.py \
+       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --alg skillgen \
        --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
@@ -211,16 +241,13 @@ Start small to verify the setup, using the pre-annotated source dataset from the
        --num_envs 1 \
        --viz none
 
-One cuRobo planner is created per environment (they are auto-wired when ``--alg skillgen``
-is selected), so ``--num_envs`` trades GPU memory for throughput. When motion planning fails
-for a trial — no collision-free path to the skill start — the trial is abandoned and counted
-as a failure; with ``guarantee_success: true`` generation simply retries with a new scene
-configuration until the trial target is met.
+When motion planning fails for a trial — no collision-free path to the skill start — the
+trial is abandoned and counted as a failure; with ``guarantee_success: true`` generation
+simply retries with a new scene configuration until the trial target is met.
 
 For a full-scale run, raise ``--generation_num_trials`` (hundreds to thousands for policy
-training) and keep ``--viz none`` — rendering slows generation considerably. Expect SkillGen
-to be slower per trial than MimicGen: every subtask transition is a motion-planning problem
-solved at generation time.
+training) and keep ``--viz none`` — rendering slows generation considerably. See
+`Performance and Scaling`_ before choosing ``--num_envs``.
 
 Validate the generated dataset the same way as any other:
 
@@ -228,29 +255,157 @@ Validate the generated dataset the same way as any other:
 
    python scripts/validate_dataset.py datasets/generated_skillgen.hdf5
 
+Task 2: Cube Stacking in a Bin (Environment Profile)
+----------------------------------------------------
+
+The second task drops a narrow sorting bin into the scene: the blue cube sits fixed inside
+the bin, and the robot must stack the red and green cubes onto it **without colliding with
+the bin walls** — a task where MimicGen's straight-line interpolation would routinely
+collide, and exactly what SkillGen's planned transits are for.
+
+.. figure:: ../../../images/bin_cube_stack_data_gen_skillgen.gif
+   :width: 75%
+   :align: center
+   :alt: Franka bin cube stacking demonstrations generated with SkillGen
+
+   Bin cube stacking: same annotated dataset, planned around the bin.
+
+Modifying a task with an environment profile
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+There is no dedicated bin-stack environment. Instead, an **environment profile** — a YAML
+overlay applied with ``--env_profile`` — turns the plain cube-stack task into the bin variant
+at env-creation time (see :doc:`../../concepts/environment_profiles` for the full schema).
+A profile can:
+
+* **add objects** to the scene (``scene.rigid_objects.add`` — spawn a USD asset with pose,
+  scale, and physics properties),
+* **override existing objects** (``scene.rigid_objects.override`` — e.g. stiffer contact
+  solving for cubes settling against the bin walls),
+* **replace reset randomization** (``events.remove`` / ``events.add`` — e.g. pin the bin and
+  blue cube at the table center, randomize the other cubes outside the bin),
+* **name the motion-planner profile** (``planner``) tuned for the modified scene.
+
+Abridged from
+:isaac_autodata_code_link:`<isaac_autodata_examples/env_profiles/franka_bin_stack.yaml>`:
+
+.. code-block:: yaml
+
+   name: franka_bin_stack
+   base_env: Isaac-Stack-Cube-Franka-IK-Rel-v0
+   planner: franka_stack_cube_bin        # planner profile tuned for the bin scene
+
+   scene:
+     rigid_objects:
+       add:
+         blue_sorting_bin:
+           prim_path: "{ENV_REGEX_NS}/BlueSortingBin"
+           usd_path: "{ISAACLAB_NUCLEUS_DIR}/Mimic/nut_pour_task/nut_pour_assets/sorting_bin_blue.usd"
+           position: [0.4, 0.0, 0.0203]
+           scale: [1.1, 1.6, 3.3]
+       override:
+         cube_1: {rigid_props: {solver_position_iteration_count: 40}}
+
+   events:
+     remove: [randomize_cube_positions]
+     add:
+       reset_blue_bin_pose:   # pin the bin (and cube_1) at the table center
+         ...
+       reset_cube_pose:       # randomize cube_2 / cube_3 outside the bin
+         ...
+
+The bin task also gets its own task descriptor
+(:isaac_autodata_code_link:`<isaac_autodata_examples/tasks/franka_bin_stack_skillgen.yaml>`):
+same subtasks as cube stacking, but ``action_noise: 0.0`` — the bin walls leave little
+clearance for perturbed skill segments.
+
+Generating the bin dataset
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Note the reused annotated dataset — only the descriptor and the ``--env_profile`` flag
+change:
+
+.. code-block:: bash
+
+   python scripts/generate_dataset.py \
+       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --alg skillgen \
+       --task_descriptor isaac_autodata_examples/tasks/franka_bin_stack_skillgen.yaml \
+       --env_profile isaac_autodata_examples/env_profiles/franka_bin_stack.yaml \
+       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
+       --input_file isaac_autodata_tests/test_data/annotated_dataset_franka_stack_skillgen.hdf5 \
+       --output_file datasets/generated_skillgen_bin.hdf5 \
+       --generation_num_trials 10 \
+       --num_envs 1 \
+       --viz none
+
+The generation-result JSON (``--result_file``) records the applied profile, since the output
+dataset itself only stores the base env id.
+
+.. warning::
+
+   Adaptive tasks like bin stacking have lower success rates and longer generation times than
+   the plain variant: the planning problems are harder (narrow bin clearances) and more
+   trials are rejected. Budget accordingly — see the numbers below.
+
+To adapt a task of your own, copy ``franka_bin_stack.yaml`` and adjust: pick the ``base_env``,
+add/override scene objects, swap the reset events, and point ``planner`` at a planner profile
+that treats your new objects as collision geometry (see
+:doc:`../../advanced/motion_planners` for defining one).
+
+Performance and Scaling
+-----------------------
+
+``--num_envs`` trades GPU memory for throughput: one cuRobo planner is created per
+environment. Indicative figures, measured with the equivalent SkillGen pipeline in Isaac Lab
+Mimic on an RTX 6000 Ada (48 GB), headless:
+
+.. list-table::
+   :widths: 40 60
+   :header-rows: 1
+
+   * - Metric
+     - Indicative value
+   * - VRAM, 1 env
+     - ~9.5 GB steady (briefly higher during initialization)
+   * - VRAM, 5 envs
+     - ~22 GB steady
+   * - 1000 demos, cube stack, 1 env
+     - ~90–120 minutes
+   * - 1000 demos, bin stack, 1 env
+     - ~220 minutes
+   * - Generation success rate
+     - typically 40–70 % with a well-annotated dataset
+
+Practical guidance:
+
+* Start with ``--num_envs 1`` and increase gradually; around **5 envs** is a sweet spot
+  balancing planner memory against simulation throughput — gains beyond that are small.
+* Prefer a GPU with **≥24 GB** VRAM for 1–2 envs and **≥48 GB** for ~5 envs.
+* Generation time scales with the demo target *and* the success rate, which depends mostly on
+  annotation quality — verify a small batch before launching a long run.
+
 Visualizing and Debugging Plans
 -------------------------------
 
-The cuRobo backend can stream its planned trajectories and collision-sphere model to
-`Rerun <https://rerun.io/>`_ — useful for diagnosing planning failures, unexpected detours,
-or collision-world mismatches before committing to a long generation run.
+Pass ``--visualize_plan`` to stream SkillGen's planned trajectories to a
+`Rerun <https://rerun.io/>`_ viewer — useful for diagnosing planning failures, unexpected
+detours, or collision-world mismatches before committing to a long generation run:
 
 .. figure:: ../../../images/rerun_cube_stack.gif
    :width: 80%
    :align: center
-   :alt: Rerun visualization of planned trajectories and collision spheres
+   :alt: Rerun visualization of planned trajectories
 
-   Rerun visualization: planned end-effector trajectories with collision spheres.
+   Rerun visualization of SkillGen motion plans.
 
-Visualization is controlled by the ``visualize_plan`` and ``visualize_spheres`` flags of the
-planner configuration (``CuroboPlannerCfg``); the shipped cube-stack preset enables plan
-visualization by default. During multi-env generation only env 0 is visualized, to keep the
-simulation responsive. The visualizer can also save the session as a ``.rrd`` recording for
-offline inspection. Since visualization is independent of the simulator window, it works
+During multi-env generation only env 0 is visualized, to keep the simulation responsive.
+Since the Rerun viewer is independent of the simulator window, ``--visualize_plan`` works
 together with ``--viz none``.
 
 Motion Planner Configuration
 ----------------------------
 
 The cuRobo planner (robot config, collision world, attached-object handling, planning seeds)
-is resolved per task and is fully configurable — see :doc:`../../advanced/motion_planners`.
+is resolved per task — or per environment profile, via its ``planner`` field — and is fully
+configurable. See :doc:`../../advanced/motion_planners`.

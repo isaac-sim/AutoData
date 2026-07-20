@@ -112,6 +112,7 @@ Table of Contents
 
    pages/concepts/concept_overview
    pages/concepts/task_descriptors
+   pages/concepts/environment_profiles
    pages/concepts/embodiments
    pages/concepts/datastream
    pages/concepts/algorithms
