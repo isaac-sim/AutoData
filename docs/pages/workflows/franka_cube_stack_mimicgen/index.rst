@@ -40,7 +40,7 @@ on red.
      - Grasp red cube (``grasp_1``) → stack red on blue (``stack_1``) → grasp green cube
        (``grasp_2``) → place green on red (``end of trajectory``)
    * - **Pre-annotated source dataset**
-     - ``datasets/annotated_datasets/dataset_annotated_franka.hdf5``
+     - ``datasets/annotated_datasets/dataset_franka_annotated.hdf5``
 
 Workflow
 --------

@@ -73,11 +73,11 @@ Generating a dataset from annotated source demonstrations is a single command:
 
    python scripts/generate_dataset.py \
        --viz kit \
-       --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --alg mimicgen \
        --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
-       --input_file ./datasets/annotated_dataset.hdf5 \
+       --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset.hdf5 \
        --generation_num_trials 100 \
        --num_envs 10

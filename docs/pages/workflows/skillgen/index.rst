@@ -138,8 +138,8 @@ the keyboard.
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
-       --input_file ./datasets/dataset.hdf5 \
-       --output_file ./datasets/annotated_dataset_skillgen.hdf5
+       --input_file ./datasets/dataset_franka.hdf5 \
+       --output_file ./datasets/dataset_franka_skillgen_annotated.hdf5
 
 .. list-table::
    :widths: 15 85
@@ -224,7 +224,7 @@ dedicated task.
        (``grasp_2``) → stack green on red (``stack_2``); each subtask also carries a start
        signal keyed by the same name
    * - **Pre-annotated source dataset**
-     - ``isaac_autodata_tests/test_data/annotated_dataset_franka_stack_skillgen.hdf5``
+     - ``datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5``
 
 Start small to verify the setup, using the pre-annotated source dataset:
 
@@ -235,8 +235,8 @@ Start small to verify the setup, using the pre-annotated source dataset:
        --alg skillgen \
        --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
-       --input_file isaac_autodata_tests/test_data/annotated_dataset_franka_stack_skillgen.hdf5 \
-       --output_file datasets/generated_skillgen.hdf5 \
+       --input_file ./datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5 \
+       --output_file ./datasets/generated_dataset_skillgen_franka.hdf5 \
        --generation_num_trials 10 \
        --num_envs 1 \
        --viz none
@@ -253,7 +253,7 @@ Validate the generated dataset the same way as any other:
 
 .. code-block:: bash
 
-   python scripts/validate_dataset.py datasets/generated_skillgen.hdf5
+   python scripts/validate_dataset.py ./datasets/generated_dataset_skillgen_franka.hdf5
 
 Task 2: Cube Stacking in a Bin (Environment Profile)
 ----------------------------------------------------
@@ -333,8 +333,8 @@ change:
        --task_descriptor isaac_autodata_examples/tasks/franka_bin_stack_skillgen.yaml \
        --env_profile isaac_autodata_examples/env_profiles/franka_bin_stack.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
-       --input_file isaac_autodata_tests/test_data/annotated_dataset_franka_stack_skillgen.hdf5 \
-       --output_file datasets/generated_skillgen_bin.hdf5 \
+       --input_file ./datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5 \
+       --output_file ./datasets/generated_dataset_skillgen_franka_bin.hdf5 \
        --generation_num_trials 10 \
        --num_envs 1 \
        --viz none

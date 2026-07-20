@@ -59,7 +59,7 @@ what makes this a DexMimicGen rather than a MimicGen task.
            - Right arm: idle then grasp (``idle_right``) → transport & place (``end of trajectory``).
              Left arm: grasp and transport (``end of trajectory``).
          * - **Pre-annotated source dataset**
-           - ``isaac_autodata_tests/test_data/annotated_dataset_gr1_pick_place_dexmimicgen.hdf5``
+           - ``datasets/annotated_datasets/dataset_gr1_annotated.hdf5``
 
    .. group-tab:: G1
 
@@ -83,7 +83,7 @@ what makes this a DexMimicGen rather than a MimicGen task.
            - Right arm: idle then grasp (``idle_right``) → transport & place (``end of trajectory``).
              Left arm: grasp and transport (``end of trajectory``).
          * - **Pre-annotated source dataset**
-           - ``isaac_autodata_tests/test_data/annotated_dataset_g1_pick_place_dexmimicgen.hdf5``
+           - ``datasets/annotated_datasets/dataset_g1_annotated.hdf5``
 
 
 Why Multi-End-Effector Generation Differs

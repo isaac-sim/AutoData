@@ -13,7 +13,7 @@ teleoperated demonstrations of the cube-stacking task.
 .. note::
 
    To skip recording (and annotation), use the pre-annotated source dataset that ships with
-   the repository (``datasets/annotated_datasets/dataset_annotated_franka.hdf5``)
+   the repository (``datasets/annotated_datasets/dataset_franka_annotated.hdf5``)
    and jump to :doc:`step_3_generate_dataset`.
 
 We recommend recording with a **SpaceMouse**: its smooth, off-axis 6-DoF input produces cleaner
