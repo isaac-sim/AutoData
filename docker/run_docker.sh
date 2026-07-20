@@ -7,12 +7,12 @@
 set -e
 
 DOCKER_IMAGE_NAME='isaac_autodata'
-DOCKER_VERSION_TAG='latest'
+DOCKER_VERSION_TAG='sim-6.0.1'
 # Override with BASE_IMAGE when testing against a different compatible Isaac Sim release.
 BASE_IMAGE="${BASE_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.1}"
 
 INSTALL_CUROBO=false
-CUROBO_VERSION_TAG='curobo'
+CUROBO_VERSION_TAG='sim-6.0.1-curobo'
 
 # Resolve TORCH_CUDA_ARCH_LIST for the cuRobo build. Honour an explicit override if set, else
 # auto-detect the host GPU's compute capability via nvidia-smi (e.g. "12.0" -> "12.0+PTX").

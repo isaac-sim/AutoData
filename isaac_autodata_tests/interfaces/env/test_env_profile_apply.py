@@ -71,7 +71,7 @@ def test_apply_bin_stack_profile_overlays_scene_and_events():
 
     # Untouched base config: success term and unrelated events survive the overlay.
     assert env_cfg.terminations.success is not None
-    assert env_cfg.events.init_franka_arm_pose is not None
+    assert env_cfg.events.randomize_franka_joint_state is not None
 
 
 def test_apply_rejects_base_env_mismatch():
