@@ -99,3 +99,37 @@ jobs:
 
       - name: Run E2E tests
         run: ./scripts/ci/run_tests.sh
+
+  build_docs:
+    name: Build docs
+    # CPU-only Sphinx build; keep off the GPU runner pool.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    container:
+      image: python:3.12-slim
+
+    steps:
+      - name: Install git, LFS, and make
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git git-lfs ca-certificates make
+          git --version
+          git lfs version
+
+      - name: Mark repo as safe for git
+        run: git config --global --add safe.directory "$PWD"
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Pull LFS doc assets
+        run: |
+          git lfs install --local
+          git lfs pull
+
+      - name: Build docs (verify)
+        run: ./scripts/ci/run_docs_build.sh verify

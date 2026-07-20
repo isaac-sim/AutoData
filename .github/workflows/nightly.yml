@@ -10,6 +10,9 @@ on:
   schedule:
     - cron: "30 3 * * *"
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 concurrency:
   group: ${{ github.workflow }}
@@ -22,6 +25,7 @@ jobs:
 
   test_full:
     name: Full E2E (GPU, rebuilt image)
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v')
     runs-on: [self-hosted, gpu]
     timeout-minutes: 180
 
@@ -72,3 +76,50 @@ jobs:
           path: test-results/
           if-no-files-found: warn
           retention-days: 30
+
+  publish_docs:
+    name: Publish docs (GitHub Pages)
+    # Nightly refresh of main/ plus stable versioned dirs from tags and release/*
+    # branches (sphinx-multiversion). Tag pushes publish immediately without waiting
+    # for the next scheduled run.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+
+    container:
+      image: python:3.12-slim
+
+    steps:
+      - name: Install git, LFS, and make
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git git-lfs ca-certificates make
+          git --version
+          git lfs version
+
+      - name: Mark repo as safe for git
+        run: git config --global --add safe.directory "$PWD"
+
+      - name: Checkout (full history for multi-version)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: false
+
+      - name: Pull LFS doc assets
+        run: |
+          git lfs install --local
+          git lfs pull
+
+      - name: Build multi-version docs
+        run: ./scripts/ci/run_docs_build.sh publish
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/_build
+          force_orphan: true
