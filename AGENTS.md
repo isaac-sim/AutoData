@@ -4,11 +4,9 @@ This file provides guidance to AI coding agents (Claude Code, OpenAI Codex, etc.
 
 ## Environment
 
-All scripts and commands from this repo must be run inside the `isaac_auto_data` conda env. Activate it before running anything:
-
-```bash
-conda activate isaac_auto_data
-```
+All scripts and commands from this repo must be run inside a Docker container started with
+`./docker/run_docker.sh` (or `./docker/run_docker.sh -c` for cuRobo). Users must start the container manually; if
+no container started by the appropriate command exists, prompt the user to start it.
 
 ## Common Commands
 
@@ -40,8 +38,8 @@ pre-commit run --all-files
 ## Guardrails (MUST FOLLOW, DO NOT DEVIATE FROM GUARDRAILS)
 
 - Don't change or modify anything in the submodules. Restrict git related operations to read only, don't commit nor push any code. Don't create new branches in the submodules on your own.
-- Don't mutate the `isaac_auto_data` conda env. No `pip install/uninstall`, `conda install/remove`, or version upgrades. If a dependency is missing, surface the exact command and let the user run it.
-- Don't re-run, modify, or work around `installer.sh`. No env recreate/rename/delete, no channel or conda config changes. Installer issues get reported, not patched in-flight.
+- Don't mutate the `isaac_autodata` conda env. No `pip install/uninstall`, `conda install/remove`, or version upgrades. If a dependency is missing, surface the exact command and let the user run it.
+- Don't re-run, modify, or work around `conda_installer.sh`. No env recreate/rename/delete, no channel or conda config changes. Installer issues get reported, not patched in-flight.
 - Don't change any existing design docs or diagrams in /docs, that is only for human created files. If you need to add any new diagrams or designs, add them to the /agentic_design directory.
 
 ## Working on this codebase

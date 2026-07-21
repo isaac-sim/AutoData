@@ -66,12 +66,13 @@ From the repo root, build (first run) and enter the base dev container:
 
 :docker_run_default:
 
-The first run builds the image ``isaac_autodata:latest`` then drops you into a shell inside the container
-in the mounted repo. This build process may take up to 30 minutes. Subsequent runs reuse the image and are fast.
+The first run builds the default development image, then drops you into a shell inside the container
+in the mounted repo. This build process may take up to 30 minutes. Subsequent runs reuse the versioned
+image and are fast.
 
 For **SkillGen** workflows, use the cuRobo image instead. cuRobo compiles CUDA kernels for
 your GPU architecture (auto-detected via ``nvidia-smi``), so this build is slower and kept in
-a separate image tag (``isaac_autodata:curobo``) that coexists with the default one:
+a separate versioned image tag that coexists with the default one:
 
 :docker_run_curobo:
 
