@@ -1,0 +1,615 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="./" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Welcome to Isaac AutoData! &#8212; isaac_autodata 0.1</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/nvidia-sphinx-theme.css?v=df3ac72c" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=42eea36e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script src="_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'index';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="icon" href="_static/favicon.png"/>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation" href="pages/quickstart/installation.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="_static/searchtools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <script src="searchindex.js"></script>
+  
+
+
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="#">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="#">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-links bd-docs-nav">
+    <div class="bd-toc-item navbar-nav">
+      <ul class="nav bd-sidenav">
+        <li class="toctree-l1 has-children" style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+          <div  style ="text-align:center;">
+            <label for="version-select" style="font-weight: bold; display: block;">Version</label>
+          </div>
+          <select id="version-select" class="version-dropdown" style="margin: 0 auto; display: block;" onchange="location = this.value;">
+            <option value="index.html" selected>main</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+</nav>
+</div>
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Set Up</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="pages/quickstart/installation.html">Installation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="pages/quickstart/first_data_generation.html">Your First Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Example Workflows</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="pages/workflows/franka_cube_stack_mimicgen/index.html">Franka Cube Stacking with MimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="pages/workflows/franka_cube_stack_mimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pages/workflows/franka_cube_stack_mimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pages/workflows/franka_cube_stack_mimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pages/workflows/franka_cube_stack_mimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="pages/workflows/humanoid_dexmimicgen/index.html">Humanoid Pick &amp; Place with DexMimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="pages/workflows/humanoid_dexmimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pages/workflows/humanoid_dexmimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pages/workflows/humanoid_dexmimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pages/workflows/humanoid_dexmimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/workflows/skillgen/index.html">SkillGen: Motion-Planned Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/concept_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/task_descriptors.html">Task Descriptors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/environment_profiles.html">Environment Profiles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/embodiments.html">Embodiments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/datastream.html">Datastream</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/algorithms.html">Generation Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/data_generator.html">The Data Generator Interface</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="pages/advanced/motion_planners.html">Motion Planners</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/advanced/testing_and_ci.html">Testing and CI</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">References</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="pages/references/release_notes.html">Release Notes</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none"></div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="welcome-to-isaac-autodata">
+<h1>Welcome to Isaac AutoData!<a class="headerlink" href="#welcome-to-isaac-autodata" title="Link to this heading">#</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">Isaac</span> <span class="pre">AutoData</span></code> is a trajectory data-generation framework built on top of
+<a class="reference external" href="https://isaac-sim.github.io/IsaacLab/main/index.html">Isaac Lab</a> and
+<a class="reference external" href="https://github.com/isaac-sim/IsaacLab-Arena">Isaac Lab Arena</a>.
+Given a handful of annotated human demonstrations, it uses parallel simulation environments to
+synthesizes large datasets of new demonstrations by transforming and recombining the human
+demonstration segments.</p>
+<figure class="align-center" id="id1">
+<a class="reference internal image-reference" href="_images/autodata.gif"><img alt="isaac_autodata" src="_images/autodata.gif" style="width: 100%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Isaac AutoData</span><a class="headerlink" href="#id1" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+</section>
+<section id="the-problem">
+<h1>The Problem<a class="headerlink" href="#the-problem" title="Link to this heading">#</a></h1>
+<p>Imitation-learning policies are data hungry. They need large, diverse datasets of successful
+demonstrations, and collecting those by human teleoperation is slow and expensive. Yet most of
+what a policy needs to learn from a thousand demonstrations is already contained in ten. The
+same skill, repeated under different object placements.</p>
+<p>Isaac AutoData exploits that redundancy. A human demonstration is split into <strong>subtasks</strong> (each
+a contiguous segment in which the robot’s end-effector motion is driven by a single reference
+object). Because each segment is object-relative, it can be <em>transformed</em> to a new scene
+configuration and replayed. Stitching transformed segments together turns a
+handful of demonstrations into an arbitrarily large dataset.</p>
+</section>
+<section id="isaac-autodata">
+<h1>Isaac AutoData<a class="headerlink" href="#isaac-autodata" title="Link to this heading">#</a></h1>
+<p>Four pieces cooperate to generate data:</p>
+<ul class="simple">
+<li><p><strong>Task descriptor</strong> (YAML) — declares the task’s subtasks per end-effector, the boundary
+signals that separate them, cross-arm constraints, and the generation policy (trial counts,
+seeding, export behavior). See <a class="reference internal" href="pages/concepts/task_descriptors.html"><span class="doc">Task Descriptors</span></a>.</p></li>
+<li><p><strong>Embodiment</strong> (YAML + adapter) — describes the robot from the generator’s point of view:
+where to read end-effector poses and how to convert between target poses and the
+environment’s action vector. See <a class="reference internal" href="pages/concepts/embodiments.html"><span class="doc">Embodiments</span></a>.</p></li>
+<li><p><strong>Datastream</strong> — the single read interface the generator uses to observe the world: object
+poses, end-effector poses, subtask signals, and the pool of annotated source demonstrations.
+See <a class="reference internal" href="pages/concepts/datastream.html"><span class="doc">Datastream</span></a>.</p></li>
+<li><p><strong>Generation algorithms</strong> — MimicGen (single arm), DexMimicGen (multi-arms), and SkillGen (motion-planned transit).
+See <a class="reference internal" href="pages/concepts/algorithms.html"><span class="doc">Generation Algorithms</span></a>.
+All three plug into one data generator — see <a class="reference internal" href="pages/concepts/data_generator.html"><span class="doc">The Data Generator Interface</span></a>.</p></li>
+</ul>
+<figure class="align-center" id="id2">
+<a class="reference external image-reference" href="_images/System_Architecture.svg"><img alt="Isaac AutoData system architecture — contracts, typed data flow, modular generation and execution" src="_images/System_Architecture.svg" style="width: 100%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">The Isaac AutoData architecture: declarative contracts feed the Datastream read interface,
+which the data generator and its algorithm plug-ins consume to produce waypoints, actions,
+and finally recorded HDF5 episodes.</span><a class="headerlink" href="#id2" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+</section>
+<section id="usage-example">
+<h1>Usage Example<a class="headerlink" href="#usage-example" title="Link to this heading">#</a></h1>
+<p>Generating a dataset from annotated source demonstrations is a single command:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/generate_dataset.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--viz<span class="w"> </span>kit<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--env_name<span class="w"> </span>Isaac-Stack-Cube-Franka-IK-Rel-v0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--alg<span class="w"> </span>mimicgen<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--task_descriptor<span class="w"> </span>isaac_autodata_examples/tasks/franka_cube_stack.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--embodiment<span class="w"> </span>isaac_autodata_examples/embodiments/franka_ik_rel.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--input_file<span class="w"> </span>./datasets/annotated_datasets/dataset_franka_annotated.hdf5<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output_file<span class="w"> </span>./datasets/generated_dataset.hdf5<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--generation_num_trials<span class="w"> </span><span class="m">100</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--num_envs<span class="w"> </span><span class="m">10</span>
+</pre></div>
+</div>
+<p>To get started, follow the instructions in <a class="reference internal" href="pages/quickstart/installation.html"><span class="doc">Installation</span></a> and run your
+first generation with <a class="reference internal" href="pages/quickstart/first_data_generation.html"><span class="doc">Your First Data Generation</span></a>.</p>
+</section>
+<section id="license">
+<h1>License<a class="headerlink" href="#license" title="Link to this heading">#</a></h1>
+<p>Isaac AutoData is licensed under the <a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/LICENSE">Apache License 2.0</a>.</p>
+</section>
+<section id="table-of-contents">
+<h1>Table of Contents<a class="headerlink" href="#table-of-contents" title="Link to this heading">#</a></h1>
+<div class="toctree-wrapper compound">
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Set Up</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pages/quickstart/installation.html">Installation</a></li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pages/quickstart/first_data_generation.html">Your First Data Generation</a></li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Example Workflows</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pages/workflows/franka_cube_stack_mimicgen/index.html">Franka Cube Stacking with MimicGen</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/workflows/humanoid_dexmimicgen/index.html">Humanoid Pick &amp; Place with DexMimicGen</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/workflows/skillgen/index.html">SkillGen: Motion-Planned Data Generation</a></li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/concept_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/task_descriptors.html">Task Descriptors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/environment_profiles.html">Environment Profiles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/embodiments.html">Embodiments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/datastream.html">Datastream</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/algorithms.html">Generation Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/concepts/data_generator.html">The Data Generator Interface</a></li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pages/advanced/motion_planners.html">Motion Planners</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pages/advanced/testing_and_ci.html">Testing and CI</a></li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">References</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pages/references/release_notes.html">Release Notes</a></li>
+</ul>
+</div>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="right-next"
+       href="pages/quickstart/installation.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Installation</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#">Welcome to Isaac AutoData!</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#the-problem">The Problem</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#isaac-autodata">Isaac AutoData</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#usage-example">Usage Example</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#license">License</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#table-of-contents">Table of Contents</a><ul class="pst-show_toc_level nav section-nav flex-column">
+</ul>
+</li>
+</ul>
+
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2026, NVIDIA.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

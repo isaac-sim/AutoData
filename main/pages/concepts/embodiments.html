@@ -1,0 +1,985 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Embodiments &#8212; isaac_autodata 0.1</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/nvidia-sphinx-theme.css?v=df3ac72c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=42eea36e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'pages/concepts/embodiments';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="icon" href="../../_static/favicon.png"/>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Datastream" href="datastream.html" />
+    <link rel="prev" title="Environment Profiles" href="environment_profiles.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../../_static/searchtools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <script src="../../searchindex.js"></script>
+  
+
+
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-links bd-docs-nav">
+    <div class="bd-toc-item navbar-nav">
+      <ul class="nav bd-sidenav">
+        <li class="toctree-l1 has-children" style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+          <div  style ="text-align:center;">
+            <label for="version-select" style="font-weight: bold; display: block;">Version</label>
+          </div>
+          <select id="version-select" class="version-dropdown" style="margin: 0 auto; display: block;" onchange="location = this.value;">
+            <option value="embodiments.html" selected>main</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+</nav>
+</div>
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Set Up</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/installation.html">Installation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/first_data_generation.html">Your First Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Example Workflows</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/index.html">Franka Cube Stacking with MimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/index.html">Humanoid Pick &amp; Place with DexMimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../workflows/skillgen/index.html">SkillGen: Motion-Planned Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="concept_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="task_descriptors.html">Task Descriptors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environment_profiles.html">Environment Profiles</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Embodiments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="datastream.html">Datastream</a></li>
+<li class="toctree-l1"><a class="reference internal" href="algorithms.html">Generation Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_generator.html">The Data Generator Interface</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../advanced/motion_planners.html">Motion Planners</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/testing_and_ci.html">Testing and CI</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">References</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../references/release_notes.html">Release Notes</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Embodiments</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="embodiments">
+<h1>Embodiments<a class="headerlink" href="#embodiments" title="Link to this heading">#</a></h1>
+<p>An <strong>embodiment descriptor</strong> is a YAML file describing the robot from the data generator’s
+point of view: where to read its end-effector pose(s) in the observation buffer, and how to
+convert between target end-effector poses and the environment’s action vector. It is loaded
+into an <strong>embodiment adapter</strong> — the object that performs those transforms at runtime — via
+<code class="docutils literal notranslate"><span class="pre">embodiment_adapter_from_yaml()</span></code>.</p>
+<p>This is the entire robot-specific surface of the framework: the generator itself never sees
+joint names, controllers, or kinematics, only “give me the EEF pose” and “turn this target
+pose into an action.”</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>Conventions used throughout.</strong> Poses are 4×4 homogeneous matrices. Quaternions are
+<strong>(x, y, z, w)</strong> ordered — identity is <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">0,</span> <span class="pre">0,</span> <span class="pre">1]</span></code> — in observations, action layouts,
+and everywhere in between. Pose observations are read from the <code class="docutils literal notranslate"><span class="pre">&quot;policy&quot;</span></code> observation
+group unless <code class="docutils literal notranslate"><span class="pre">obs_group</span></code> says otherwise.</p>
+</div>
+<section id="adapter-types">
+<h2>Adapter Types<a class="headerlink" href="#adapter-types" title="Link to this heading">#</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">type:</span></code> field selects the adapter class from <code class="docutils literal notranslate"><span class="pre">EMBODIMENT_TYPE_REGISTRY</span></code>:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 44.0%" />
+<col style="width: 22.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">type</span></code></p></th>
+<th class="head"><p>Use for</p></th>
+<th class="head"><p>Shipped examples</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">delta_pose_ik_single_arm</span></code></p></td>
+<td><p>Single arms driven by <strong>relative</strong> (delta) pose IK — e.g. the Franka tasks. The
+action is the clipped delta from the current EEF pose to the target, plus a gripper
+dimension.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">franka_ik_rel.yaml</span></code>, <code class="docutils literal notranslate"><span class="pre">franka_ik_rel_skillgen.yaml</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">absolute_pose_whole_body_bimanual</span></code></p></td>
+<td><p>Humanoids driven by <strong>absolute</strong> pose targets through a whole-body IK controller.
+The action carries one absolute pose per arm plus hand-joint positions.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">gr1_ik_abs.yaml</span></code> (GR1T2), <code class="docutils literal notranslate"><span class="pre">g1_ik_abs.yaml</span></code> (G1)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>New morphology + controller combinations register a new adapter class in the registry — see
+<a class="reference internal" href="#writing-a-new-embodiment">Writing a New Embodiment</a>.</p>
+</section>
+<section id="what-the-adapter-does-at-runtime">
+<h2>What the Adapter Does at Runtime<a class="headerlink" href="#what-the-adapter-does-at-runtime" title="Link to this heading">#</a></h2>
+<p>Every adapter is bound to the live environment once (<code class="docutils literal notranslate"><span class="pre">bind_env()</span></code>, done automatically when
+the <a class="reference internal" href="datastream.html"><span class="doc">Datastream</span></a> is built) and then serves five queries. The first four are
+the generator’s entire view of the robot:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">get_eef_poses()</span></code> — read each end-effector’s current pose from the configured
+observation keys (<code class="docutils literal notranslate"><span class="pre">pose_obs_keys</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">target_eef_pose_to_action()</span></code> — the <em>forward</em> direction: turn per-EEF target poses plus
+the passthrough channels into one action for <code class="docutils literal notranslate"><span class="pre">env.step()</span></code>, optionally adding action
+noise.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">action_to_target_eef_pose()</span></code> — the <em>inverse</em> direction: recover the target poses encoded
+in a recorded action. This is how the source demos’ controller targets are extracted.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">actions_to_passthrough_actions()</span></code> — pull the non-pose channels (gripper or hand joints)
+out of recorded actions so the generator can replay them verbatim.</p></li>
+</ul>
+<p><strong>Passthrough actions</strong> are the action dimensions that carry no pose information — gripper
+actuation, hand joints, a mobile-base command — and are copied from the source segment rather
+than recomputed.</p>
+<p>The adapter also owns the robot’s raw joint state (<code class="docutils literal notranslate"><span class="pre">get_joint_positions()</span></code>,
+<code class="docutils literal notranslate"><span class="pre">get_joint_names()</span></code>), which motion planners read as their planning start state. Nothing
+else in the framework touches the robot articulation directly.</p>
+</section>
+<section id="single-arm-adapter-delta-pose-ik-single-arm">
+<h2>Single-Arm Adapter: <code class="docutils literal notranslate"><span class="pre">delta_pose_ik_single_arm</span></code><a class="headerlink" href="#single-arm-adapter-delta-pose-ik-single-arm" title="Link to this heading">#</a></h2>
+<p>The action vector is <code class="docutils literal notranslate"><span class="pre">[delta_position</span> <span class="pre">(3),</span> <span class="pre">delta_rotation</span> <span class="pre">(3),</span> <span class="pre">gripper</span> <span class="pre">(gripper_dim)]</span></code> —
+<code class="docutils literal notranslate"><span class="pre">6</span> <span class="pre">+</span> <span class="pre">gripper_dim</span></code> values in total. The pose part is the delta from the current EEF pose to
+the target; the rotation delta uses the compact axis-angle form (unit axis × angle in
+radians).</p>
+<p>From <a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_examples/embodiments/franka_ik_rel.yaml">franka_ik_rel.yaml</a>:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">delta_pose_ik_single_arm</span>
+<span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">franka_panda</span>
+<span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Franka 7-DOF arm with parallel gripper, delta-pose IK control.</span>
+
+<span class="nt">eef_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">franka</span>
+
+<span class="nt">pose_obs_keys</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">pos</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eef_pos</span>
+<span class="w">  </span><span class="nt">quat</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eef_quat</span>
+
+<span class="nt">action_layout</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">gripper_dim</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">  </span><span class="nt">clip_pose_action_to_unit</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+
+<span class="nt">eef_offset</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">0.0</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+<section id="field-reference">
+<h3>Field reference<a class="headerlink" href="#field-reference" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 32.0%" />
+<col style="width: 12.0%" />
+<col style="width: 16.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Required</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Adapter class; <code class="docutils literal notranslate"><span class="pre">delta_pose_ik_single_arm</span></code> here.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Identifier for the embodiment (used in logs and registries).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
+<td><p>no</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p>Human-readable summary.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">eef_name</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Name of the single end-effector. Must match the EEF name used by the task
+descriptor’s <code class="docutils literal notranslate"><span class="pre">subtasks</span></code> section.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">obs_group</span></code></p></td>
+<td><p>no</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">policy</span></code></p></td>
+<td><p>Observation-buffer group holding the pose keys.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pose_obs_keys.pos</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Observation key with the EEF position (3-vector [m]).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pose_obs_keys.quat</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Observation key with the EEF orientation quaternion, <strong>(x, y, z, w)</strong> ordered.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">action_layout.gripper_dim</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Number of trailing action dimensions occupied by the gripper.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">action_layout.clip_pose_action_to_unit</span></code></p></td>
+<td><p>no</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Clamp the 6-D pose part of the action to <code class="docutils literal notranslate"><span class="pre">[-1,</span> <span class="pre">1]</span></code> (after noise). Match this to
+what the env’s action term expects.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">eef_offset</span></code></p></td>
+<td><p>no</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">0,</span> <span class="pre">0]</span></code></p></td>
+<td><p>Translation [m] from the robot’s kinematic control link to the frame the pose
+observation reports — see <a class="reference internal" href="#the-eef-offset-frame-shift">The eef_offset Frame Shift</a>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="the-transform-step-by-step">
+<h3>The Transform, Step by Step<a class="headerlink" href="#the-transform-step-by-step" title="Link to this heading">#</a></h3>
+<p>Here is one 7-D Franka action followed through both directions. Suppose the current EEF pose
+is at the origin with identity rotation, and the recorded action is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>action = [0.10, 0.20, 0.30,   0.10, 0.00, 0.00,   0.7]
+          └─ delta position ─┘└─ delta rotation ─┘ └ gripper
+</pre></div>
+</div>
+<p><strong>Inverse — action → target pose</strong> (<code class="docutils literal notranslate"><span class="pre">action_to_target_eef_pose</span></code>). Used when loading source
+demonstrations: it recovers the controller <em>target</em> each recorded action encoded.</p>
+<ol class="arabic simple">
+<li><p>Split the action: <code class="docutils literal notranslate"><span class="pre">delta_pos</span> <span class="pre">=</span> <span class="pre">[0.10,</span> <span class="pre">0.20,</span> <span class="pre">0.30]</span></code>, <code class="docutils literal notranslate"><span class="pre">delta_aa</span> <span class="pre">=</span> <span class="pre">[0.10,</span> <span class="pre">0,</span> <span class="pre">0]</span></code>. The
+gripper value carries no pose and is ignored here.</p></li>
+<li><p>Read the current EEF pose from the observation buffer (shifted by <code class="docutils literal notranslate"><span class="pre">-eef_offset</span></code> if one
+is configured).</p></li>
+<li><p>Target position = current position + <code class="docutils literal notranslate"><span class="pre">delta_pos</span></code> → <code class="docutils literal notranslate"><span class="pre">(0.10,</span> <span class="pre">0.20,</span> <span class="pre">0.30)</span></code>.</p></li>
+<li><p>Target rotation = <code class="docutils literal notranslate"><span class="pre">R(delta_aa)</span> <span class="pre">&#64;</span> <span class="pre">current_rotation</span></code> — the axis-angle vector
+<code class="docutils literal notranslate"><span class="pre">[0.10,</span> <span class="pre">0,</span> <span class="pre">0]</span></code> means “rotate 0.10 rad about the x axis”, composed onto the current
+orientation.</p></li>
+</ol>
+<p><strong>Forward — target pose → action</strong> (<code class="docutils literal notranslate"><span class="pre">target_eef_pose_to_action</span></code>). Used during generation:
+each transformed waypoint becomes the action that is actually stepped.</p>
+<ol class="arabic simple">
+<li><p>Delta position = target position − current position.</p></li>
+<li><p>Delta rotation = <code class="docutils literal notranslate"><span class="pre">target_rotation</span> <span class="pre">&#64;</span> <span class="pre">current_rotationᵀ</span></code>, converted back to the compact
+axis-angle vector.</p></li>
+<li><p>Optional <strong>noise</strong>: if the subtask sets <code class="docutils literal notranslate"><span class="pre">action_noise</span></code>, Gaussian noise scaled by it is
+added to the 6-D pose part — never to the gripper.</p></li>
+<li><p>Optional <strong>clipping</strong>: with <code class="docutils literal notranslate"><span class="pre">clip_pose_action_to_unit:</span> <span class="pre">true</span></code>, the pose part is clamped
+to <code class="docutils literal notranslate"><span class="pre">[-1,</span> <span class="pre">1]</span></code> — after the noise, so noise cannot push the action out of range.</p></li>
+<li><p>The gripper value is appended <strong>verbatim</strong> from the source demonstration’s passthrough
+channel — the adapter never invents gripper commands.</p></li>
+</ol>
+<p>Running the forward direction on the inverse’s output reproduces the original action (up to
+noise and clipping). That round-trip property is exactly what the unit tests check — and what
+you should check first for a new embodiment (see below).</p>
+</section>
+</section>
+<section id="bimanual-adapter-absolute-pose-whole-body-bimanual">
+<h2>Bimanual Adapter: <code class="docutils literal notranslate"><span class="pre">absolute_pose_whole_body_bimanual</span></code><a class="headerlink" href="#bimanual-adapter-absolute-pose-whole-body-bimanual" title="Link to this heading">#</a></h2>
+<p>The action vector is
+<code class="docutils literal notranslate"><span class="pre">[left_pos</span> <span class="pre">(3),</span> <span class="pre">left_quat</span> <span class="pre">(4),</span> <span class="pre">right_pos</span> <span class="pre">(3),</span> <span class="pre">right_quat</span> <span class="pre">(4),</span> <span class="pre">hand_joints,</span> <span class="pre">...extras]</span></code>.
+Poses are absolute targets tracked by a whole-body IK controller. The hand-joints block
+interleaves both hands’ joints in URDF order; <code class="docutils literal notranslate"><span class="pre">gripper_action_indices</span></code> records which
+positions belong to which arm.</p>
+<p>From <a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_examples/embodiments/gr1_ik_abs.yaml">gr1_ik_abs.yaml</a> (the
+GR1T2 humanoid; <a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_examples/embodiments/g1_ik_abs.yaml">g1_ik_abs.yaml</a>
+has the same shape for the G1):</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">absolute_pose_whole_body_bimanual</span>
+<span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gr1t2</span>
+
+<span class="nt">eefs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">left</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">pose_obs_keys</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">pos</span><span class="p">:</span><span class="w"> </span><span class="nv">left_eef_pos</span><span class="p p-Indicator">,</span><span class="nt"> quat</span><span class="p">:</span><span class="w"> </span><span class="nv">left_eef_quat</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">gripper_action_indices</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">1</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">2</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">3</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">4</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">10</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">11</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">12</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">13</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">14</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">20</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">right</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">pose_obs_keys</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">pos</span><span class="p">:</span><span class="w"> </span><span class="nv">right_eef_pos</span><span class="p p-Indicator">,</span><span class="nt"> quat</span><span class="p">:</span><span class="w"> </span><span class="nv">right_eef_quat</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">gripper_action_indices</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">5</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">6</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">7</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">8</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">9</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">15</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">16</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">17</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">18</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">19</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">21</span><span class="p p-Indicator">]</span>
+
+<span class="nt">action_layout</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">left_pose_slice</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">7</span><span class="p p-Indicator">]</span><span class="w">     </span><span class="c1"># pos (3) + quat (4)</span>
+<span class="w">  </span><span class="nt">right_pose_slice</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">7</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">14</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">hand_joints_slice</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">14</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">36</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># 11 DOF per hand, interleaved</span>
+<span class="w">  </span><span class="nt">canonicalize_quat</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</pre></div>
+</div>
+<section id="id1">
+<h3>Field reference<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 32.0%" />
+<col style="width: 12.0%" />
+<col style="width: 16.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Required</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Adapter class; <code class="docutils literal notranslate"><span class="pre">absolute_pose_whole_body_bimanual</span></code> here.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Identifier for the embodiment.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
+<td><p>no</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p>Human-readable summary.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">obs_group</span></code></p></td>
+<td><p>no</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">policy</span></code></p></td>
+<td><p>Observation-buffer group holding the pose keys.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">eefs.left</span></code> / <code class="docutils literal notranslate"><span class="pre">eefs.right</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>One block per arm. The EEF names are literally <code class="docutils literal notranslate"><span class="pre">left</span></code> and <code class="docutils literal notranslate"><span class="pre">right</span></code>; the task
+descriptor’s <code class="docutils literal notranslate"><span class="pre">subtasks</span></code> section must use the same names.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">eefs.&lt;arm&gt;.pose_obs_keys</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pos</span></code> / <code class="docutils literal notranslate"><span class="pre">quat</span></code> observation keys for that arm’s EEF pose (quaternion
+(x, y, z, w)).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">eefs.&lt;arm&gt;.gripper_action_indices</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>That arm’s positions <em>within</em> the hand-joints block (0-based, relative to the block,
+not the full action). Left and right must not overlap; the length is that arm’s
+gripper action dim.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">action_layout.left_pose_slice</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Half-open <code class="docutils literal notranslate"><span class="pre">[start,</span> <span class="pre">end)</span></code> range of the left <code class="docutils literal notranslate"><span class="pre">[pos,</span> <span class="pre">quat]</span></code> block. Must span
+exactly 7.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">action_layout.right_pose_slice</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Range of the right pose block. Must immediately follow the left one.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">action_layout.hand_joints_slice</span></code></p></td>
+<td><p>yes</p></td>
+<td><p>—</p></td>
+<td><p>Range of the interleaved hand-joints block. Must immediately follow the right pose
+block.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">action_layout.canonicalize_quat</span></code></p></td>
+<td><p>no</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Flip quaternions to <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">&gt;=</span> <span class="pre">0</span></code> before packing into the action (<code class="docutils literal notranslate"><span class="pre">q</span></code> and <code class="docutils literal notranslate"><span class="pre">-q</span></code> are
+the same rotation; canonicalizing prevents sign flips between consecutive recorded
+actions).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">action_layout.passthrough_channels</span></code></p></td>
+<td><p>no</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">{}</span></code></p></td>
+<td><p>Extra <strong>non-EEF</strong> passthrough channels, <code class="docutils literal notranslate"><span class="pre">name:</span> <span class="pre">[start,</span> <span class="pre">end)</span></code> each — e.g. a
+mobile-base or locomotion command. Copied verbatim from the source demo like the
+grippers. Slices must not overlap the pose + hand-joints region, and names must not
+collide with <code class="docutils literal notranslate"><span class="pre">left</span></code> / <code class="docutils literal notranslate"><span class="pre">right</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>All slice layouts are validated at load time — spans, adjacency, index ranges, and overlaps
+fail immediately with a named reason.</p>
+</section>
+</section>
+<section id="the-eef-offset-frame-shift">
+<h2>The <code class="docutils literal notranslate"><span class="pre">eef_offset</span></code> Frame Shift<a class="headerlink" href="#the-eef-offset-frame-shift" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">eef_offset</span></code> (single-arm only) is a translation [m] from the robot’s kinematic control link
+to the end-effector frame the observation reports — equivalently, the difference between the
+env-reported EEF frame and the frame the <em>source dataset’s annotations</em> use. When the two
+frames agree it is zero; when they do not, generation silently produces offset grasps, so
+this is the first thing to check when transformed segments look shifted.</p>
+<p>Concrete example: the base Franka IK-Rel tasks report the inter-fingertip <code class="docutils literal notranslate"><span class="pre">end_effector</span></code>
+frame, and the MimicGen source dataset is annotated in that same frame — offset zero. The
+SkillGen cube-stack dataset, however, is annotated in the <code class="docutils literal notranslate"><span class="pre">panda_hand</span></code> frame (cuRobo’s
+planning link), so its embodiment config (<code class="docutils literal notranslate"><span class="pre">franka_ik_rel_skillgen.yaml</span></code>) sets
+<code class="docutils literal notranslate"><span class="pre">eef_offset:</span> <span class="pre">[0,</span> <span class="pre">0,</span> <span class="pre">0.1034]</span></code> — the fingertip-to-hand distance.</p>
+</section>
+<section id="writing-a-new-embodiment">
+<h2>Writing a New Embodiment<a class="headerlink" href="#writing-a-new-embodiment" title="Link to this heading">#</a></h2>
+<p>A new embodiment for an already-supported control scheme is pure YAML — no code. Work
+through these steps:</p>
+<ol class="arabic">
+<li><p><strong>Identify the observations.</strong> Find the observation keys holding each end-effector’s
+position and quaternion (<code class="docutils literal notranslate"><span class="pre">pose_obs_keys</span></code>), and which group they live in
+(<code class="docutils literal notranslate"><span class="pre">obs_group</span></code>). The quaternion observation must be (x, y, z, w) ordered.</p></li>
+<li><p><strong>Map the action vector.</strong> Work out the pose slice(s), gripper dims/indices, and whether
+pose actions are relative or absolute — this picks the adapter <code class="docutils literal notranslate"><span class="pre">type</span></code>. Anything that is
+neither pose nor gripper becomes a <code class="docutils literal notranslate"><span class="pre">passthrough_channels</span></code> entry.</p></li>
+<li><p><strong>Determine ``eef_offset``.</strong> Compare the env’s reported EEF frame with the frame your
+source dataset’s poses use (single-arm; see above).</p></li>
+<li><p><strong>Round-trip it in a unit test.</strong> The adapter’s two directions must be mutually
+consistent: converting an action to a target pose and back must reproduce the action.
+This runs in seconds, without Isaac Sim:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">isaac_autodata_interfaces.embodiments</span><span class="w"> </span><span class="kn">import</span> <span class="n">embodiment_adapter_from_yaml</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">isaac_autodata_tests.interfaces.mocks</span><span class="w"> </span><span class="kn">import</span> <span class="n">MockEnv</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">test_my_embodiment_round_trip</span><span class="p">():</span>
+    <span class="n">adapter</span> <span class="o">=</span> <span class="n">embodiment_adapter_from_yaml</span><span class="p">(</span><span class="s2">&quot;my_robot.yaml&quot;</span><span class="p">)</span>
+    <span class="c1"># Fake the env: only the pose observations the adapter reads.</span>
+    <span class="n">adapter</span><span class="o">.</span><span class="n">bind_env</span><span class="p">(</span>
+        <span class="n">MockEnv</span><span class="p">(</span>
+            <span class="n">obs_buf</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;policy&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;eef_pos&quot;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+                    <span class="s2">&quot;eef_quat&quot;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]]),</span>  <span class="c1"># (x, y, z, w)</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">action_in</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">]])</span>
+    <span class="n">target</span> <span class="o">=</span> <span class="n">adapter</span><span class="o">.</span><span class="n">action_to_target_eef_pose</span><span class="p">(</span><span class="n">action_in</span><span class="p">)[</span><span class="s2">&quot;my_eef&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">action_out</span> <span class="o">=</span> <span class="n">adapter</span><span class="o">.</span><span class="n">target_eef_pose_to_action</span><span class="p">(</span>
+        <span class="p">{</span><span class="s2">&quot;my_eef&quot;</span><span class="p">:</span> <span class="n">target</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;my_eef&quot;</span><span class="p">:</span> <span class="n">action_in</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">6</span><span class="p">:]},</span> <span class="n">env_id</span><span class="o">=</span><span class="mi">0</span>
+    <span class="p">)</span>
+
+    <span class="k">assert</span> <span class="n">torch</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">action_out</span><span class="p">,</span> <span class="n">action_in</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The shipped tests in <code class="docutils literal notranslate"><span class="pre">isaac_autodata_tests/interfaces/embodiments/</span></code> show the full
+pattern (disable clipping for large test deltas, batch shapes, per-arm variants). Run
+them with <code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">isaac_autodata_tests/interfaces/embodiments/</span></code>.</p>
+</li>
+<li><p><strong>Verify against real data.</strong> Replay a recorded demonstration through
+<code class="docutils literal notranslate"><span class="pre">action_to_target_eef_pose</span></code> and check the recovered targets track the recorded EEF
+poses.</p></li>
+</ol>
+<p>If no registered adapter fits the robot’s control scheme, implement a new adapter class and
+add it to <code class="docutils literal notranslate"><span class="pre">EMBODIMENT_TYPE_REGISTRY</span></code> — the two existing adapters are the template: subclass
+the morphology base class, implement the three action-encoding methods, and provide
+<code class="docutils literal notranslate"><span class="pre">from_dict</span></code>.</p>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 36.0%" />
+<col style="width: 32.0%" />
+<col style="width: 32.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Symptom</p></th>
+<th class="head"><p>Likely cause</p></th>
+<th class="head"><p>Fix</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Every grasp lands offset from the object by the same fixed distance.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">eef_offset</span></code> does not match the frame difference between the env’s EEF observation
+and the source dataset’s annotation frame.</p></td>
+<td><p>Measure the offset between the two frames and set <code class="docutils literal notranslate"><span class="pre">eef_offset</span></code> accordingly — see
+<a class="reference internal" href="#the-eef-offset-frame-shift">The eef_offset Frame Shift</a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Assets or motions come out flipped ~180°, or rotations drift wildly.</p></td>
+<td><p>Quaternion order mismatch: a (w, x, y, z) quaternion fed where (x, y, z, w) is
+expected, or vice versa.</p></td>
+<td><p>The framework is (x, y, z, w) throughout, identity <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">0,</span> <span class="pre">0,</span> <span class="pre">1]</span></code>. Check the env’s
+observation term and any hand-written poses.</p></td>
+</tr>
+<tr class="row-even"><td><p>Large motions execute slowly or fall short; fast recorded motions replay truncated.</p></td>
+<td><p>The 6-D pose action saturates at the <code class="docutils literal notranslate"><span class="pre">[-1,</span> <span class="pre">1]</span></code> clamp
+(<code class="docutils literal notranslate"><span class="pre">clip_pose_action_to_unit</span></code>).</p></td>
+<td><p>Expected for delta-IK envs whose action term clips — per-step deltas should be
+small. If the env does not clip, set <code class="docutils literal notranslate"><span class="pre">clip_pose_action_to_unit:</span> <span class="pre">false</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">KeyError</span></code> on an observation key at the first pose read.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pose_obs_keys</span></code> / <code class="docutils literal notranslate"><span class="pre">obs_group</span></code> don’t match the env’s observation terms.</p></td>
+<td><p>List the env’s observation terms and copy the exact key and group names.</p></td>
+</tr>
+<tr class="row-even"><td><p>Fingers don’t move — or the wrong hand’s fingers move (bimanual).</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">gripper_action_indices</span></code> misassigned between the arms, or indexed relative to the
+full action instead of the hand-joints block.</p></td>
+<td><p>Indices are 0-based <em>within</em> <code class="docutils literal notranslate"><span class="pre">hand_joints_slice</span></code>; compare against the env’s URDF
+joint order.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">AssertionError:</span> <span class="pre">env</span> <span class="pre">already</span> <span class="pre">bound</span></code> or <code class="docutils literal notranslate"><span class="pre">Call</span> <span class="pre">bind_env(env)</span> <span class="pre">...</span></code>.</p></td>
+<td><p>The adapter was bound twice, or used before binding.</p></td>
+<td><p>Build the adapter and hand it to the <a class="reference internal" href="datastream.html"><span class="doc">Datastream</span></a> — it binds the
+env exactly once.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="environment_profiles.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Environment Profiles</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="datastream.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Datastream</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#adapter-types">Adapter Types</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-the-adapter-does-at-runtime">What the Adapter Does at Runtime</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-arm-adapter-delta-pose-ik-single-arm">Single-Arm Adapter: <code class="docutils literal notranslate"><span class="pre">delta_pose_ik_single_arm</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#field-reference">Field reference</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#the-transform-step-by-step">The Transform, Step by Step</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#bimanual-adapter-absolute-pose-whole-body-bimanual">Bimanual Adapter: <code class="docutils literal notranslate"><span class="pre">absolute_pose_whole_body_bimanual</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Field reference</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-eef-offset-frame-shift">The <code class="docutils literal notranslate"><span class="pre">eef_offset</span></code> Frame Shift</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#writing-a-new-embodiment">Writing a New Embodiment</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2026, NVIDIA.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

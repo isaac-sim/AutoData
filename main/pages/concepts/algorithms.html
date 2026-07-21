@@ -1,0 +1,640 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Generation Algorithms &#8212; isaac_autodata 0.1</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/nvidia-sphinx-theme.css?v=df3ac72c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=42eea36e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'pages/concepts/algorithms';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="icon" href="../../_static/favicon.png"/>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="The Data Generator Interface" href="data_generator.html" />
+    <link rel="prev" title="Datastream" href="datastream.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../../_static/searchtools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <script src="../../searchindex.js"></script>
+  
+
+
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-links bd-docs-nav">
+    <div class="bd-toc-item navbar-nav">
+      <ul class="nav bd-sidenav">
+        <li class="toctree-l1 has-children" style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+          <div  style ="text-align:center;">
+            <label for="version-select" style="font-weight: bold; display: block;">Version</label>
+          </div>
+          <select id="version-select" class="version-dropdown" style="margin: 0 auto; display: block;" onchange="location = this.value;">
+            <option value="algorithms.html" selected>main</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+</nav>
+</div>
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Set Up</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/installation.html">Installation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/first_data_generation.html">Your First Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Example Workflows</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/index.html">Franka Cube Stacking with MimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/index.html">Humanoid Pick &amp; Place with DexMimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../workflows/skillgen/index.html">SkillGen: Motion-Planned Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="concept_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="task_descriptors.html">Task Descriptors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environment_profiles.html">Environment Profiles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="embodiments.html">Embodiments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="datastream.html">Datastream</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Generation Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_generator.html">The Data Generator Interface</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../advanced/motion_planners.html">Motion Planners</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/testing_and_ci.html">Testing and CI</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">References</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../references/release_notes.html">Release Notes</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Generation Algorithms</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="generation-algorithms">
+<h1>Generation Algorithms<a class="headerlink" href="#generation-algorithms" title="Link to this heading">#</a></h1>
+<p>Isaac AutoData ships three generation algorithms, selected with <code class="docutils literal notranslate"><span class="pre">--alg</span></code> on the CLI (the
+task descriptor’s <code class="docutils literal notranslate"><span class="pre">algo</span></code> field independently selects which per-subtask <code class="docutils literal notranslate"><span class="pre">algo_params</span></code>
+schema the descriptor is parsed with — keep the two consistent). All three plug into the
+<a class="reference internal" href="data_generator.html"><span class="doc">data generator</span></a> and share the same skeleton — split
+source demos into subtask segments, select a segment per subtask, transform it to the current
+scene, execute, and keep successful trials — and differ in how segments are bridged and how
+multiple arms are handled.</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 14.0%" />
+<col style="width: 18.0%" />
+<col style="width: 50.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Algorithm</p></th>
+<th class="head"><p>Arms</p></th>
+<th class="head"><p>Bridging</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mimicgen</span></code></p></td>
+<td><p>1</p></td>
+<td><p>Interpolation</p></td>
+<td><p>Vanilla single-arm MimicGen.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dexmimicgen</span></code></p></td>
+<td><p>2</p></td>
+<td><p>Interpolation</p></td>
+<td><p>Adds per-arm subtasks and cross-arm coordination constraints.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">skillgen</span></code></p></td>
+<td><p>1</p></td>
+<td><p>Motion planning</p></td>
+<td><p>cuRobo-planned, collision-free transit; requires start signals.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="mimicgen">
+<h2>MimicGen<a class="headerlink" href="#mimicgen" title="Link to this heading">#</a></h2>
+<p>MimicGen (<a class="reference external" href="https://arxiv.org/abs/2310.17596">Mandlekar et al., 2023</a>) is the foundation:
+every subtask segment is stored relative to its reference object, so replaying it under a new
+object pose is a rigid-body transform of the recorded end-effector trajectory. Between
+segments, the end-effector linearly interpolates from its current pose to the transformed
+segment start (<code class="docutils literal notranslate"><span class="pre">num_interpolation_steps</span></code>, optionally holding <code class="docutils literal notranslate"><span class="pre">num_fixed_steps</span></code>), and
+per-step <code class="docutils literal notranslate"><span class="pre">action_noise</span></code> adds diversity across trials. A trial succeeds if the task’s
+success condition holds at any step; only then is it exported (subject to the
+<a class="reference internal" href="task_descriptors.html"><span class="doc">generation policy</span></a>).</p>
+<p>The transformation requires <strong>task-space actions</strong>: the embodiment’s actions must encode
+end-effector pose targets (relative or absolute), which is what the
+<a class="reference internal" href="embodiments.html"><span class="doc">embodiment adapters</span></a> guarantee.</p>
+</section>
+<section id="dexmimicgen">
+<h2>DexMimicGen<a class="headerlink" href="#dexmimicgen" title="Link to this heading">#</a></h2>
+<p>DexMimicGen (<a class="reference external" href="https://arxiv.org/abs/2410.24185">Jiang et al., 2024</a>) extends the recipe to
+two arms. Each end-effector declares its own subtask sequence in the descriptor, and segments
+are selected, transformed, and executed per arm. Two mechanisms keep the arms consistent:</p>
+<ul class="simple">
+<li><p><strong>Source selection scope</strong> — by default all arms replay segments from the same source demo
+(<code class="docutils literal notranslate"><span class="pre">select_src_per_arm:</span> <span class="pre">false</span></code>), preserving whatever implicit coordination the human
+demonstration had.</p></li>
+<li><p><strong>Constraints</strong> — explicit <code class="docutils literal notranslate"><span class="pre">sequential</span></code> / <code class="docutils literal notranslate"><span class="pre">coordination</span></code> entries in the descriptor
+synchronize specific subtask pairs across arms at runtime (see
+<a class="reference internal" href="task_descriptors.html"><span class="doc">Task Descriptors</span></a>).</p></li>
+</ul>
+</section>
+<section id="skillgen">
+<h2>SkillGen<a class="headerlink" href="#skillgen" title="Link to this heading">#</a></h2>
+<p>SkillGen (<a class="reference external" href="https://arxiv.org/abs/2410.18907">Garrett et al., 2024</a>) replaces interpolation
+with <strong>motion-planned transit</strong>: each subtask executes as a collision-free cuRobo plan to the
+skill segment’s start, followed by the transformed skill replay. Grasped objects are attached
+to the kinematic chain during planning, so held objects are collision-checked too. This
+requires knowing exactly where skills start — hence subtask <strong>start signals</strong> and a
+termination signal on every subtask, including the final one. Constraints apply only during
+skill segments; transit is constraint-free. If planning fails for a trial, the trial is
+abandoned and counted as a failure.</p>
+<p>See the <a class="reference internal" href="../workflows/skillgen/index.html"><span class="doc">SkillGen workflow</span></a> and
+<a class="reference internal" href="../advanced/motion_planners.html"><span class="doc">Motion Planners</span></a>.</p>
+</section>
+<section id="source-demo-selection-strategies">
+<h2>Source Demo Selection Strategies<a class="headerlink" href="#source-demo-selection-strategies" title="Link to this heading">#</a></h2>
+<p>Which source segment is replayed for a subtask is decided by a <strong>selection strategy</strong>,
+configured per subtask in the task descriptor (<code class="docutils literal notranslate"><span class="pre">selection_strategy</span></code> /
+<code class="docutils literal notranslate"><span class="pre">selection_strategy_kwargs</span></code>):</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 35.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Strategy</p></th>
+<th class="head"><p>Behavior</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">random</span></code></p></td>
+<td><p>Uniform random choice over source demos.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">nearest_neighbor_object</span></code></p></td>
+<td><p>Ranks demos by how close their reference-object pose is to the current one, then
+picks randomly among the <code class="docutils literal notranslate"><span class="pre">nn_k</span></code> nearest.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nearest_neighbor_robot_distance</span></code></p></td>
+<td><p>Ranks demos by how close their (object-frame-transformed) source end-effector pose
+lands to the current end-effector pose, then picks among the <code class="docutils literal notranslate"><span class="pre">nn_k</span></code> nearest.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The nearest-neighbor strategies trade diversity for reliability: segments recorded under
+similar geometry transform with less distortion, raising the success rate, while <code class="docutils literal notranslate"><span class="pre">nn_k</span></code>
+keeps some randomness so the output does not collapse onto a single source demo. The shipped
+examples use <code class="docutils literal notranslate"><span class="pre">nearest_neighbor_object</span></code> with <code class="docutils literal notranslate"><span class="pre">nn_k:</span> <span class="pre">3</span></code>. How often selection re-runs — per
+subtask, per arm, or once per episode — is set by the generation policy’s
+<code class="docutils literal notranslate"><span class="pre">select_src_per_subtask</span></code> / <code class="docutils literal notranslate"><span class="pre">select_src_per_arm</span></code> flags.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="datastream.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Datastream</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="data_generator.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">The Data Generator Interface</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#mimicgen">MimicGen</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dexmimicgen">DexMimicGen</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#skillgen">SkillGen</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#source-demo-selection-strategies">Source Demo Selection Strategies</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2026, NVIDIA.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

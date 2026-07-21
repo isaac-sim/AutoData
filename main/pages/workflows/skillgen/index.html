@@ -1,0 +1,962 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>SkillGen: Motion-Planned Data Generation &#8212; isaac_autodata 0.1</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=df3ac72c" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=42eea36e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'pages/workflows/skillgen/index';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="icon" href="../../../_static/favicon.png"/>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="Architecture Overview" href="../../concepts/concept_overview.html" />
+    <link rel="prev" title="Step 4: Validate the Generated Dataset" href="../humanoid_dexmimicgen/step_4_validate_dataset.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../../../_static/searchtools.js"></script>
+    <script src="../../../_static/language_data.js"></script>
+    <script src="../../../searchindex.js"></script>
+  
+
+
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-links bd-docs-nav">
+    <div class="bd-toc-item navbar-nav">
+      <ul class="nav bd-sidenav">
+        <li class="toctree-l1 has-children" style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+          <div  style ="text-align:center;">
+            <label for="version-select" style="font-weight: bold; display: block;">Version</label>
+          </div>
+          <select id="version-select" class="version-dropdown" style="margin: 0 auto; display: block;" onchange="location = this.value;">
+            <option value="index.html" selected>main</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+</nav>
+</div>
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Set Up</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart/installation.html">Installation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart/first_data_generation.html">Your First Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Example Workflows</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../franka_cube_stack_mimicgen/index.html">Franka Cube Stacking with MimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../franka_cube_stack_mimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../franka_cube_stack_mimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../franka_cube_stack_mimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../franka_cube_stack_mimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../humanoid_dexmimicgen/index.html">Humanoid Pick &amp; Place with DexMimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../humanoid_dexmimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../humanoid_dexmimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../humanoid_dexmimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../humanoid_dexmimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">SkillGen: Motion-Planned Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/concept_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/task_descriptors.html">Task Descriptors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/environment_profiles.html">Environment Profiles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/embodiments.html">Embodiments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/datastream.html">Datastream</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/algorithms.html">Generation Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/data_generator.html">The Data Generator Interface</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/motion_planners.html">Motion Planners</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/testing_and_ci.html">Testing and CI</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">References</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../references/release_notes.html">Release Notes</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">SkillGen: Motion-Planned Data Generation</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="skillgen-motion-planned-data-generation">
+<h1>SkillGen: Motion-Planned Data Generation<a class="headerlink" href="#skillgen-motion-planned-data-generation" title="Link to this heading">#</a></h1>
+<p><strong>SkillGen</strong> augments MimicGen-style generation with collision-aware, GPU-accelerated motion
+planning (<a class="reference external" href="https://curobo.org/">cuRobo</a>). Instead of interpolating the end-effector between
+subtasks, SkillGen plans a collision-free <em>transit</em> motion to each skill segment’s start, then
+replays the segment. Compared to plain MimicGen this gives:</p>
+<ul class="simple">
+<li><p><strong>Motion quality</strong> — transitions are smooth, kinematically feasible robot motions instead of
+straight-line pose interpolations.</p></li>
+<li><p><strong>Collision awareness</strong> — planned transits avoid the scene <em>and</em> whatever the gripper is
+holding; interpolation is blind to both.</p></li>
+<li><p><strong>Adaptability</strong> — because transitions are planned fresh each trial, the same annotated
+demonstrations keep working when object placements move far from the source demonstration —
+or into cluttered scenes where interpolation would collide.</p></li>
+</ul>
+<p>This page walks through two tasks: plain <strong>cube stacking</strong>, and <strong>cube stacking inside a
+bin</strong> — a cluttered variant created from the same base task with an <em>environment profile</em>,
+generated from the <em>same</em> annotated dataset.</p>
+<figure class="align-center" id="id2">
+<a class="reference internal image-reference" href="../../../_images/cube_stack_data_gen_skillgen.gif"><img alt="Franka cube stacking demonstrations generated with SkillGen" src="../../../_images/cube_stack_data_gen_skillgen.gif" style="width: 75%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Cube stacking demonstrations generated with SkillGen.</span><a class="headerlink" href="#id2" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<section id="how-skillgen-works">
+<h2>How SkillGen Works<a class="headerlink" href="#how-skillgen-works" title="Link to this heading">#</a></h2>
+<p>MimicGen bridges between subtasks by linearly interpolating the end-effector pose — fast, but
+blind: the interpolated path can sweep through obstacles, and its quality degrades the further
+the new object poses are from the source demonstration’s. SkillGen splits every subtask into
+two phases instead:</p>
+<ol class="arabic simple">
+<li><p><strong>Transit</strong> — a cuRobo-planned, collision-free motion from the current end-effector pose
+to the (transformed) start of the subtask’s skill segment. Grasped objects are attached to
+the robot’s kinematic chain during planning, so a held cube is itself collision-checked.</p></li>
+<li><p><strong>Skill</strong> — the human demonstration segment, transformed and replayed as in MimicGen.</p></li>
+</ol>
+<p>Each generation trial then runs this pipeline:</p>
+<ol class="arabic simple">
+<li><p><strong>Reset.</strong> The environment resets and randomizes the cube placements; the initial state is
+snapshot for the output episode.</p></li>
+<li><p><strong>Select and transform.</strong> For the current subtask, a source skill segment is chosen
+(nearest-neighbor over reference-object poses by default) and rigidly transformed to the
+reference object’s current pose. The segment’s entry point is randomized within the
+descriptor’s offset ranges.</p></li>
+<li><p><strong>Plan.</strong> The planner syncs its collision world to the live scene — attaching the held
+object, if the subtask expects one — and plans a collision-free transit from the current
+end-effector pose to the segment’s start. If planning fails, the trial is abandoned and
+counted as a failure.</p></li>
+<li><p><strong>Execute.</strong> The transit waypoints are executed, then the skill segment replays with
+per-step action noise for diversity.</p></li>
+<li><p><strong>Record.</strong> The task’s success condition is checked every step; successful trials are
+exported to the output dataset.</p></li>
+</ol>
+<p>Because the planner needs to know exactly where skills begin, SkillGen requires <strong>subtask
+start signals</strong> in addition to termination signals. In the task descriptor this means every
+subtask — including the final one — must name a <code class="docutils literal notranslate"><span class="pre">subtask_term_signal</span></code>: the name does double
+duty as the key for that subtask’s start signal. The final subtask itself still ends with the
+trajectory, as in MimicGen, and never needs a termination mark. Cross-subtask constraints, if
+any, apply only during the skill phase; transit is constraint-free.</p>
+</section>
+<section id="workflow-at-a-glance">
+<h2>Workflow at a Glance<a class="headerlink" href="#workflow-at-a-glance" title="Link to this heading">#</a></h2>
+<p>The SkillGen workflow has the same four steps as the
+<a class="reference internal" href="../franka_cube_stack_mimicgen/index.html"><span class="doc">MimicGen workflow</span></a> — but only the first and last
+are identical:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 78.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Step</p></th>
+<th class="head"><p>Compared to MimicGen</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>1. Record</strong></p></td>
+<td><p><strong>Identical.</strong> Teleoperate the robot and record demonstrations exactly as in
+<a class="reference internal" href="../franka_cube_stack_mimicgen/step_1_record_demonstrations.html"><span class="doc">Step 1: Record Source Demonstrations</span></a> — or skip this step
+and use the pre-annotated dataset that ships with the repository.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>2. Annotate</strong></p></td>
+<td><p><strong>SkillGen-specific.</strong> Manual annotation only, and each subtask needs a <em>start</em> mark
+in addition to the termination marks (see below).</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>3. Generate</strong></p></td>
+<td><p><strong>SkillGen-specific.</strong> <code class="docutils literal notranslate"><span class="pre">--alg</span> <span class="pre">skillgen</span></code> auto-wires one cuRobo planner per
+environment; transitions are planned, not interpolated.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>4. Validate</strong></p></td>
+<td><p><strong>Identical.</strong> <code class="docutils literal notranslate"><span class="pre">scripts/validate_dataset.py</span></code> works on any generated dataset.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="prerequisites">
+<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">#</a></h2>
+<p>SkillGen requires the cuRobo container image. cuRobo’s CUDA kernels are compiled for your
+GPU architecture at image build time (auto-detected via <code class="docutils literal notranslate"><span class="pre">nvidia-smi</span></code>; override with
+<code class="docutils literal notranslate"><span class="pre">TORCH_CUDA_ARCH_LIST</span></code>):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./docker/run_docker.sh<span class="w"> </span>-c
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>cuRobo kernels are compiled for the GPU you build the image on. If you later run on a
+different GPU generation, rebuild with <code class="docutils literal notranslate"><span class="pre">./docker/run_docker.sh</span> <span class="pre">-c</span> <span class="pre">-r</span></code>.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The first SkillGen run needs network access: the planner downloads the Franka robot model
+(URDF) from the Nucleus asset server when it initializes.</p>
+</div>
+</section>
+<section id="the-task-descriptor-for-skillgen">
+<h2>The Task Descriptor for SkillGen<a class="headerlink" href="#the-task-descriptor-for-skillgen" title="Link to this heading">#</a></h2>
+<p>Compare <a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml">franka_cube_stack_skillgen.yaml</a>
+with the MimicGen version of the same task. The differences are characteristic:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">algo:</span> <span class="pre">skillgen</span></code> and <code class="docutils literal notranslate"><span class="pre">generation_policy.use_skillgen:</span> <span class="pre">true</span></code>.</p></li>
+<li><p><strong>Every</strong> subtask names a <code class="docutils literal notranslate"><span class="pre">subtask_term_signal</span></code> — including the final one (<code class="docutils literal notranslate"><span class="pre">stack_2</span></code>).
+The name keys the subtask’s start signal, which is why the final subtask needs one even
+though it still ends with the trajectory.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">num_interpolation_steps:</span> <span class="pre">0</span></code> — transit replaces interpolation.</p></li>
+<li><p>Per-subtask <code class="docutils literal notranslate"><span class="pre">algo_params</span></code> may set <code class="docutils literal notranslate"><span class="pre">subtask_start_offset_range</span></code> to randomize where the
+skill segment is entered.</p></li>
+</ul>
+</section>
+<section id="annotating-for-skillgen">
+<h2>Annotating for SkillGen<a class="headerlink" href="#annotating-for-skillgen" title="Link to this heading">#</a></h2>
+<p>SkillGen datasets need a start mark for every subtask and a termination mark for every
+subtask <em>except the last</em> (which ends with the trajectory). A skill segment should cover the
+contact-rich part of a subtask — the final approach, the grasp, the placement — and
+everything between a termination and the next start becomes plannable transit.</p>
+<p>Annotation is manual: each episode replays in the simulator viewer, and you mark signals with
+the keyboard.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/annotate_demos.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--env_name<span class="w"> </span>Isaac-Stack-Cube-Franka-IK-Rel-v0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--task_descriptor<span class="w"> </span>isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--embodiment<span class="w"> </span>isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--input_file<span class="w"> </span>./datasets/dataset_franka.hdf5<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output_file<span class="w"> </span>./datasets/dataset_franka_skillgen_annotated.hdf5
+</pre></div>
+</div>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 15.0%" />
+<col style="width: 85.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Action</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">N</span></code></p></td>
+<td><p>Begin / resume playback</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">B</span></code></p></td>
+<td><p>Pause playback</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">S</span></code></p></td>
+<td><p>Mark a subtask signal at the current step</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Q</span></code></p></td>
+<td><p>Skip the current episode</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>With <code class="docutils literal notranslate"><span class="pre">use_skillgen:</span> <span class="pre">true</span></code> in the descriptor, the tool expects the marks to interleave —
+start, termination, start, termination, … — ending with the final subtask’s start. For the
+four-subtask cube-stack task that is <strong>7 marks</strong> per episode, in this order:</p>
+<ol class="arabic simple">
+<li><p>Start of <code class="docutils literal notranslate"><span class="pre">grasp_1</span></code> — the gripper begins its final approach to the red cube.</p></li>
+<li><p>Termination of <code class="docutils literal notranslate"><span class="pre">grasp_1</span></code> — the red cube is securely grasped.</p></li>
+<li><p>Start of <code class="docutils literal notranslate"><span class="pre">stack_1</span></code> — the placement onto the blue cube begins.</p></li>
+<li><p>Termination of <code class="docutils literal notranslate"><span class="pre">stack_1</span></code> — the red cube rests on the blue cube, gripper released.</p></li>
+<li><p>Start of <code class="docutils literal notranslate"><span class="pre">grasp_2</span></code> — the final approach to the green cube begins.</p></li>
+<li><p>Termination of <code class="docutils literal notranslate"><span class="pre">grasp_2</span></code> — the green cube is securely grasped.</p></li>
+<li><p>Start of <code class="docutils literal notranslate"><span class="pre">stack_2</span></code> — the placement onto the red cube begins.</p></li>
+</ol>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Pause with <code class="docutils literal notranslate"><span class="pre">B</span></code> a few steps before the skill begins, mark the start with <code class="docutils literal notranslate"><span class="pre">S</span></code>, and
+resume with <code class="docutils literal notranslate"><span class="pre">N</span></code>; once the interaction completes, pause again a few steps later and mark
+the termination. If the number of marks does not match the expected count, the episode
+simply replays for re-marking.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>A major advantage of SkillGen: because transitions are planned rather than replayed, one
+annotated dataset can drive <strong>multiple task variants</strong>. Both tasks on this page — plain
+stacking and stacking inside a bin — generate from the same annotated cube-stack dataset.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Automatic annotation (<code class="docutils literal notranslate"><span class="pre">--auto</span></code>) only produces termination signals and therefore cannot
+be used for SkillGen datasets yet. To skip annotation entirely, use the pre-annotated
+dataset that ships with the repository.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The SkillGen embodiment config differs from the MimicGen one only in <code class="docutils literal notranslate"><span class="pre">eef_offset</span></code>
+(<code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">0,</span> <span class="pre">0.1034]</span></code>): the SkillGen source dataset is annotated in the Franka
+<code class="docutils literal notranslate"><span class="pre">panda_hand</span></code> frame rather than the inter-fingertip frame, and the offset reconciles the
+two. See <a class="reference internal" href="../../concepts/embodiments.html"><span class="doc">Embodiments</span></a>.</p>
+</div>
+</section>
+<section id="task-1-cube-stacking">
+<h2>Task 1: Cube Stacking<a class="headerlink" href="#task-1-cube-stacking" title="Link to this heading">#</a></h2>
+<p><strong>Environment name:</strong> <code class="docutils literal notranslate"><span class="pre">Isaac-Stack-Cube-Franka-IK-Rel-v0</span></code></p>
+<p>A Franka arm stacks three cubes on a table — red on blue, then green on red. This is the same
+environment as the <a class="reference internal" href="../franka_cube_stack_mimicgen/index.html"><span class="doc">MimicGen workflow</span></a>; the
+SkillGen-specific end-effector frame is carried entirely by the embodiment config, not by a
+dedicated task.</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Property</p></th>
+<th class="head"><p>Value</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Algorithm</strong></p></td>
+<td><p>SkillGen (single end-effector, cuRobo motion planning)</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Embodiment</strong></p></td>
+<td><p>Franka, relative IK task-space actions (7-D: delta pose (xyz, rpy) + binary gripper
+open/close)</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Task descriptor</strong></p></td>
+<td><p><a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml">franka_cube_stack_skillgen.yaml</a></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Embodiment config</strong></p></td>
+<td><p><a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml">franka_ik_rel_skillgen.yaml</a></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Subtasks</strong></p></td>
+<td><p>Grasp red cube (<code class="docutils literal notranslate"><span class="pre">grasp_1</span></code>) → stack red on blue (<code class="docutils literal notranslate"><span class="pre">stack_1</span></code>) → grasp green cube
+(<code class="docutils literal notranslate"><span class="pre">grasp_2</span></code>) → stack green on red (<code class="docutils literal notranslate"><span class="pre">stack_2</span></code>); each subtask also carries a start
+signal keyed by the same name</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Pre-annotated source dataset</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Start small to verify the setup, using the pre-annotated source dataset:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/generate_dataset.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--env_name<span class="w"> </span>Isaac-Stack-Cube-Franka-IK-Rel-v0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--alg<span class="w"> </span>skillgen<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--task_descriptor<span class="w"> </span>isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--embodiment<span class="w"> </span>isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--input_file<span class="w"> </span>./datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output_file<span class="w"> </span>./datasets/generated_dataset_skillgen_franka.hdf5<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--generation_num_trials<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--num_envs<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--viz<span class="w"> </span>none
+</pre></div>
+</div>
+<p>When motion planning fails for a trial — no collision-free path to the skill start — the
+trial is abandoned and counted as a failure; with <code class="docutils literal notranslate"><span class="pre">guarantee_success:</span> <span class="pre">true</span></code> generation
+simply retries with a new scene configuration until the trial target is met.</p>
+<p>For a full-scale run, raise <code class="docutils literal notranslate"><span class="pre">--generation_num_trials</span></code> (hundreds to thousands for policy
+training) and keep <code class="docutils literal notranslate"><span class="pre">--viz</span> <span class="pre">none</span></code> — rendering slows generation considerably. See
+<a class="reference internal" href="#performance-and-scaling">Performance and Scaling</a> before choosing <code class="docutils literal notranslate"><span class="pre">--num_envs</span></code>.</p>
+<p>Validate the generated dataset the same way as any other:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/validate_dataset.py<span class="w"> </span>./datasets/generated_dataset_skillgen_franka.hdf5
+</pre></div>
+</div>
+</section>
+<section id="task-2-cube-stacking-in-a-bin-environment-profile">
+<h2>Task 2: Cube Stacking in a Bin (Environment Profile)<a class="headerlink" href="#task-2-cube-stacking-in-a-bin-environment-profile" title="Link to this heading">#</a></h2>
+<p>The second task drops a narrow sorting bin into the scene: the blue cube sits fixed inside
+the bin, and the robot must stack the red and green cubes onto it <strong>without colliding with
+the bin walls</strong> — a task where MimicGen’s straight-line interpolation would routinely
+collide, and exactly what SkillGen’s planned transits are for.</p>
+<figure class="align-center" id="id3">
+<a class="reference internal image-reference" href="../../../_images/bin_cube_stack_data_gen_skillgen.gif"><img alt="Franka bin cube stacking demonstrations generated with SkillGen" src="../../../_images/bin_cube_stack_data_gen_skillgen.gif" style="width: 75%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Bin cube stacking: same annotated dataset, planned around the bin.</span><a class="headerlink" href="#id3" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<section id="modifying-a-task-with-an-environment-profile">
+<h3>Modifying a task with an environment profile<a class="headerlink" href="#modifying-a-task-with-an-environment-profile" title="Link to this heading">#</a></h3>
+<p>There is no dedicated bin-stack environment. Instead, an <strong>environment profile</strong> — a YAML
+overlay applied with <code class="docutils literal notranslate"><span class="pre">--env_profile</span></code> — turns the plain cube-stack task into the bin variant
+at env-creation time (see <a class="reference internal" href="../../concepts/environment_profiles.html"><span class="doc">Environment Profiles</span></a> for the full schema).
+A profile can:</p>
+<ul class="simple">
+<li><p><strong>add objects</strong> to the scene (<code class="docutils literal notranslate"><span class="pre">scene.rigid_objects.add</span></code> — spawn a USD asset with pose,
+scale, and physics properties),</p></li>
+<li><p><strong>override existing objects</strong> (<code class="docutils literal notranslate"><span class="pre">scene.rigid_objects.override</span></code> — e.g. stiffer contact
+solving for cubes settling against the bin walls),</p></li>
+<li><p><strong>replace reset randomization</strong> (<code class="docutils literal notranslate"><span class="pre">events.remove</span></code> / <code class="docutils literal notranslate"><span class="pre">events.add</span></code> — e.g. pin the bin and
+blue cube at the table center, randomize the other cubes outside the bin),</p></li>
+<li><p><strong>name the motion-planner profile</strong> (<code class="docutils literal notranslate"><span class="pre">planner</span></code>) tuned for the modified scene.</p></li>
+</ul>
+<p>Abridged from
+<a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_examples/env_profiles/franka_bin_stack.yaml">franka_bin_stack.yaml</a>:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">franka_bin_stack</span>
+<span class="nt">base_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Isaac-Stack-Cube-Franka-IK-Rel-v0</span>
+<span class="nt">planner</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">franka_stack_cube_bin</span><span class="w">        </span><span class="c1"># planner profile tuned for the bin scene</span>
+
+<span class="nt">scene</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">rigid_objects</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">add</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">blue_sorting_bin</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">prim_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{ENV_REGEX_NS}/BlueSortingBin&quot;</span>
+<span class="w">        </span><span class="nt">usd_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{ISAACLAB_NUCLEUS_DIR}/Mimic/nut_pour_task/nut_pour_assets/sorting_bin_blue.usd&quot;</span>
+<span class="w">        </span><span class="nt">position</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0.4</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">0.0203</span><span class="p p-Indicator">]</span>
+<span class="w">        </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">1.1</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">1.6</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">3.3</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">override</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">cube_1</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">rigid_props</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">solver_position_iteration_count</span><span class="p">:</span><span class="w"> </span><span class="nv">40</span><span class="p p-Indicator">}}</span>
+
+<span class="nt">events</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">remove</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">randomize_cube_positions</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">add</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">reset_blue_bin_pose</span><span class="p">:</span><span class="w">   </span><span class="c1"># pin the bin (and cube_1) at the table center</span>
+<span class="w">      </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+<span class="w">    </span><span class="nt">reset_cube_pose</span><span class="p">:</span><span class="w">       </span><span class="c1"># randomize cube_2 / cube_3 outside the bin</span>
+<span class="w">      </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+</pre></div>
+</div>
+<p>The bin task also gets its own task descriptor
+(<a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_examples/tasks/franka_bin_stack_skillgen.yaml">franka_bin_stack_skillgen.yaml</a>):
+same subtasks as cube stacking, but <code class="docutils literal notranslate"><span class="pre">action_noise:</span> <span class="pre">0.0</span></code> — the bin walls leave little
+clearance for perturbed skill segments.</p>
+</section>
+<section id="generating-the-bin-dataset">
+<h3>Generating the bin dataset<a class="headerlink" href="#generating-the-bin-dataset" title="Link to this heading">#</a></h3>
+<p>Note the reused annotated dataset — only the descriptor and the <code class="docutils literal notranslate"><span class="pre">--env_profile</span></code> flag
+change:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/generate_dataset.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--env_name<span class="w"> </span>Isaac-Stack-Cube-Franka-IK-Rel-v0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--alg<span class="w"> </span>skillgen<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--task_descriptor<span class="w"> </span>isaac_autodata_examples/tasks/franka_bin_stack_skillgen.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--env_profile<span class="w"> </span>isaac_autodata_examples/env_profiles/franka_bin_stack.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--embodiment<span class="w"> </span>isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--input_file<span class="w"> </span>./datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output_file<span class="w"> </span>./datasets/generated_dataset_skillgen_franka_bin.hdf5<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--generation_num_trials<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--num_envs<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--viz<span class="w"> </span>none
+</pre></div>
+</div>
+<p>The generation-result JSON (<code class="docutils literal notranslate"><span class="pre">--result_file</span></code>) records the applied profile, since the output
+dataset itself only stores the base env id.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Adaptive tasks like bin stacking have lower success rates and longer generation times than
+the plain variant: the planning problems are harder (narrow bin clearances) and more
+trials are rejected. Budget accordingly — see the numbers below.</p>
+</div>
+<p>To adapt a task of your own, copy <code class="docutils literal notranslate"><span class="pre">franka_bin_stack.yaml</span></code> and adjust: pick the <code class="docutils literal notranslate"><span class="pre">base_env</span></code>,
+add/override scene objects, swap the reset events, and point <code class="docutils literal notranslate"><span class="pre">planner</span></code> at a planner profile
+that treats your new objects as collision geometry (see
+<a class="reference internal" href="../../advanced/motion_planners.html"><span class="doc">Motion Planners</span></a> for defining one).</p>
+</section>
+</section>
+<section id="performance-and-scaling">
+<h2>Performance and Scaling<a class="headerlink" href="#performance-and-scaling" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">--num_envs</span></code> trades GPU memory for throughput: one cuRobo planner is created per
+environment. Indicative figures, measured with the equivalent SkillGen pipeline in Isaac Lab
+Mimic on an RTX 6000 Ada (48 GB), headless:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 40.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Metric</p></th>
+<th class="head"><p>Indicative value</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>VRAM, 1 env</p></td>
+<td><p>~9.5 GB steady (briefly higher during initialization)</p></td>
+</tr>
+<tr class="row-odd"><td><p>VRAM, 5 envs</p></td>
+<td><p>~22 GB steady</p></td>
+</tr>
+<tr class="row-even"><td><p>1000 demos, cube stack, 1 env</p></td>
+<td><p>~90–120 minutes</p></td>
+</tr>
+<tr class="row-odd"><td><p>1000 demos, bin stack, 1 env</p></td>
+<td><p>~220 minutes</p></td>
+</tr>
+<tr class="row-even"><td><p>Generation success rate</p></td>
+<td><p>typically 40–70 % with a well-annotated dataset</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Practical guidance:</p>
+<ul class="simple">
+<li><p>Start with <code class="docutils literal notranslate"><span class="pre">--num_envs</span> <span class="pre">1</span></code> and increase gradually; around <strong>5 envs</strong> is a sweet spot
+balancing planner memory against simulation throughput — gains beyond that are small.</p></li>
+<li><p>Prefer a GPU with <strong>≥24 GB</strong> VRAM for 1–2 envs and <strong>≥48 GB</strong> for ~5 envs.</p></li>
+<li><p>Generation time scales with the demo target <em>and</em> the success rate, which depends mostly on
+annotation quality — verify a small batch before launching a long run.</p></li>
+</ul>
+</section>
+<section id="visualizing-and-debugging-plans">
+<h2>Visualizing and Debugging Plans<a class="headerlink" href="#visualizing-and-debugging-plans" title="Link to this heading">#</a></h2>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">--visualize_plan</span></code> to stream SkillGen’s planned trajectories to a
+<a class="reference external" href="https://rerun.io/">Rerun</a> viewer — useful for diagnosing planning failures, unexpected
+detours, or collision-world mismatches before committing to a long generation run:</p>
+<figure class="align-center" id="id4">
+<a class="reference internal image-reference" href="../../../_images/rerun_cube_stack.gif"><img alt="Rerun visualization of planned trajectories" src="../../../_images/rerun_cube_stack.gif" style="width: 80%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Rerun visualization of SkillGen motion plans.</span><a class="headerlink" href="#id4" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<p>During multi-env generation only env 0 is visualized, to keep the simulation responsive.
+Since the Rerun viewer is independent of the simulator window, <code class="docutils literal notranslate"><span class="pre">--visualize_plan</span></code> works
+together with <code class="docutils literal notranslate"><span class="pre">--viz</span> <span class="pre">none</span></code>.</p>
+</section>
+<section id="motion-planner-configuration">
+<h2>Motion Planner Configuration<a class="headerlink" href="#motion-planner-configuration" title="Link to this heading">#</a></h2>
+<p>The cuRobo planner (robot config, collision world, attached-object handling, planning seeds)
+is resolved per task — or per environment profile, via its <code class="docutils literal notranslate"><span class="pre">planner</span></code> field — and is fully
+configurable. See <a class="reference internal" href="../../advanced/motion_planners.html"><span class="doc">Motion Planners</span></a>.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../humanoid_dexmimicgen/step_4_validate_dataset.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Step 4: Validate the Generated Dataset</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../../concepts/concept_overview.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Architecture Overview</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-skillgen-works">How SkillGen Works</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#workflow-at-a-glance">Workflow at a Glance</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites">Prerequisites</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-task-descriptor-for-skillgen">The Task Descriptor for SkillGen</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#annotating-for-skillgen">Annotating for SkillGen</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#task-1-cube-stacking">Task 1: Cube Stacking</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#task-2-cube-stacking-in-a-bin-environment-profile">Task 2: Cube Stacking in a Bin (Environment Profile)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#modifying-a-task-with-an-environment-profile">Modifying a task with an environment profile</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#generating-the-bin-dataset">Generating the bin dataset</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#performance-and-scaling">Performance and Scaling</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#visualizing-and-debugging-plans">Visualizing and Debugging Plans</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#motion-planner-configuration">Motion Planner Configuration</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2026, NVIDIA.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -1,0 +1,669 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Environment Profiles &#8212; isaac_autodata 0.1</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/nvidia-sphinx-theme.css?v=df3ac72c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=42eea36e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'pages/concepts/environment_profiles';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="icon" href="../../_static/favicon.png"/>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Embodiments" href="embodiments.html" />
+    <link rel="prev" title="Task Descriptors" href="task_descriptors.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../../_static/searchtools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <script src="../../searchindex.js"></script>
+  
+
+
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-links bd-docs-nav">
+    <div class="bd-toc-item navbar-nav">
+      <ul class="nav bd-sidenav">
+        <li class="toctree-l1 has-children" style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+          <div  style ="text-align:center;">
+            <label for="version-select" style="font-weight: bold; display: block;">Version</label>
+          </div>
+          <select id="version-select" class="version-dropdown" style="margin: 0 auto; display: block;" onchange="location = this.value;">
+            <option value="environment_profiles.html" selected>main</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+</nav>
+</div>
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Set Up</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/installation.html">Installation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/first_data_generation.html">Your First Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Example Workflows</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/index.html">Franka Cube Stacking with MimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/index.html">Humanoid Pick &amp; Place with DexMimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../workflows/skillgen/index.html">SkillGen: Motion-Planned Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="concept_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="task_descriptors.html">Task Descriptors</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Environment Profiles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="embodiments.html">Embodiments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="datastream.html">Datastream</a></li>
+<li class="toctree-l1"><a class="reference internal" href="algorithms.html">Generation Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_generator.html">The Data Generator Interface</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../advanced/motion_planners.html">Motion Planners</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/testing_and_ci.html">Testing and CI</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">References</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../references/release_notes.html">Release Notes</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Environment Profiles</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="environment-profiles">
+<h1>Environment Profiles<a class="headerlink" href="#environment-profiles" title="Link to this heading">#</a></h1>
+<p>An <strong>environment profile</strong> is a YAML file that turns a base task into a variant — extra
+objects in the scene, different reset randomization, a motion planner tuned for the new
+clutter — without defining a new environment id. It is passed to the generation entry point
+with <code class="docutils literal notranslate"><span class="pre">--env_profile</span></code> and overlaid onto the parsed env config just before the environment is
+created.</p>
+<p>The shipped example,
+<a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_examples/env_profiles/franka_bin_stack.yaml">franka_bin_stack.yaml</a>,
+turns plain Franka cube stacking into stacking inside a narrow bin; the
+<a class="reference internal" href="../workflows/skillgen/index.html"><span class="doc">SkillGen workflow</span></a> shows it in action.</p>
+<section id="why-profiles-instead-of-new-environments">
+<h2>Why Profiles Instead of New Environments?<a class="headerlink" href="#why-profiles-instead-of-new-environments" title="Link to this heading">#</a></h2>
+<p>Task variants usually differ from their base task by a handful of scene and randomization
+changes. Registering a new environment for each variant duplicates config code and multiplies
+env ids; a profile keeps the base task as the single environment and expresses only the
+delta:</p>
+<ul class="simple">
+<li><p><strong>One YAML per variant</strong> — no new Python env config, no new registration.</p></li>
+<li><p><strong>Datasets keep working</strong> — the base env id stays the same, so recorded and annotated
+source datasets can be reused across variants (SkillGen generates both cube-stack tasks
+from one annotated dataset).</p></li>
+<li><p><strong>Reproducibility</strong> — the generation-result JSON (<code class="docutils literal notranslate"><span class="pre">--result_file</span></code>) records the applied
+profile’s name, path, and planner, since the output dataset itself only stores the base
+env id.</p></li>
+</ul>
+</section>
+<section id="what-a-profile-can-change">
+<h2>What a Profile Can Change<a class="headerlink" href="#what-a-profile-can-change" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 66.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Section</p></th>
+<th class="head"><p>Effect</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scene.rigid_objects.add</span></code></p></td>
+<td><p>Spawn new rigid objects from USD files, with initial pose, scale, and rigid-body
+physics properties.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scene.rigid_objects.override</span></code></p></td>
+<td><p>Patch the rigid-body properties of objects the base task already has (e.g. stiffer
+contact solving).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">events.remove</span></code></p></td>
+<td><p>Disable base-task event terms by name (e.g. drop the default cube randomization).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">events.override</span></code></p></td>
+<td><p>Merge new parameters into an existing event term.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">events.add</span></code></p></td>
+<td><p>Add new event terms — typically reset randomizations for the added or re-pinned
+objects.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">planner</span></code></p></td>
+<td><p>Name the motion-planner profile tuned for the modified scene (used by SkillGen; see
+<a class="reference internal" href="../advanced/motion_planners.html"><span class="doc">Motion Planners</span></a>).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="schema">
+<h2>Schema<a class="headerlink" href="#schema" title="Link to this heading">#</a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;str&gt;</span>
+<span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;str&gt;</span><span class="w">                  </span><span class="c1"># optional</span>
+<span class="nt">base_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;env id&gt;</span><span class="w">                  </span><span class="c1"># must match the --env_name used at generation time</span>
+<span class="nt">planner</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;planner profile name&gt;</span><span class="w">     </span><span class="c1"># optional; SkillGen only</span>
+
+<span class="nt">scene</span><span class="p">:</span><span class="w">                              </span><span class="c1"># optional</span>
+<span class="w">  </span><span class="nt">rigid_objects</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">add</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">&lt;asset_name&gt;</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">prim_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{ENV_REGEX_NS}/&lt;Prim&gt;&quot;</span>
+<span class="w">        </span><span class="nt">usd_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{ISAACLAB_NUCLEUS_DIR}/&lt;...&gt;.usd&quot;</span>
+<span class="w">        </span><span class="nt">position</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">x</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">y</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">z</span><span class="p p-Indicator">]</span><span class="w">               </span><span class="c1"># optional, env frame [m]</span>
+<span class="w">        </span><span class="nt">rotation</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">x</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">y</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">z</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">w</span><span class="p p-Indicator">]</span><span class="w">            </span><span class="c1"># optional, identity is [0, 0, 0, 1]</span>
+<span class="w">        </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">x</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">y</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">z</span><span class="p p-Indicator">]</span><span class="w">                  </span><span class="c1"># optional</span>
+<span class="w">        </span><span class="nt">rigid_props</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">&lt;field&gt;</span><span class="p">:</span><span class="w"> </span><span class="nv">&lt;value&gt;</span><span class="p p-Indicator">}</span><span class="w">   </span><span class="c1"># optional RigidBodyPropertiesCfg fields</span>
+<span class="w">    </span><span class="nt">override</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">&lt;asset_name&gt;</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">rigid_props</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">&lt;field&gt;</span><span class="p">:</span><span class="w"> </span><span class="nv">&lt;value&gt;</span><span class="p p-Indicator">}</span>
+
+<span class="nt">events</span><span class="p">:</span><span class="w">                             </span><span class="c1"># optional</span>
+<span class="w">  </span><span class="nt">remove</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">&lt;term_name&gt;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">...</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">override</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">&lt;term_name&gt;</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">params</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nv">...</span><span class="p p-Indicator">}}</span>
+<span class="w">  </span><span class="nt">add</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">&lt;term_name&gt;</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">func</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;module.path&gt;:&lt;function&gt;&quot;</span>
+<span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">reset</span><span class="w">                   </span><span class="c1"># startup | reset | interval</span>
+<span class="w">      </span><span class="nt">params</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nv">...</span><span class="p p-Indicator">}</span>
+</pre></div>
+</div>
+<p>Profiles are validated on load; a schema violation raises an error naming the offending
+field.</p>
+<p>Field notes:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">usd_path</span></code> may use the <code class="docutils literal notranslate"><span class="pre">{ISAACLAB_NUCLEUS_DIR}</span></code> and <code class="docutils literal notranslate"><span class="pre">{ISAAC_NUCLEUS_DIR}</span></code> placeholders
+to reference assets on the Nucleus server.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rotation</span></code> is an (x, y, z, w) quaternion — identity is <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">0,</span> <span class="pre">0,</span> <span class="pre">1]</span></code>. A wrong order
+flips the asset by 180°.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">func</span></code> references an event function as <code class="docutils literal notranslate"><span class="pre">&quot;module.path:function&quot;</span></code>; it is resolved when
+the profile is applied.</p></li>
+<li><p>Inside event <code class="docutils literal notranslate"><span class="pre">params</span></code>, entries named <code class="docutils literal notranslate"><span class="pre">*_cfg</span></code> / <code class="docutils literal notranslate"><span class="pre">*_cfgs</span></code> are treated as scene-asset
+names and converted to the entity references the event system expects.</p></li>
+</ul>
+</section>
+<section id="how-a-profile-is-applied">
+<h2>How a Profile Is Applied<a class="headerlink" href="#how-a-profile-is-applied" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">apply_env_profile()</span></code> overlays the profile onto the parsed env config in place, before
+<code class="docutils literal notranslate"><span class="pre">gym.make</span></code>. It is strict, and fails fast with a named reason rather than producing a
+subtly wrong scene:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">base_env</span></code> must equal the env id being created.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">add</span></code> refuses to shadow an asset or event term the base task already defines;
+<code class="docutils literal notranslate"><span class="pre">override</span></code> and <code class="docutils literal notranslate"><span class="pre">remove</span></code> refuse to touch one it does not.</p></li>
+<li><p>Every scene asset referenced by event parameters must exist — on the base task or among
+the profile’s additions — checked at apply time instead of failing later inside the env.</p></li>
+</ul>
+<p>Changes are applied in order: scene additions, scene overrides, then events (remove →
+override → add), so added events may reference added assets.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The spawn pose of an added object (<code class="docutils literal notranslate"><span class="pre">position</span></code> / <code class="docutils literal notranslate"><span class="pre">rotation</span></code>) is baked into the USD
+stage, and stage readers — such as the motion planner’s collision world — see <em>that</em> pose,
+not the poses produced by reset events. If you pin an object with a reset event, give the
+spawn the same pose so planning and physics agree.</p>
+</div>
+</section>
+<section id="writing-a-new-profile">
+<h2>Writing a New Profile<a class="headerlink" href="#writing-a-new-profile" title="Link to this heading">#</a></h2>
+<ol class="arabic simple">
+<li><p><strong>Pick the base task</strong> and set <code class="docutils literal notranslate"><span class="pre">base_env</span></code> to its env id.</p></li>
+<li><p><strong>Describe the scene delta</strong> — add new objects (USD path, spawn pose, scale) and override
+physics properties where the variant needs them.</p></li>
+<li><p><strong>Adjust the reset events</strong> — remove randomizations that no longer apply and add ones for
+the new layout; keep pinned objects’ spawn poses in sync with their reset events.</p></li>
+<li><p><strong>Pick or define a planner profile</strong> if the variant is used with SkillGen, so the new
+objects become collision geometry (see <a class="reference internal" href="../advanced/motion_planners.html"><span class="doc">Motion Planners</span></a>).</p></li>
+<li><p><strong>Verify with a short run</strong> — generate a handful of trials with <code class="docutils literal notranslate"><span class="pre">--env_profile</span></code> and
+<code class="docutils literal notranslate"><span class="pre">--result_file</span></code>, and check the scene visually (<code class="docutils literal notranslate"><span class="pre">--viz</span> <span class="pre">kit</span></code>) before scaling up.</p></li>
+</ol>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="task_descriptors.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Task Descriptors</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="embodiments.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Embodiments</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#why-profiles-instead-of-new-environments">Why Profiles Instead of New Environments?</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-a-profile-can-change">What a Profile Can Change</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#schema">Schema</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-a-profile-is-applied">How a Profile Is Applied</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#writing-a-new-profile">Writing a New Profile</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2026, NVIDIA.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -1,0 +1,724 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Step 1: Record Source Demonstrations &#8212; isaac_autodata 0.1</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=df3ac72c" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/tabs.css?v=a5c4661c" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=42eea36e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../_static/tabs.js?v=3030b3cb"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'pages/workflows/humanoid_dexmimicgen/step_1_record_demonstrations';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="icon" href="../../../_static/favicon.png"/>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="Step 2: Annotate Demonstrations" href="step_2_annotate_demonstrations.html" />
+    <link rel="prev" title="Humanoid Pick &amp; Place with DexMimicGen" href="index.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../../../_static/searchtools.js"></script>
+    <script src="../../../_static/language_data.js"></script>
+    <script src="../../../searchindex.js"></script>
+  
+
+
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-links bd-docs-nav">
+    <div class="bd-toc-item navbar-nav">
+      <ul class="nav bd-sidenav">
+        <li class="toctree-l1 has-children" style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+          <div  style ="text-align:center;">
+            <label for="version-select" style="font-weight: bold; display: block;">Version</label>
+          </div>
+          <select id="version-select" class="version-dropdown" style="margin: 0 auto; display: block;" onchange="location = this.value;">
+            <option value="step_1_record_demonstrations.html" selected>main</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+</nav>
+</div>
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Set Up</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart/installation.html">Installation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart/first_data_generation.html">Your First Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Example Workflows</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../franka_cube_stack_mimicgen/index.html">Franka Cube Stacking with MimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../franka_cube_stack_mimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../franka_cube_stack_mimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../franka_cube_stack_mimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../franka_cube_stack_mimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Humanoid Pick &amp; Place with DexMimicGen</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../skillgen/index.html">SkillGen: Motion-Planned Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/concept_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/task_descriptors.html">Task Descriptors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/environment_profiles.html">Environment Profiles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/embodiments.html">Embodiments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/datastream.html">Datastream</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/algorithms.html">Generation Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/data_generator.html">The Data Generator Interface</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/motion_planners.html">Motion Planners</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/testing_and_ci.html">Testing and CI</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">References</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../references/release_notes.html">Release Notes</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Humanoid Pick &amp; Place with DexMimicGen</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Step 1: Record Source Demonstrations</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="step-1-record-source-demonstrations">
+<h1>Step 1: Record Source Demonstrations<a class="headerlink" href="#step-1-record-source-demonstrations" title="Link to this heading">#</a></h1>
+<p>Isaac AutoData consumes source demonstrations recorded as Isaac Lab HDF5 datasets (per-episode
+actions, initial state, and observations). This step collects a small set of successful
+teleoperated demonstrations of the humanoid pick-and-place task.</p>
+<p>Unlike the single-arm Franka task — which can be teleoperated with a SpaceMouse or keyboard — the
+dexterous, bimanual humanoids are teleoperated with an <strong>Apple Vision Pro</strong> through
+<a class="reference external" href="https://github.com/NVIDIA/IsaacTeleop">NVIDIA IsaacTeleop</a> and the CloudXR runtime. The headset’s
+wrist poses drive a differential IK controller per arm, and the finger joints are retargeted onto
+the robot’s hands. The AutoData development container includes Isaac Teleop so the flow below works out of the box.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>To skip recording (and annotation), use the pre-annotated source dataset that ships with the
+repository and jump to <a class="reference internal" href="step_3_generate_dataset.html"><span class="doc">Step 3: Generate the Dataset</span></a>:</p>
+<div class="sphinx-tabs docutils container">
+<div aria-label="Tabbed content" class="closeable" role="tablist"><button aria-controls="panel-0-R1ItMQ==" aria-selected="true" class="sphinx-tabs-tab group-tab" id="tab-0-R1ItMQ==" name="R1ItMQ==" role="tab" tabindex="0">GR-1</button><button aria-controls="panel-0-RzE=" aria-selected="false" class="sphinx-tabs-tab group-tab" id="tab-0-RzE=" name="RzE=" role="tab" tabindex="-1">G1</button></div><div aria-labelledby="tab-0-R1ItMQ==" class="sphinx-tabs-panel group-tab" id="panel-0-R1ItMQ==" name="R1ItMQ==" role="tabpanel" tabindex="0"><p><code class="docutils literal notranslate"><span class="pre">datasets/annotated_datasets/dataset_gr1_annotated.hdf5</span></code></p>
+</div><div aria-labelledby="tab-0-RzE=" class="sphinx-tabs-panel group-tab" hidden="true" id="panel-0-RzE=" name="RzE=" role="tabpanel" tabindex="0"><p><code class="docutils literal notranslate"><span class="pre">datasets/annotated_datasets/dataset_g1_annotated.hdf5</span></code></p>
+</div></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>For supported IsaacTeleop hardware, see <a class="reference external" href="https://nvidia.github.io/IsaacTeleop/main/overview/ecosystem.html#supported-input-devices">Supported Input Devices</a>,
+and review the <a class="reference external" href="https://nvidia.github.io/IsaacTeleop/main/references/requirements.html#teleoperation-with-isaac-sim-and-isaac-lab">IsaacTeleop system requirements</a>
+before starting.</p>
+</div>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>A stable network connection meeting the <a class="reference external" href="https://docs.nvidia.com/cloudxr-sdk/latest/requirement/network_setup.html#network-requirements">CloudXR network requirements</a>
+is required before starting the steps below.</p>
+</div>
+<section id="start-the-cloudxr-runtime">
+<h2>Start the CloudXR Runtime<a class="headerlink" href="#start-the-cloudxr-runtime" title="Link to this heading">#</a></h2>
+<p>The CloudXR runtime bridges the Apple Vision Pro and the simulator. Start it from the AutoData dev
+container. Leave it running in this terminal for the whole recording session.</p>
+<ol class="arabic">
+<li><p>On the <strong>host machine</strong> outside of the development container, configure the firewall to allow CloudXR traffic:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Signaling (use one based on connection mode)</span>
+sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">48010</span>/tcp<span class="w">   </span><span class="c1"># Standard mode</span>
+sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">48322</span>/tcp<span class="w">   </span><span class="c1"># Secure mode</span>
+<span class="c1"># Video</span>
+sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">47998</span>/udp
+sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">48005</span>/udp
+sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">48008</span>/udp
+sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">48012</span>/udp
+<span class="c1"># Input</span>
+sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">47999</span>/udp
+<span class="c1"># Audio</span>
+sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">48000</span>/udp
+sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">48002</span>/udp
+</pre></div>
+</div>
+</li>
+<li><p>Start the AutoData dev container:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./docker/run_docker.sh
+</pre></div>
+</div>
+</li>
+<li><p>Create a CloudXR config file for the Apple Vision Pro:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;%s\n&#39;</span><span class="w"> </span><span class="s1">&#39;NV_DEVICE_PROFILE=auto-native&#39;</span><span class="w"> </span><span class="s1">&#39;NV_CXR_ENABLE_PUSH_DEVICES=0&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>avp.env
+</pre></div>
+</div>
+</li>
+<li><p>Start the CloudXR runtime with that config:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>isaacteleop.cloudxr<span class="w"> </span>--cloudxr-env-config<span class="o">=</span>avp.env
+</pre></div>
+</div>
+</li>
+</ol>
+<div class="admonition attention">
+<p class="admonition-title">Attention</p>
+<p>The first run prompts you to accept the NVIDIA CloudXR License Agreement. Reply <code class="docutils literal notranslate"><span class="pre">Yes</span></code> when
+prompted:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>NVIDIA CloudXR EULA must be accepted to run. View: https://github.com/NVIDIA/IsaacTeleop/blob/main/deps/cloudxr/CLOUDXR_LICENSE
+
+Accept NVIDIA CloudXR EULA? [y/N]: Yes
+</pre></div>
+</div>
+</div>
+</section>
+<section id="start-recording">
+<h2>Start Recording<a class="headerlink" href="#start-recording" title="Link to this heading">#</a></h2>
+<ol class="arabic">
+<li><p>In <strong>another terminal</strong>, attach a second shell to the running AutoData container:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./docker/run_docker.sh
+</pre></div>
+</div>
+</li>
+<li><p>Activate the IsaacTeleop CloudXR environment settings written by the runtime:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">source</span><span class="w"> </span>~/.cloudxr/run/cloudxr.env
+</pre></div>
+</div>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p><strong>Order matters.</strong> <code class="docutils literal notranslate"><span class="pre">source</span> <span class="pre">~/.cloudxr/run/cloudxr.env</span></code> <em>after</em> the CloudXR runtime from the
+previous section is already running, and <em>before</em> you start the recording script — the app
+must inherit the CloudXR environment variables.</p>
+</div>
+</li>
+<li><p>Run the recording script. CPU simulation gives smoother XR performance with a single
+environment:</p>
+<div class="sphinx-tabs docutils container">
+<div aria-label="Tabbed content" class="closeable" role="tablist"><button aria-controls="panel-1-R1ItMQ==" aria-selected="true" class="sphinx-tabs-tab group-tab" id="tab-1-R1ItMQ==" name="R1ItMQ==" role="tab" tabindex="0">GR-1</button><button aria-controls="panel-1-RzE=" aria-selected="false" class="sphinx-tabs-tab group-tab" id="tab-1-RzE=" name="RzE=" role="tab" tabindex="-1">G1</button></div><div aria-labelledby="tab-1-R1ItMQ==" class="sphinx-tabs-panel group-tab" id="panel-1-R1ItMQ==" name="R1ItMQ==" role="tabpanel" tabindex="0"><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--task<span class="w"> </span>Isaac-PickPlace-GR1T2-Abs-v0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--viz<span class="w"> </span>kit<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--device<span class="w"> </span>cpu<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--xr<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--dataset_file<span class="w"> </span>./datasets/dataset_gr1.hdf5<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--num_demos<span class="w"> </span><span class="m">5</span>
+</pre></div>
+</div>
+</div><div aria-labelledby="tab-1-RzE=" class="sphinx-tabs-panel group-tab" hidden="true" id="panel-1-RzE=" name="RzE=" role="tabpanel" tabindex="0"><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--task<span class="w"> </span>Isaac-PickPlace-Locomanipulation-G1-Abs-v0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--viz<span class="w"> </span>kit<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--device<span class="w"> </span>cpu<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--xr<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--dataset_file<span class="w"> </span>./datasets/dataset_g1.hdf5<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--num_demos<span class="w"> </span><span class="m">5</span>
+</pre></div>
+</div>
+</div></div>
+</li>
+<li><p>In the running application window, press the <strong>Start XR</strong> button under the <strong>XR</strong> tab on the right side of the screen.</p>
+<figure class="align-center">
+<a class="reference internal image-reference" href="../../../_images/xr_start_button.png"><img alt="Start XR button in the XR tab" src="../../../_images/xr_start_button.png" style="width: 75%;" />
+</a>
+</figure>
+</li>
+</ol>
+</section>
+<section id="connect-the-apple-vision-pro-and-record">
+<h2>Connect the Apple Vision Pro and Record<a class="headerlink" href="#connect-the-apple-vision-pro-and-record" title="Link to this heading">#</a></h2>
+<p>For detailed connection instructions, see <a class="reference external" href="https://isaac-sim.github.io/IsaacLab/main/source/how-to/cloudxr_teleoperation.html#connect-xr-device">Connect an XR Device</a>
+in the Isaac Lab docs.</p>
+<ol class="arabic simple">
+<li><p>On the Apple Vision Pro, launch the Isaac XR Teleop app.</p></li>
+<li><p>Enter your workstation’s IP address and connect.</p></li>
+<li><p>Before pressing <strong>Connect</strong>, pinch the bar at the bottom of the CloudXR controls window and move
+it closer and to your left, so nearby objects don’t occlude it.</p></li>
+<li><p>Press <strong>Connect</strong> and wait until you see the simulation in VR.</p></li>
+</ol>
+<figure class="align-center" id="id1">
+<a class="reference internal image-reference" href="../../../_images/cloud_xr_sessions_control_panel.png"><img alt="CloudXR control panel" src="../../../_images/cloud_xr_sessions_control_panel.png" style="width: 40%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">CloudXR control panel — move this window to your left to avoid occlusion by nearby objects.</span><a class="headerlink" href="#id1" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<p>Once connected, complete the pick-and-place task:</p>
+<ul class="simple">
+<li><p>Your hands control the robot’s hands; your fingers control the robot’s fingers.</p></li>
+<li><p>On task completion the environment resets automatically.</p></li>
+<li><p>Repeat until all <code class="docutils literal notranslate"><span class="pre">--num_demos</span></code> (5 above) successful demonstrations are recorded; the script
+then shuts down and saves the dataset.</p></li>
+</ul>
+</section>
+<section id="performing-the-demonstrations">
+<h2>Performing the Demonstrations<a class="headerlink" href="#performing-the-demonstrations" title="Link to this heading">#</a></h2>
+<p>The humanoid pick-and-place task is set up so the <strong>left hand has a single subtask</strong>
+(a pick up and transport) while the
+<strong>right hand has two</strong> (an idle phase, then the place). During the idle phase the right hand should
+stay still while the left hand brings the object to a position where the right hand will
+grasp it. This lets DexMimicGen interpolate the right hand’s trajectory accurately from the
+object’s pose when scenes are randomized. Avoid moving the right hand while the left hand is
+picking up the object.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>For best results during the recording session:</p>
+<ul class="simple">
+<li><p>Move slowly and smoothly, and keep your hands within the tracking volume.</p></li>
+<li><p>Take a direct path toward the goal instead of following axes.</p></li>
+<li><p>Avoid extended pauses — smooth, continuous motion with brief pauses is easier to learn than unexplained stops.</p></li>
+<li><p>Ensure good lighting for hand tracking, and collect at least 5 successful demonstrations.</p></li>
+</ul>
+</div>
+<div class="sphinx-tabs docutils container">
+<div aria-label="Tabbed content" class="closeable" role="tablist"><button aria-controls="panel-2-R1ItMQ==" aria-selected="true" class="sphinx-tabs-tab group-tab" id="tab-2-R1ItMQ==" name="R1ItMQ==" role="tab" tabindex="0">GR-1</button><button aria-controls="panel-2-RzE=" aria-selected="false" class="sphinx-tabs-tab group-tab" id="tab-2-RzE=" name="RzE=" role="tab" tabindex="-1">G1</button></div><div aria-labelledby="tab-2-R1ItMQ==" class="sphinx-tabs-panel group-tab" id="panel-2-R1ItMQ==" name="R1ItMQ==" role="tabpanel" tabindex="0"><figure class="align-center">
+<a class="reference internal image-reference" href="../../../_images/gr1_pick_place.gif"><img alt="Teleoperating the GR-1 humanoid to pick and place an object" src="../../../_images/gr1_pick_place.gif" style="width: 90%;" />
+</a>
+</figure>
+</div><div aria-labelledby="tab-2-RzE=" class="sphinx-tabs-panel group-tab" hidden="true" id="panel-2-RzE=" name="RzE=" role="tabpanel" tabindex="0"><figure class="align-center">
+<a class="reference internal image-reference" href="../../../_images/g1_pick_place.gif"><img alt="Teleoperating the G1 humanoid to pick and place an object" src="../../../_images/g1_pick_place.gif" style="width: 90%;" />
+</a>
+</figure>
+</div></div>
+</section>
+<section id="expected-output">
+<h2>Expected Output<a class="headerlink" href="#expected-output" title="Link to this heading">#</a></h2>
+<p>Verify the datasets contain the recorded episodes using:</p>
+<div class="sphinx-tabs docutils container">
+<div aria-label="Tabbed content" class="closeable" role="tablist"><button aria-controls="panel-3-R1ItMQ==" aria-selected="true" class="sphinx-tabs-tab group-tab" id="tab-3-R1ItMQ==" name="R1ItMQ==" role="tab" tabindex="0">GR-1</button><button aria-controls="panel-3-RzE=" aria-selected="false" class="sphinx-tabs-tab group-tab" id="tab-3-RzE=" name="RzE=" role="tab" tabindex="-1">G1</button></div><div aria-labelledby="tab-3-R1ItMQ==" class="sphinx-tabs-panel group-tab" id="panel-3-R1ItMQ==" name="R1ItMQ==" role="tabpanel" tabindex="0"><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/validate_dataset.py<span class="w"> </span>datasets/dataset_gr1.hdf5
+</pre></div>
+</div>
+</div><div aria-labelledby="tab-3-RzE=" class="sphinx-tabs-panel group-tab" hidden="true" id="panel-3-RzE=" name="RzE=" role="tabpanel" tabindex="0"><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/validate_dataset.py<span class="w"> </span>datasets/dataset_g1.hdf5
+</pre></div>
+</div>
+</div></div>
+<p>Continue to <a class="reference internal" href="step_2_annotate_demonstrations.html"><span class="doc">Step 2: Annotate Demonstrations</span></a>.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="index.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Humanoid Pick &amp; Place with DexMimicGen</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="step_2_annotate_demonstrations.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Step 2: Annotate Demonstrations</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#start-the-cloudxr-runtime">Start the CloudXR Runtime</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#start-recording">Start Recording</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#connect-the-apple-vision-pro-and-record">Connect the Apple Vision Pro and Record</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#performing-the-demonstrations">Performing the Demonstrations</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#expected-output">Expected Output</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2026, NVIDIA.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -1,0 +1,776 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>The Data Generator Interface &#8212; isaac_autodata 0.1</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/nvidia-sphinx-theme.css?v=df3ac72c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=42eea36e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'pages/concepts/data_generator';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="icon" href="../../_static/favicon.png"/>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Motion Planners" href="../advanced/motion_planners.html" />
+    <link rel="prev" title="Generation Algorithms" href="algorithms.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../../_static/searchtools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <script src="../../searchindex.js"></script>
+  
+
+
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="isaac_autodata 0.1 - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="isaac_autodata 0.1 - Home"/>
+  
+  
+    <p class="title logo__title">isaac_autodata 0.1</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/isaac-sim/Isaac-AutoData" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-links bd-docs-nav">
+    <div class="bd-toc-item navbar-nav">
+      <ul class="nav bd-sidenav">
+        <li class="toctree-l1 has-children" style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+          <div  style ="text-align:center;">
+            <label for="version-select" style="font-weight: bold; display: block;">Version</label>
+          </div>
+          <select id="version-select" class="version-dropdown" style="margin: 0 auto; display: block;" onchange="location = this.value;">
+            <option value="data_generator.html" selected>main</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+</nav>
+</div>
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Set Up</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/installation.html">Installation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/first_data_generation.html">Your First Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Example Workflows</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/index.html">Franka Cube Stacking with MimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/franka_cube_stack_mimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/index.html">Humanoid Pick &amp; Place with DexMimicGen</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_1_record_demonstrations.html">Step 1: Record Source Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_2_annotate_demonstrations.html">Step 2: Annotate Demonstrations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_3_generate_dataset.html">Step 3: Generate the Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../workflows/humanoid_dexmimicgen/step_4_validate_dataset.html">Step 4: Validate the Generated Dataset</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../workflows/skillgen/index.html">SkillGen: Motion-Planned Data Generation</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="concept_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="task_descriptors.html">Task Descriptors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environment_profiles.html">Environment Profiles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="embodiments.html">Embodiments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="datastream.html">Datastream</a></li>
+<li class="toctree-l1"><a class="reference internal" href="algorithms.html">Generation Algorithms</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">The Data Generator Interface</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../advanced/motion_planners.html">Motion Planners</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/testing_and_ci.html">Testing and CI</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">References</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../references/release_notes.html">Release Notes</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">The Data Generator Interface</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="the-data-generator-interface">
+<h1>The Data Generator Interface<a class="headerlink" href="#the-data-generator-interface" title="Link to this heading">#</a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">DataGenerator</span></code> is the engine that turns annotated source demonstrations into new ones.
+It runs the per-trial loop shared by every algorithm — randomize subtask boundaries, select a
+source segment, transform it to the current scene, execute waypoints, record — and routes
+everything algorithm-specific through a small plug-in interface, <code class="docutils literal notranslate"><span class="pre">GenerationAlgorithm</span></code>.
+New algorithms plug in without editing the generator.</p>
+<p>The code lives in <a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_core/data_generator.py">data_generator.py</a> and
+<a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_core/algorithms.py">algorithms.py</a>.</p>
+<section id="construction">
+<h2>Construction<a class="headerlink" href="#construction" title="Link to this heading">#</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">isaac_autodata_core</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataGenerator</span><span class="p">,</span> <span class="n">get_algorithm</span>
+
+<span class="n">generator</span> <span class="o">=</span> <span class="n">DataGenerator</span><span class="p">(</span><span class="n">datastream</span><span class="o">=</span><span class="n">datastream</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="n">get_algorithm</span><span class="p">(</span><span class="s2">&quot;mimicgen&quot;</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>The generator reads <em>all</em> task, embodiment, and scene state through the
+<a class="reference internal" href="datastream.html"><span class="doc">Datastream</span></a> — it never imports the simulator or touches the robot
+directly. The constructor validates the setup and fails fast on mismatches:</p>
+<ul class="simple">
+<li><p>the number of end-effectors must match the algorithm’s <code class="docutils literal notranslate"><span class="pre">expected_eef_count</span></code>;</p></li>
+<li><p>the descriptor may declare constraints only if the algorithm <code class="docutils literal notranslate"><span class="pre">supports_coordination</span></code>;</p></li>
+<li><p>the final subtask of every end-effector must have <code class="docutils literal notranslate"><span class="pre">subtask_term_offset_range:</span> <span class="pre">[0,</span> <span class="pre">0]</span></code>
+(there is no later boundary to offset against);</p></li>
+<li><p>the algorithm gets a last look via <code class="docutils literal notranslate"><span class="pre">validate_setup(datastream)</span></code> and may raise.</p></li>
+</ul>
+</section>
+<section id="the-life-of-one-trial">
+<h2>The Life of One Trial<a class="headerlink" href="#the-life-of-one-trial" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">generate()</span></code> is an async method producing one demonstration attempt for one environment:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">generator</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
+    <span class="n">env_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+    <span class="n">success_term</span><span class="o">=</span><span class="n">success_term</span><span class="p">,</span>          <span class="c1"># the task&#39;s success condition</span>
+    <span class="n">env_reset_queue</span><span class="o">=</span><span class="n">reset_queue</span><span class="p">,</span>        <span class="c1"># simulator-loop queues</span>
+    <span class="n">env_action_queue</span><span class="o">=</span><span class="n">action_queue</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>One call runs this sequence:</p>
+<ol class="arabic simple">
+<li><p><strong>Reset and snapshot.</strong> The env is reset through the reset queue (randomizing the scene),
+and the resulting scene state is snapshot — it becomes the output episode’s initial
+state.</p></li>
+<li><p><strong>Randomize boundaries.</strong> Each source episode’s subtask boundaries are perturbed within
+the descriptor’s offset ranges, so generated demos don’t all switch subtasks at
+identical steps.</p></li>
+<li><p><strong>Plan the next stretch.</strong> Whenever an end-effector has no waypoints left, the generator
+asks the algorithm (<code class="docutils literal notranslate"><span class="pre">plan_subtask_trajectory</span></code>) for its next executable trajectory.
+For MimicGen-style algorithms that means: select a source segment, transform it to the
+current object pose, and merge an interpolation ramp from the previous pose. For
+SkillGen it means a motion-planned transit first — see the two-phase note below.</p></li>
+<li><p><strong>Execute in lockstep.</strong> Each tick, every end-effector’s next waypoint is assembled into
+<strong>one</strong> env action and stepped (see <a class="reference internal" href="#the-waypoint-layer">The Waypoint Layer</a>). Cross-arm constraints are
+enforced here: an end-effector whose constraint is not yet satisfied holds its pose
+instead of advancing.</p></li>
+<li><p><strong>Latch success.</strong> The task’s success condition is evaluated after every step; once it
+fires, the trial is marked successful (it does not need to stay true).</p></li>
+<li><p><strong>Record.</strong> When all end-effectors finish their subtasks, the episode’s success flag is
+set on the env’s recorder and — for successful trials (and failed ones too, if
+<code class="docutils literal notranslate"><span class="pre">keep_failed</span></code> is set) — the episode is exported.</p></li>
+</ol>
+<p>The returned <code class="docutils literal notranslate"><span class="pre">GenerationResult</span></code> carries <code class="docutils literal notranslate"><span class="pre">success</span></code> and the <code class="docutils literal notranslate"><span class="pre">initial_state</span></code> snapshot.
+A <code class="docutils literal notranslate"><span class="pre">None</span></code> from the algorithm (e.g. a SkillGen planning failure) aborts the attempt with
+<code class="docutils literal notranslate"><span class="pre">success=False</span></code>; whether that counts against the trial target or is retried is the
+<a class="reference internal" href="task_descriptors.html"><span class="doc">generation policy’s</span></a> call (<code class="docutils literal notranslate"><span class="pre">guarantee_success</span></code>).</p>
+<p><strong>The two-phase (transit + skill) flow.</strong> An algorithm can answer step 3 with <em>transit</em>
+waypoints — a motion-planned approach — while stashing the actual skill segment on the
+end-effector’s state. The generator executes the transit (constraints are skipped during
+it), then calls the algorithm again; the algorithm notices the stashed segment and returns
+it, merged from the transit’s end pose. This is how SkillGen interleaves planned motion with
+demonstration replay without the generator knowing anything about motion planning.</p>
+</section>
+<section id="the-waypoint-layer">
+<h2>The Waypoint Layer<a class="headerlink" href="#the-waypoint-layer" title="Link to this heading">#</a></h2>
+<p>Algorithms and the generator talk to each other in <strong>waypoints</strong>, not actions:</p>
+<ul class="simple">
+<li><p>A <code class="docutils literal notranslate"><span class="pre">Waypoint</span></code> is one 6-DoF target pose plus the passthrough (non-pose) action channels
+active at that tick, and an optional noise amplitude.</p></li>
+<li><p>A <code class="docutils literal notranslate"><span class="pre">WaypointTrajectory</span></code> is the ordered stretch an end-effector still has to execute;
+merging an interpolation ramp onto a transformed segment happens at this level.</p></li>
+<li><p>A <code class="docutils literal notranslate"><span class="pre">MultiWaypoint</span></code> is the per-tick bundle: one waypoint per end-effector, executed as a
+single env step. Its <code class="docutils literal notranslate"><span class="pre">execute()</span></code> converts all target poses and passthrough channels into
+one action through the Datastream’s action codec, enqueues it for the simulator loop, and
+checks the success condition after the step.</p></li>
+</ul>
+<p>Only at the <code class="docutils literal notranslate"><span class="pre">MultiWaypoint</span></code> boundary do poses become robot actions — everything upstream
+of it is embodiment-agnostic.</p>
+</section>
+<section id="asynchronous-multi-env-generation">
+<h2>Asynchronous Multi-Env Generation<a class="headerlink" href="#asynchronous-multi-env-generation" title="Link to this heading">#</a></h2>
+<p>One <code class="docutils literal notranslate"><span class="pre">DataGenerator</span></code> serves all parallel environments. The entry point
+(<code class="docutils literal notranslate"><span class="pre">scripts/generate_dataset.py</span></code>) creates one asyncio task per environment, each looping
+over <code class="docutils literal notranslate"><span class="pre">generate(env_id=...)</span></code>; a single synchronous <code class="docutils literal notranslate"><span class="pre">env_loop</span></code> steps the simulator:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>generator task (env 0) ──┐                        ┌──&gt; env_loop:
+generator task (env 1) ──┼──&gt; env_action_queue ───┤    - waits until every env
+     ...                 │    (env_id, action)    │      has queued one action
+generator task (env N) ──┘                        │    - steps the sim once, batched
+          │                                       │    - services reset requests
+          └────────────── env_reset_queue ────────┘
+</pre></div>
+</div>
+<p>The simulator steps in lockstep — one batched step once every env has produced its action —
+while each environment’s trial logic (including retries after failures) runs independently.
+The generator tasks tally outcomes into a shared <code class="docutils literal notranslate"><span class="pre">stats</span></code> dict; <code class="docutils literal notranslate"><span class="pre">env_loop</span></code> reads it to
+report progress and decide when to stop:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">guarantee_success:</span> <span class="pre">true</span></code> — run until <code class="docutils literal notranslate"><span class="pre">num_trials</span></code> <strong>successful</strong> demos are exported.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">guarantee_success:</span> <span class="pre">false</span></code> — run until <code class="docutils literal notranslate"><span class="pre">num_trials</span></code> total <strong>attempts</strong>, whatever their
+outcome.</p></li>
+</ul>
+</section>
+<section id="results-and-statistics">
+<h2>Results and Statistics<a class="headerlink" href="#results-and-statistics" title="Link to this heading">#</a></h2>
+<p>Three layers report what happened:</p>
+<ul>
+<li><p><strong>Per trial</strong> — <code class="docutils literal notranslate"><span class="pre">GenerationResult</span></code>: <code class="docutils literal notranslate"><span class="pre">success</span></code> and <code class="docutils literal notranslate"><span class="pre">initial_state</span></code>.</p></li>
+<li><p><strong>Per run, in memory</strong> — the <code class="docutils literal notranslate"><span class="pre">stats</span></code> counters: <code class="docutils literal notranslate"><span class="pre">num_success</span></code>, <code class="docutils literal notranslate"><span class="pre">num_failures</span></code>,
+<code class="docutils literal notranslate"><span class="pre">num_attempts</span></code> (success + failures = attempts).</p></li>
+<li><p><strong>Per run, on disk</strong> — with <code class="docutils literal notranslate"><span class="pre">--result_file</span></code>, a JSON sidecar is written atomically at the
+end of a completed run:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;algorithm&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;skillgen&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;requested_trials&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;num_success&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;num_failures&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">412</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;num_attempts&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1412</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;env_profile&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;franka_bin_stack&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;isaac_autodata_examples/env_profiles/franka_bin_stack.yaml&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;planner&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;franka_stack_cube_bin&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">env_profile</span></code> appears only when an <a class="reference internal" href="environment_profiles.html"><span class="doc">environment profile</span></a> was
+applied — the generated dataset itself records only the base env id, so the sidecar is
+what documents that the scene was modified.</p>
+</li>
+</ul>
+</section>
+<section id="the-generationalgorithm-plug-in">
+<h2>The GenerationAlgorithm Plug-In<a class="headerlink" href="#the-generationalgorithm-plug-in" title="Link to this heading">#</a></h2>
+<p>An algorithm is a subclass of <code class="docutils literal notranslate"><span class="pre">GenerationAlgorithm</span></code>. Setting the <code class="docutils literal notranslate"><span class="pre">name</span></code> class attribute
+auto-registers it — <code class="docutils literal notranslate"><span class="pre">get_algorithm(name)</span></code> constructs it, and the CLI’s <code class="docutils literal notranslate"><span class="pre">--alg</span></code> choices
+follow. Five class attributes declare how the algorithm differs from a vanilla MimicGen run:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 66.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Attribute</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p>Registry key; the value passed to <code class="docutils literal notranslate"><span class="pre">--alg</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">expected_eef_count</span></code></p></td>
+<td><p>End-effector count(s) supported: <code class="docutils literal notranslate"><span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">2</span></code>, or a tuple like <code class="docutils literal notranslate"><span class="pre">(1,</span> <span class="pre">2)</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">requires_motion_planner</span></code></p></td>
+<td><p>The algorithm needs motion planners at construction (SkillGen takes
+<code class="docutils literal notranslate"><span class="pre">motion_planners=</span></code>, one per env).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">uses_subtask_start_signals</span></code></p></td>
+<td><p>Source demos must carry subtask <em>start</em> signals; the pool parses boundaries from them.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">supports_coordination</span></code></p></td>
+<td><p>Cross-arm coordination constraints are honored during generation.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The shipped algorithms — <code class="docutils literal notranslate"><span class="pre">mimicgen</span></code>, <code class="docutils literal notranslate"><span class="pre">dexmimicgen</span></code>, <code class="docutils literal notranslate"><span class="pre">skillgen</span></code> — are described in
+<a class="reference internal" href="algorithms.html"><span class="doc">Generation Algorithms</span></a>.</p>
+<section id="the-behavioral-hook-plan-subtask-trajectory">
+<h3>The behavioral hook: <code class="docutils literal notranslate"><span class="pre">plan_subtask_trajectory</span></code><a class="headerlink" href="#the-behavioral-hook-plan-subtask-trajectory" title="Link to this heading">#</a></h3>
+<p>The generator calls <code class="docutils literal notranslate"><span class="pre">plan_subtask_trajectory(...)</span></code> whenever an end-effector needs its next
+executable trajectory. The return value tells the generator what to do:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Return</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">(waypoints,</span> <span class="pre">False)</span></code></p></td>
+<td><p>Execute as the actual subtask; constraints apply.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">(waypoints,</span> <span class="pre">True)</span></code></p></td>
+<td><p>Execute as a motion-planned transit; constraints are skipped while it runs. The
+algorithm stashes the real subtask trajectory on the per-EEF state so the follow-up
+call can splice it in after the transit finishes.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>Planning failed; the current <code class="docutils literal notranslate"><span class="pre">generate()</span></code> attempt aborts with <code class="docutils literal notranslate"><span class="pre">success=False</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The base-class default implements the MimicGen / DexMimicGen path: generate the subtask
+segment and merge an interpolation segment from the previous pose. SkillGen overrides it to
+plan a collision-free transit to the segment start first (the two-phase flow above).</p>
+</section>
+</section>
+<section id="writing-your-own-algorithm">
+<h2>Writing Your Own Algorithm<a class="headerlink" href="#writing-your-own-algorithm" title="Link to this heading">#</a></h2>
+<p>A new algorithm is one subclass — no generator or CLI edits. The minimal shape:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># isaac_autodata_core/algorithms.py (or a new module imported from the package __init__)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">MyAlgorithm</span><span class="p">(</span><span class="n">GenerationAlgorithm</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;One-line description of what differs from vanilla MimicGen.&quot;&quot;&quot;</span>
+
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;my_algorithm&quot;</span>            <span class="c1"># becomes the --alg value</span>
+    <span class="n">expected_eef_count</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">requires_motion_planner</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">uses_subtask_start_signals</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">supports_coordination</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datastream</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Optional: fail fast on setups the algorithm can&#39;t handle.</span>
+        <span class="k">for</span> <span class="n">eef_name</span> <span class="ow">in</span> <span class="n">datastream</span><span class="o">.</span><span class="n">get_eef_names</span><span class="p">():</span>
+            <span class="k">assert</span> <span class="n">datastream</span><span class="o">.</span><span class="n">num_subtasks</span><span class="p">(</span><span class="n">eef_name</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">,</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> needs at least two subtasks per end-effector.&quot;</span>
+            <span class="p">)</span>
+</pre></div>
+</div>
+<p>Setting <code class="docutils literal notranslate"><span class="pre">name</span></code> registers the class automatically; <code class="docutils literal notranslate"><span class="pre">--alg</span> <span class="pre">my_algorithm</span></code> works as soon as
+the module is imported. If the flags alone don’t express the behavior, override
+<code class="docutils literal notranslate"><span class="pre">plan_subtask_trajectory</span></code> and honor its return contract (table above) — <code class="docutils literal notranslate"><span class="pre">SkillGen</span></code> in
+<a class="reference external" href="https://github.com/isaac-sim/Isaac-AutoData/blob/main/isaac_autodata_core/algorithms.py">algorithms.py</a> is the worked example,
+including the stash-and-resume pattern for two-phase execution. Helpers you’ll want are on
+the <code class="docutils literal notranslate"><span class="pre">data_generator</span></code> argument: <code class="docutils literal notranslate"><span class="pre">generate_eef_subtask_trajectory</span></code> (select + transform a
+source segment) and <code class="docutils literal notranslate"><span class="pre">merge_eef_subtask_trajectory</span></code> (merge it with an approach from the
+previous pose).</p>
+<p>Checklist for a new algorithm:</p>
+<ol class="arabic simple">
+<li><p>Subclass, set <code class="docutils literal notranslate"><span class="pre">name</span></code> and the flag attributes.</p></li>
+<li><p>Implement <code class="docutils literal notranslate"><span class="pre">validate_setup</span></code> for algorithm-specific invariants.</p></li>
+<li><p>Override <code class="docutils literal notranslate"><span class="pre">plan_subtask_trajectory</span></code> only if the flags don’t cover the behavior.</p></li>
+<li><p>If the algorithm needs external machinery (like SkillGen’s planners), accept it in
+<code class="docutils literal notranslate"><span class="pre">__init__</span></code> — the CLI forwards keyword arguments through <code class="docutils literal notranslate"><span class="pre">get_algorithm</span></code>.</p></li>
+</ol>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="algorithms.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Generation Algorithms</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../advanced/motion_planners.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Motion Planners</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#construction">Construction</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-life-of-one-trial">The Life of One Trial</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-waypoint-layer">The Waypoint Layer</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#asynchronous-multi-env-generation">Asynchronous Multi-Env Generation</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#results-and-statistics">Results and Statistics</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-generationalgorithm-plug-in">The GenerationAlgorithm Plug-In</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#the-behavioral-hook-plan-subtask-trajectory">The behavioral hook: <code class="docutils literal notranslate"><span class="pre">plan_subtask_trajectory</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#writing-your-own-algorithm">Writing Your Own Algorithm</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2026, NVIDIA.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
