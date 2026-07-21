@@ -12,7 +12,7 @@
 [![Linux](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://www.linux.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](LICENSE)
 
-[Documentation](docs/index.rst) · [Getting Started](docs/pages/quickstart/first_data_generation.rst) · [Report a Bug](https://github.com/isaac-sim/Isaac-AutoData/issues) · [Discussions](https://github.com/isaac-sim/Isaac-AutoData/discussions)
+[Documentation](https://isaac-sim.github.io/Isaac-AutoData/) · [Getting Started](https://isaac-sim.github.io/Isaac-AutoData/main/pages/quickstart/first_data_generation.html) · [Report a Bug](https://github.com/isaac-sim/Isaac-AutoData/issues) · [Discussions](https://github.com/isaac-sim/Isaac-AutoData/discussions)
 
 </div>
 
@@ -90,7 +90,7 @@ The first launch builds the development image and opens a shell in the repositor
 for SkillGen workflows.
 
 Docker is the recommended setup. An optional conda installation and additional container options are described in
-the [installation guide](docs/pages/quickstart/installation.rst).
+the [installation guide](https://isaac-sim.github.io/Isaac-AutoData/main/pages/quickstart/installation.html).
 
 ### Generate Your First Dataset
 
@@ -115,16 +115,16 @@ Validate the generated dataset:
 python scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5
 ```
 
-See [Your First Data Generation](docs/pages/quickstart/first_data_generation.rst) for an explanation of each step
-and instructions for replaying the result.
+See [Your First Data Generation](https://isaac-sim.github.io/Isaac-AutoData/main/pages/quickstart/first_data_generation.html)
+for an explanation of each step and instructions for replaying the result.
 
 ## Example Workflows
 
 | Workflow | Description |
 |----------|-------------|
-| [Franka Cube Stacking](docs/pages/workflows/franka_cube_stack_mimicgen/index.rst) | Record, annotate, and expand single-arm demonstrations with MimicGen. |
-| [Humanoid Pick and Place](docs/pages/workflows/humanoid_dexmimicgen/index.rst) | Generate bimanual demonstrations for Fourier GR-1 and Unitree G1 with DexMimicGen. |
-| [Motion-Planned Generation](docs/pages/workflows/skillgen/index.rst) | Use SkillGen and cuRobo to create collision-aware trajectories, including task variants built with environment profiles. |
+| [Franka Cube Stacking](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/franka_cube_stack_mimicgen/) | Record, annotate, and expand single-arm demonstrations with MimicGen. |
+| [Humanoid Pick and Place](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/humanoid_dexmimicgen/) | Generate bimanual demonstrations for Fourier GR-1 and Unitree G1 with DexMimicGen. |
+| [Motion-Planned Generation](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/skillgen/) | Use SkillGen and cuRobo to create collision-aware trajectories, including task variants built with environment profiles. |
 
 ## Project Structure
 
@@ -151,7 +151,8 @@ request, run the repository's pre-commit checks:
 pre-commit run --all-files
 ```
 
-For test-suite details and common commands, see [Testing and CI](docs/pages/advanced/testing_and_ci.rst).
+For test-suite details and common commands, see
+[Testing and CI](https://isaac-sim.github.io/Isaac-AutoData/main/pages/advanced/testing_and_ci.html).
 
 ## Support
 
@@ -198,6 +199,6 @@ foundational work.
 
 <div align="center">
 
-**Isaac AutoData** · [Documentation](docs/index.rst) · [GitHub](https://github.com/isaac-sim/Isaac-AutoData)
+**Isaac AutoData** · [Documentation](https://isaac-sim.github.io/Isaac-AutoData/) · [GitHub](https://github.com/isaac-sim/Isaac-AutoData)
 
 </div>
