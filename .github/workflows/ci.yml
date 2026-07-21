@@ -110,5 +110,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build docs (verify)
-        run: ./scripts/ci/run_docs_build.sh verify
+      - name: Build docs
+        run: |
+          pip install --no-cache-dir -r docs/requirements.txt
+          make -C docs html SPHINXOPTS=-W
