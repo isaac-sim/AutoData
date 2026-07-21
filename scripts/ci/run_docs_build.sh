@@ -9,6 +9,8 @@
 #   ./scripts/ci/run_docs_build.sh verify   # PR/pre-merge: single-version build (-W)
 #   ./scripts/ci/run_docs_build.sh publish  # Pages: multi-version build (-W)
 #
+# Published site: https://isaac-sim.github.io/Isaac-AutoData/
+#
 # verify builds the checked-out branch into docs/_build/current/html.
 # publish runs sphinx-multiversion for whitelisted branches/tags (see docs/conf.py)
 # and writes docs/_build/{main,v*,release/*}/. Nightly publish refreshes main/ on

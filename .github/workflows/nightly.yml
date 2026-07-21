@@ -81,7 +81,7 @@ jobs:
     name: Publish docs (GitHub Pages)
     # Nightly refresh of main/ plus stable versioned dirs from tags and release/*
     # branches (sphinx-multiversion). Tag pushes publish immediately without waiting
-    # for the next scheduled run.
+    # for the next scheduled run. Site: https://isaac-sim.github.io/Isaac-AutoData/
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -92,15 +92,9 @@ jobs:
       image: python:3.12-slim
 
     steps:
-      - name: Install git, LFS, and make
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git git-lfs ca-certificates make
-          git --version
-          git lfs version
-
-      - name: Mark repo as safe for git
-        run: git config --global --add safe.directory "$PWD"
+      - uses: ./.github/actions/debian-git-lfs
+        with:
+          install_make: "true"
 
       - name: Checkout (full history for multi-version)
         uses: actions/checkout@v5

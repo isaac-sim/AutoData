@@ -30,15 +30,7 @@ jobs:
       image: python:3.12-slim
 
     steps:
-      - name: Install git and LFS
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git git-lfs ca-certificates
-          git --version
-          git lfs version
-
-      - name: Mark repo as safe for git
-        run: git config --global --add safe.directory "$PWD"
+      - uses: ./.github/actions/debian-git-lfs
 
       # Linting does not need the submodules; the hooks exclude submodules/.
       # No post-checkout git auth is needed here, so don't persist credentials
@@ -102,7 +94,8 @@ jobs:
 
   build_docs:
     name: Build docs
-    # CPU-only Sphinx build; keep off the GPU runner pool.
+    # CPU-only Sphinx build; keep off the GPU runner pool. PRs verify only (no deploy).
+    # Published docs: https://isaac-sim.github.io/Isaac-AutoData/
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -110,15 +103,9 @@ jobs:
       image: python:3.12-slim
 
     steps:
-      - name: Install git, LFS, and make
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git git-lfs ca-certificates make
-          git --version
-          git lfs version
-
-      - name: Mark repo as safe for git
-        run: git config --global --add safe.directory "$PWD"
+      - uses: ./.github/actions/debian-git-lfs
+        with:
+          install_make: "true"
 
       # Fetch LFS during checkout; persist-credentials stays false so later
       # repo-controlled steps cannot reuse the token for a separate git lfs pull.
