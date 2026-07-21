@@ -48,7 +48,7 @@ the amount of manual collection needed to produce datasets for policy training.
 - **Three generation algorithms** — Use MimicGen for single-arm tasks, DexMimicGen for coordinated multi-arm tasks,
   or SkillGen for collision-aware, motion-planned transitions.
 - **Parallel simulation** — Generate demonstrations across multiple Isaac Lab environments at once.
-- **Robot- and task-independent configuration** — Describe tasks, subtasks, embodiments, and generation policies in
+- **Robot and task configuration** — Describe embodiments, tasks, subtasks, and generation policies in
   reusable YAML files.
 - **Adaptable environments** — Apply environment profiles to create task variants without defining a new simulation
   environment.
@@ -116,27 +116,6 @@ python scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstar
 See [Your First Data Generation](docs/pages/quickstart/first_data_generation.rst) for an explanation of each step
 and instructions for replaying the result.
 
-## How It Works
-
-Four components define a generation run:
-
-| Component | Responsibility |
-|-----------|----------------|
-| **Task descriptor** | Declares subtasks, boundary signals, coordination constraints, and generation settings. |
-| **Embodiment** | Maps a robot's observations and actions to AutoData's end-effector interface. |
-| **Datastream** | Provides a single read interface for the live environment and annotated source demonstrations. |
-| **Generation algorithm** | Selects, transforms, connects, and executes demonstration segments. |
-
-AutoData currently includes three generation algorithms:
-
-| Algorithm | Use Case | Segment Transitions |
-|-----------|----------|---------------------|
-| **MimicGen** | Single-arm manipulation | Pose interpolation |
-| **DexMimicGen** | Multi-arm and coordinated manipulation | Pose interpolation with per-arm constraints |
-| **SkillGen** | Manipulation in cluttered or collision-sensitive scenes | GPU-accelerated cuRobo motion planning |
-
-For the full architecture, see the [concept overview](docs/pages/concepts/concept_overview.rst).
-
 ## Example Workflows
 
 | Workflow | Description |
@@ -185,6 +164,33 @@ Isaac AutoData is released under the [Apache License 2.0](LICENSE).
 Isaac AutoData depends on Isaac Sim, which includes components distributed under proprietary licensing terms. See
 the [Isaac Sim license](https://docs.isaacsim.omniverse.nvidia.com/latest/common/NVIDIA_Omniverse_License_Agreement.html)
 for details.
+
+## Citation
+
+If you use Isaac AutoData in your research, please cite:
+
+```bibtex
+@misc{isaacautodata2026,
+    title  = {Isaac AutoData: Scalable Robot Demonstration Generation for Imitation Learning},
+    author = {{NVIDIA Isaac AutoData Contributors}},
+    year   = {2026},
+    url    = {https://github.com/isaac-sim/Isaac-AutoData}
+}
+```
+
+Depending on the generation algorithm used, please also cite the original
+[MimicGen](https://arxiv.org/abs/2310.17596), [DexMimicGen](https://arxiv.org/abs/2410.24185), or
+[SkillMimicGen](https://arxiv.org/abs/2410.18907) work. Isaac Lab users should also cite the
+[Isaac Lab paper](https://arxiv.org/abs/2511.04831).
+
+## Acknowledgements
+
+Isaac AutoData builds on NVIDIA Isaac Sim, Isaac Lab, and Isaac Lab-Arena. Its data-generation workflows incorporate
+ideas from MimicGen, DexMimicGen, and SkillMimicGen, with cuRobo providing GPU-accelerated motion planning for
+SkillGen workflows.
+
+We thank the authors and contributors of these projects, along with the broader robotics community, for their
+foundational work.
 
 ---
 
