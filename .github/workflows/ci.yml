@@ -23,23 +23,10 @@ jobs:
   pre_commit:
     name: Pre-commit
     # Lint-only job: no GPU needed, so keep it off the scarce self-hosted GPU pool.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
-    container:
-      image: python:3.12-slim
-
     steps:
-      - name: Install git and LFS
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git git-lfs ca-certificates
-          git --version
-          git lfs version
-
-      - name: Mark repo as safe for git
-        run: git config --global --add safe.directory "$PWD"
-
       # Linting does not need the submodules; the hooks exclude submodules/.
       # No post-checkout git auth is needed here, so don't persist credentials
       # into the workspace that later (repo-controlled) steps could read.
@@ -48,6 +35,11 @@ jobs:
         with:
           submodules: false
           persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       # Run pre-commit directly rather than via pre-commit/action, which pins
       # actions/cache@v4 (Node 20, deprecated). We already point PRE_COMMIT_HOME
@@ -99,3 +91,26 @@ jobs:
 
       - name: Run E2E tests
         run: ./scripts/ci/run_tests.sh
+
+  build_docs:
+    name: Build docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: false
+          lfs: true
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build docs
+        run: |
+          pip install --no-cache-dir -r docs/requirements.txt
+          make -C docs html SPHINXOPTS=-W
