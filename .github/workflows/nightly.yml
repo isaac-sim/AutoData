@@ -79,9 +79,6 @@ jobs:
 
   publish_docs:
     name: Publish docs (GitHub Pages)
-    # Nightly refresh of main/ plus stable versioned dirs from tags and release/*
-    # branches (sphinx-multiversion). Tag pushes publish immediately without waiting
-    # for the next scheduled run. Site: https://isaac-sim.github.io/Isaac-AutoData/
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -89,7 +86,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout (full history for multi-version)
+      - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0

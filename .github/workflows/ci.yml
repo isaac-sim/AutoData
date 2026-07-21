@@ -94,8 +94,6 @@ jobs:
 
   build_docs:
     name: Build docs
-    # CPU-only Sphinx build; keep off the GPU runner pool. PRs verify only (no deploy).
-    # Published docs: https://isaac-sim.github.io/Isaac-AutoData/
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
