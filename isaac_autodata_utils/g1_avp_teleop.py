@@ -32,7 +32,7 @@ def _cli_option_value(arguments: list[str], option: str) -> str | None:
     return None
 
 
-def _is_g1_avp_recording(arguments: list[str]) -> bool:
+def _is_g1_avp_requested(arguments: list[str]) -> bool:
     """Return whether the current command requests AVP teleoperation for the G1 task."""
     task_name = _cli_option_value(arguments, "--task")
     cloudxr_environment = _cli_option_value(arguments, "--cloudxr_env")
@@ -219,9 +219,9 @@ def _patch_g1_config_module(module: ModuleType) -> None:
 
 
 def install_g1_avp_teleop_patch_if_requested(arguments: list[str] | None = None) -> None:
-    """Install the G1 AVP override only for the documented G1 recording command."""
+    """Install the G1 AVP override when the current command requests it."""
     arguments = sys.argv[1:] if arguments is None else arguments
-    if not _is_g1_avp_recording(arguments):
+    if not _is_g1_avp_requested(arguments):
         return
 
     loaded_module = sys.modules.get(_G1_CONFIG_MODULE)
