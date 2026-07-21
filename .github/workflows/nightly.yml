@@ -10,6 +10,9 @@ on:
   schedule:
     - cron: "30 3 * * *"
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 concurrency:
   group: ${{ github.workflow }}
@@ -22,6 +25,7 @@ jobs:
 
   test_full:
     name: Full E2E (GPU, rebuilt image)
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v')
     runs-on: [self-hosted, gpu]
     timeout-minutes: 180
 
@@ -72,3 +76,49 @@ jobs:
           path: test-results/
           if-no-files-found: warn
           retention-days: 30
+
+  publish_docs:
+    name: Publish docs (GitHub Pages)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: false
+          lfs: true
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build docs
+        run: |
+          pip install --no-cache-dir -r docs/requirements.txt
+          make -C docs multi-docs SPHINXOPTS=-W
+          touch docs/_build/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
