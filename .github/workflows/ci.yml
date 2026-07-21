@@ -23,7 +23,7 @@ jobs:
   pre_commit:
     name: Pre-commit
     # Lint-only job: no GPU needed, so keep it off the scarce self-hosted GPU pool.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
@@ -94,7 +94,7 @@ jobs:
 
   build_docs:
     name: Build docs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
