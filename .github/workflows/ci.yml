@@ -17,6 +17,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
 
@@ -96,6 +97,16 @@ jobs:
         run: |
           git lfs install --local
           git lfs pull
+
+      # Fast path: reuse the prebuilt GHCR image when its content hash matches.
+      # On a miss, run_docker.sh builds locally, so this never gates correctness.
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull prebuilt image (fast path)
+        run: ./scripts/ci/pull_or_build_image.sh
 
       - name: Run E2E tests
         run: ./scripts/ci/run_tests.sh

@@ -1,0 +1,92 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Build Isaac AutoData image
+
+# Publishes the prebuilt GPU test image to GHCR so premerge E2E can skip the
+# ~30-minute from-scratch build. The tag is a content hash
+# (scripts/ci/image_tag.sh), so it rebuilds only when an image input changes.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "docker/**"
+      - ".gitmodules"
+      - "submodules/IsaacLab-Arena"
+      - "setup.py"
+      - "pyproject.toml"
+      - "scripts/ci/image_tag.sh"
+      - ".github/workflows/build-image.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build_and_push:
+    name: Build & push prebuilt image (GHCR)
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 120
+
+    # cuRobo arch baked into the image. Keep in sync with IMAGE_CUDA_ARCH in
+    # scripts/ci/image_tag.sh so the published tag matches what consumers pull.
+    env:
+      TORCH_CUDA_ARCH_LIST: "8.9+PTX"
+
+    steps:
+      - name: nvidia-smi
+        run: nvidia-smi
+
+      - name: Clean up submodules directory
+        run: |
+          rm -f .git/modules/submodules/IsaacLab-Arena/index.lock || true
+          rm -rf submodules/* || true
+
+      - name: Mark repo as safe for git
+        run: git config --global --add safe.directory "$PWD"
+
+      - name: Checkout (recursive submodules)
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Pull LFS files
+        run: |
+          git lfs install --local
+          git lfs pull
+
+      - name: Resolve image tag
+        id: tag
+        run: echo "ref=$(./scripts/ci/image_tag.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Check whether this image is already published
+        id: exists
+        run: |
+          if docker manifest inspect "${{ steps.tag.outputs.ref }}" >/dev/null 2>&1; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "Image ${{ steps.tag.outputs.ref }} already published; nothing to do."
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build image
+        if: steps.exists.outputs.build == 'true'
+        run: ./docker/run_docker.sh -c -b
+
+      - name: Tag & push to GHCR
+        if: steps.exists.outputs.build == 'true'
+        run: |
+          docker tag isaac_autodata:curobo "${{ steps.tag.outputs.ref }}"
+          docker push "${{ steps.tag.outputs.ref }}"
