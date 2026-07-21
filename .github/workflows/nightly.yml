@@ -92,9 +92,10 @@ jobs:
       image: python:3.12-slim
 
     steps:
-      - uses: ./.github/actions/debian-git-lfs
-        with:
-          install_make: "true"
+      - name: Bootstrap git and LFS for checkout
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git git-lfs ca-certificates
 
       - name: Checkout (full history for multi-version)
         uses: actions/checkout@v5
@@ -104,6 +105,10 @@ jobs:
           submodules: false
           lfs: true
           persist-credentials: false
+
+      - uses: ./.github/actions/debian-git-lfs
+        with:
+          install_make: "true"
 
       - name: Build multi-version docs
         run: ./scripts/ci/run_docs_build.sh publish
