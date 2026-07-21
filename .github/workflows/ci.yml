@@ -26,24 +26,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    container:
-      image: python:3.12-slim
-
     steps:
-      # python:3.12-slim has no git; bootstrap before checkout. Local actions need
-      # the repo checked out, so ./.github/actions/debian-git-lfs runs after checkout.
-      - name: Bootstrap git for checkout
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates
-
+      # Linting does not need the submodules; the hooks exclude submodules/.
+      # No post-checkout git auth is needed here, so don't persist credentials
+      # into the workspace that later (repo-controlled) steps could read.
       - name: Checkout
         uses: actions/checkout@v5
         with:
           submodules: false
           persist-credentials: false
 
-      - uses: ./.github/actions/debian-git-lfs
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       # Run pre-commit directly rather than via pre-commit/action, which pins
       # actions/cache@v4 (Node 20, deprecated). We already point PRE_COMMIT_HOME
@@ -103,17 +99,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    container:
-      image: python:3.12-slim
-
     steps:
-      - name: Bootstrap git and LFS for checkout
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git git-lfs ca-certificates
-
-      # Fetch LFS during checkout; persist-credentials stays false so later
-      # repo-controlled steps cannot reuse the token for a separate git lfs pull.
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -121,9 +107,10 @@ jobs:
           lfs: true
           persist-credentials: false
 
-      - uses: ./.github/actions/debian-git-lfs
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          install_make: "true"
+          python-version: "3.12"
 
       - name: Build docs (verify)
         run: ./scripts/ci/run_docs_build.sh verify
