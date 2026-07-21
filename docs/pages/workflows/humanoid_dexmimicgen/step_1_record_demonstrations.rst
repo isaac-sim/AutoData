@@ -72,7 +72,10 @@ container. Leave it running in this terminal for the whole recording session.
 
    .. code-block:: bash
 
-      printf '%s\n' 'NV_DEVICE_PROFILE=auto-native' 'NV_CXR_ENABLE_PUSH_DEVICES=0' > avp.env
+      printf '%s\n' \
+          'NV_DEVICE_PROFILE=auto-native' \
+          'NV_CXR_ENABLE_PUSH_DEVICES=0' \
+          'NV_ENABLE_POSE_WAIT=0' > avp.env
 
 #. Start the CloudXR runtime with that config:
 
@@ -113,6 +116,9 @@ Start Recording
 #. Run the recording script. CPU simulation gives smoother XR performance with a single
    environment:
 
+   Both commands select the AVP CloudXR environment and disable automatic CloudXR launch because
+   the runtime is already running in the first terminal.
+
    .. tabs::
 
       .. group-tab:: GR-1
@@ -124,6 +130,8 @@ Start Recording
                 --viz kit \
                 --device cpu \
                 --xr \
+                --cloudxr_env avp \
+                --no-auto_launch_cloudxr \
                 --dataset_file ./datasets/dataset_gr1.hdf5 \
                 --num_demos 5
 
@@ -136,6 +144,8 @@ Start Recording
                 --viz kit \
                 --device cpu \
                 --xr \
+                --cloudxr_env avp \
+                --no-auto_launch_cloudxr \
                 --dataset_file ./datasets/dataset_g1.hdf5 \
                 --num_demos 5
 
