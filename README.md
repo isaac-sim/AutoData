@@ -6,6 +6,8 @@
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/isaac-sim/Isaac-AutoData)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-6.0.1-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
+[![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-3.0.0--beta2-silver.svg)](https://github.com/isaac-sim/IsaacLab)
+[![Isaac Lab-Arena](https://img.shields.io/badge/Isaac%20Lab--Arena-0.2.x-silver.svg)](https://github.com/isaac-sim/IsaacLab-Arena)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue.svg)](https://docs.python.org/3/whatsnew/3.12.html)
 [![Linux](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://www.linux.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](LICENSE)
