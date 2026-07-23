@@ -258,6 +258,9 @@ class TerminationsCfg:
 class FrankaRopeEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for teleoperated Franka rope manipulation."""
 
+    settling_steps: int = 10
+    """Number of control iterations used to settle the deformable rope after reset."""
+
     scene: FrankaRopeSceneCfg = FrankaRopeSceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=False)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()

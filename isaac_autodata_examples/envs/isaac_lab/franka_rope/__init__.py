@@ -12,7 +12,7 @@ FRANKA_ROPE_ENV_ID = "Isaac-Rope-Franka-IK-Rel-v0"
 if FRANKA_ROPE_ENV_ID not in gym.registry:
     gym.register(
         id=FRANKA_ROPE_ENV_ID,
-        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        entry_point="isaac_autodata_examples.envs.isaac_lab.franka_rope.franka_rope_env:FrankaRopeEnv",
         kwargs={
             "env_cfg_entry_point": (
                 "isaac_autodata_examples.envs.isaac_lab.franka_rope.franka_rope_env_cfg:FrankaRopeEnvCfg"

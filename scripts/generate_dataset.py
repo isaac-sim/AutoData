@@ -10,7 +10,7 @@ Usage::
 
     python scripts/generate_dataset.py \\
         --env_name <env_id> \\
-        --alg {mimicgen|dexmimicgen|skillgen} \\
+        --alg {mimicgen|dexmimicgen|skillgen|softmimicgen} \\
         --task_descriptor <task_descriptor.yaml> \\
         --embodiment <embodiment.yaml> \\
         --env_profile <environment_profile.yaml> \\
@@ -26,6 +26,7 @@ The ``--alg`` choice selects the :class:`GenerationAlgorithm` plug-in driving th
 * ``skillgen`` — single-arm SkillGen. SkillGen depends on a motion-planner interface; until the
   planner code is ported into this repo, the CLI satisfies that interface with the upstream Arena
   ``CuroboPlanner``.
+* ``softmimicgen`` — one- or two-arm MimicGen with deformable-object nodal registration.
 
 The CLI composes a :class:`Datastream` from the task descriptor YAML, the embodiment YAML, the
 live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
@@ -39,7 +40,7 @@ from isaaclab.app import AppLauncher
 
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in isaac_autodata_core.algorithms.
-_ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
+_ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen", "softmimicgen"]
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument(
@@ -121,6 +122,7 @@ from typing import Any  # noqa: E402
 
 from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
+from isaac_autodata_examples.envs.isaac_lab import register_environments  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.env import (  # noqa: E402
@@ -132,6 +134,8 @@ from isaac_autodata_interfaces.env import (  # noqa: E402
 )
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 from isaac_autodata_utils.generation_result import write_generation_result  # noqa: E402
+
+register_environments()
 
 
 async def run_data_generator(

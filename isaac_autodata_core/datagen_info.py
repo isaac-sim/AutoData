@@ -24,6 +24,8 @@ class DatagenInfo:
     Attributes:
         eef_pose: ``{eef_name: [T, 4, 4]}`` recorded EEF poses [m, rad].
         object_poses: ``{object_name: [T, 4, 4]}`` recorded object poses [m, rad].
+        object_nodal_positions: ``{object_name: [T, N, 3]}`` recorded deformable-object
+            nodal positions [m].
         subtask_term_signals: ``{subtask_name: [T]}`` binary completion flag per step.
         subtask_start_signals: ``{subtask_name: [T]}`` binary start flag per step; required by SkillGen.
         target_eef_pose: ``{eef_name: [T, 4, 4]}`` controller target poses [m, rad].
@@ -36,6 +38,7 @@ class DatagenInfo:
         self,
         eef_pose: dict[str, torch.Tensor] | None = None,
         object_poses: dict[str, torch.Tensor] | None = None,
+        object_nodal_positions: dict[str, torch.Tensor] | None = None,
         subtask_term_signals: dict[str, Any] | None = None,
         subtask_start_signals: dict[str, Any] | None = None,
         target_eef_pose: dict[str, torch.Tensor] | None = None,
@@ -43,6 +46,7 @@ class DatagenInfo:
     ) -> None:
         self.eef_pose = eef_pose
         self.object_poses = dict(object_poses) if object_poses is not None else None
+        self.object_nodal_positions = dict(object_nodal_positions) if object_nodal_positions is not None else None
         self.subtask_term_signals = dict(subtask_term_signals) if subtask_term_signals is not None else None
         self.subtask_start_signals = dict(subtask_start_signals) if subtask_start_signals is not None else None
         self.target_eef_pose = target_eef_pose
@@ -55,6 +59,8 @@ class DatagenInfo:
             out["eef_pose"] = self.eef_pose
         if self.object_poses is not None:
             out["object_poses"] = deepcopy(self.object_poses)
+        if self.object_nodal_positions is not None:
+            out["object_nodal_positions"] = deepcopy(self.object_nodal_positions)
         if self.subtask_start_signals is not None:
             out["subtask_start_signals"] = deepcopy(self.subtask_start_signals)
         if self.subtask_term_signals is not None:

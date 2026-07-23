@@ -14,6 +14,7 @@ def test_defaults_all_none():
     di = DatagenInfo()
     assert di.eef_pose is None
     assert di.object_poses is None
+    assert di.object_nodal_positions is None
     assert di.subtask_term_signals is None
     assert di.subtask_start_signals is None
     assert di.target_eef_pose is None
@@ -35,6 +36,7 @@ def test_to_dict_key_names():
     di = DatagenInfo(
         eef_pose={},
         object_poses={},
+        object_nodal_positions={},
         subtask_term_signals={},
         subtask_start_signals={},
         target_eef_pose={},
@@ -43,6 +45,7 @@ def test_to_dict_key_names():
     assert set(di.to_dict()) == {
         "eef_pose",
         "object_poses",
+        "object_nodal_positions",
         "subtask_term_signals",
         "subtask_start_signals",
         "target_eef_pose",
@@ -74,3 +77,11 @@ def test_to_dict_deepcopies_object_poses():
     out = di.to_dict()
     out["object_poses"]["cube"] += 1.0  # mutate the returned copy
     assert torch.count_nonzero(di.object_poses["cube"]) == 0  # original untouched
+
+
+def test_to_dict_deepcopies_object_nodal_positions():
+    nodes = {"rope": torch.zeros(2, 8, 3)}
+    di = DatagenInfo(object_nodal_positions=nodes)
+    out = di.to_dict()
+    out["object_nodal_positions"]["rope"] += 1.0
+    assert torch.count_nonzero(di.object_nodal_positions["rope"]) == 0

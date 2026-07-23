@@ -105,6 +105,7 @@ from isaaclab.utils import configclass  # noqa: E402
 from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa: E402
 
 from isaac_autodata_core.pool import DataGenInfoPool  # noqa: E402
+from isaac_autodata_examples.envs.isaac_lab import register_environments  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
@@ -116,6 +117,8 @@ marked_subtask_action_indices: list[int] = []
 skip_episode = False
 
 _datastream: Datastream | None = None
+
+register_environments()
 
 
 def play_cb() -> None:
@@ -147,6 +150,7 @@ class PreStepDatagenInfoRecorder(RecorderTerm):
         assert _datastream is not None, "Datastream must be initialized before recording."
         datagen_info = {
             "object_pose": _datastream.get_object_poses(),
+            "object_nodal_position": _datastream.get_object_nodal_positions(),
             "eef_pose": _datastream.embodiment_adapter.get_eef_poses(env_ids=None),
             "target_eef_pose": _datastream.action_to_target_eef_pose(self._env.action_manager.action),
         }

@@ -46,6 +46,23 @@ class SkillGenSubtaskAlgoParams(SubtaskAlgoParams):
     subtask_start_offset_range: tuple[int, int] = (0, 0)
 
 
+@dataclass
+class SoftMimicGenSubtaskAlgoParams(SubtaskAlgoParams):
+    """SoftMimicGen-specific subtask parameters.
+
+    Args:
+        object_soft: Whether the reference object is deformable.
+        use_rotation_transform: Whether to transform EEF rotations with the local TPS Jacobian.
+        bend_coef: TPS bending regularization coefficient.
+        rot_coef: TPS affine-rotation regularization coefficient.
+    """
+
+    object_soft: bool = False
+    use_rotation_transform: bool = True
+    bend_coef: float = 0.1
+    rot_coef: float = 1e-3
+
+
 @dataclass(kw_only=True)
 class Subtask:
     """Configuration object used to specify subtasks used in data generation.
@@ -96,6 +113,7 @@ ALGO_PARAMS_REGISTRY: dict[str, type[SubtaskAlgoParams]] = {
     "mimicgen": MimicGenSubtaskAlgoParams,
     "dexmimicgen": DexMimicGenSubtaskAlgoParams,
     "skillgen": SkillGenSubtaskAlgoParams,
+    "softmimicgen": SoftMimicGenSubtaskAlgoParams,
 }
 """Maps the ``algo:`` discriminator in a YAML task config to the
 corresponding :class:`SubtaskAlgoParams` subclass.

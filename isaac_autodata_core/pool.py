@@ -126,7 +126,8 @@ class DataGenInfoPool:
             raise ValueError("Episode lacks 'datagen_info' obs annotations")
 
         eef_pose = ep_grp["obs"]["datagen_info"]["eef_pose"]
-        object_poses_dict = ep_grp["obs"]["datagen_info"]["object_pose"]
+        object_poses_dict = ep_grp["obs"]["datagen_info"].get("object_pose")
+        object_nodal_positions_dict = ep_grp["obs"]["datagen_info"].get("object_nodal_position")
         target_eef_pose = ep_grp["obs"]["datagen_info"]["target_eef_pose"]
         subtask_term_signals_dict = ep_grp["obs"]["datagen_info"]["subtask_term_signals"]
         subtask_start_signals_dict = ep_grp["obs"]["datagen_info"].get("subtask_start_signals")
@@ -136,6 +137,7 @@ class DataGenInfoPool:
         ep_datagen_info = DatagenInfo(
             eef_pose=eef_pose,
             object_poses=object_poses_dict,
+            object_nodal_positions=object_nodal_positions_dict,
             subtask_start_signals=subtask_start_signals_dict,
             subtask_term_signals=subtask_term_signals_dict,
             target_eef_pose=target_eef_pose,

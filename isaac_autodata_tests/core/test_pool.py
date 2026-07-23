@@ -88,6 +88,27 @@ def _skillgen_task() -> TaskDescriptor:
     })
 
 
+def _softmimicgen_task() -> TaskDescriptor:
+    return TaskDescriptor.from_dict({
+        "name": "rope",
+        "algo": "softmimicgen",
+        "subtasks": {
+            "franka": [
+                {
+                    "object_ref": "rope",
+                    "subtask_term_signal": "grasp",
+                    "algo_params": {"object_soft": True},
+                },
+                {
+                    "object_ref": "rope",
+                    "subtask_term_signal": "",
+                    "algo_params": {"object_soft": True},
+                },
+            ]
+        },
+    })
+
+
 def _step_signal(length: int, edge: int) -> torch.Tensor:
     """A per-step step-function: False before ``edge``, True from ``edge`` on."""
     sig = torch.ones(length, dtype=torch.bool)
@@ -159,6 +180,18 @@ def _skillgen_episode(
     )
 
 
+def _softmimicgen_episode(actions_len: int = 10, term_edge: int = 4) -> types.SimpleNamespace:
+    return _episode(
+        actions_len=actions_len,
+        datagen_info={
+            "eef_pose": {"franka": torch.zeros(actions_len, 4, 4)},
+            "object_nodal_position": {"rope": torch.zeros(actions_len, 12, 3)},
+            "target_eef_pose": {"franka": torch.zeros(actions_len, 4, 4)},
+            "subtask_term_signals": {"grasp": _step_signal(actions_len, term_edge)},
+        },
+    )
+
+
 # ---------------------------------------------------------------------------------------------------
 # __init__: subtask signal-name / offset-range tables built from the task descriptor
 # ---------------------------------------------------------------------------------------------------
@@ -192,6 +225,16 @@ def test_add_episode_populates_datagen_info_and_passthrough():
     # passthrough derived from actions via the adapter: single-arm gripper channel of width 1.
     assert set(di.passthrough_action) == {"franka"}
     assert di.passthrough_action["franka"].shape == (8, 1)
+
+
+def test_add_episode_accepts_deformable_state_without_rigid_object_pose():
+    pool = _pool(_softmimicgen_task())
+    pool._add_episode(_softmimicgen_episode(actions_len=8, term_edge=3))
+    di = pool.datagen_infos[0]
+    assert di.object_poses is None
+    assert set(di.object_nodal_positions) == {"rope"}
+    assert di.object_nodal_positions["rope"].shape == (8, 12, 3)
+    assert pool.subtask_boundaries["franka"] == [[(0, 4), (4, 8)]]
 
 
 def test_add_episode_missing_datagen_info_error():
