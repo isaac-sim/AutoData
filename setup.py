@@ -10,6 +10,7 @@ from setuptools import find_packages, setup
 ISAAC_AUTO_DATA_VERSION_NUMBER = "0.1.0"
 
 RUNTIME_DEPS = [
+    "rapprentice @ git+https://github.com/masoudmoghani/rapprentice.git@512894df66ec4d0e608e409f7dac4ef448578f78",
     "typing_extensions",
     "pyzmq",
 ]

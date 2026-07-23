@@ -48,6 +48,7 @@ known_third_party = [
     "isaaclab_mimic",
     "isaaclab_tasks",
     "isaaclab_arena",
+    "rapprentice",
 ]
 
 # Imports from this repository
