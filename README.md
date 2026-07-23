@@ -2,7 +2,7 @@
 
 # Isaac AutoData
 
-### Scalable Robot Demonstration Generation for Imitation Learning
+### Scalable Robot Demonstration Generation for Robot Learning
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/isaac-sim/Isaac-AutoData)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-6.0.1-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
@@ -24,7 +24,7 @@
 [NVIDIA Isaac Lab](https://github.com/isaac-sim/IsaacLab) and
 [Isaac Lab-Arena](https://github.com/isaac-sim/IsaacLab-Arena). Given a small set of annotated human
 demonstrations, it uses parallel simulation environments to generate diverse datasets of successful robot
-demonstrations for imitation learning.
+demonstrations for robot learning.
 
 AutoData splits demonstrations into object-relative skill segments. During generation, it transforms those segments
 to new scene configurations, connects them into complete trajectories, executes them in simulation, and records the
@@ -36,7 +36,7 @@ successful trials as HDF5 datasets.
 
 ## Why Isaac AutoData?
 
-Imitation-learning policies require large and diverse collections of successful demonstrations. Gathering all of
+Robot-learning policies require large and diverse collections of successful demonstrations. Gathering all of
 that data through human teleoperation is slow and expensive, even though a small set of demonstrations often already
 contains the task's essential skills.
 
@@ -174,7 +174,7 @@ If you use Isaac AutoData in your research, please cite:
 
 ```bibtex
 @misc{isaacautodata2026,
-    title  = {Isaac AutoData: Scalable Robot Demonstration Generation for Imitation Learning},
+    title  = {Isaac AutoData: Scalable Robot Demonstration Generation for Robot Learning},
     author = {{NVIDIA Isaac AutoData Contributors}},
     year   = {2026},
     url    = {https://github.com/isaac-sim/Isaac-AutoData}
