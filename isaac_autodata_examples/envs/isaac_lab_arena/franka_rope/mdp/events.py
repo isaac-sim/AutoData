@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Reset events for Franka rope manipulation."""
+"""Reset and settling events for Arena Franka rope manipulation."""
 
 from __future__ import annotations
 
@@ -107,3 +107,36 @@ def reset_rope_nodal_state(
     nodal_state[..., node_ids, :3] = rope.transform_nodal_pos(nodal_state[..., node_ids, :3], position, quaternion)
 
     rope.write_nodal_state_to_sim_index(nodal_state, env_ids=env_ids)
+
+
+def settle_rope_after_reset(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    settling_steps: int = 10,
+) -> None:
+    """Advance zero-action control iterations after nodal-state reset.
+
+    PhysX advances the full simulation when any subset of environments resets, so
+    zero actions are deliberately applied to all environments.
+
+    Args:
+        env: Arena manager-based environment.
+        env_ids: Reset environment indices. Used to satisfy the reset-event interface.
+        settling_steps: Number of control iterations to advance.
+    """
+
+    del env_ids
+    if settling_steps <= 0:
+        return
+
+    zero_actions = torch.zeros(
+        (env.num_envs, env.action_manager.total_action_dim),
+        device=env.device,
+    )
+    for _ in range(settling_steps):
+        env.action_manager.process_action(zero_actions)
+        for _ in range(env.cfg.decimation):
+            env.action_manager.apply_action()
+            env.scene.write_data_to_sim()
+            env.sim.step(render=True)
+            env.scene.update(dt=env.physics_dt)

@@ -105,7 +105,7 @@ from isaaclab.utils import configclass  # noqa: E402
 from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa: E402
 
 from isaac_autodata_core.pool import DataGenInfoPool  # noqa: E402
-from isaac_autodata_examples.envs.isaac_lab import register_environments  # noqa: E402
+from isaac_autodata_examples.envs import register_environments  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
@@ -118,7 +118,7 @@ skip_episode = False
 
 _datastream: Datastream | None = None
 
-register_environments()
+register_environments(enable_cameras=args_cli.enable_cameras)
 
 
 def play_cb() -> None:

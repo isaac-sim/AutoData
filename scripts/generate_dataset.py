@@ -122,7 +122,7 @@ from typing import Any  # noqa: E402
 
 from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
-from isaac_autodata_examples.envs.isaac_lab import register_environments  # noqa: E402
+from isaac_autodata_examples.envs import register_environments  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.env import (  # noqa: E402
@@ -135,7 +135,7 @@ from isaac_autodata_interfaces.env import (  # noqa: E402
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 from isaac_autodata_utils.generation_result import write_generation_result  # noqa: E402
 
-register_environments()
+register_environments(enable_cameras=args_cli.enable_cameras)
 
 
 async def run_data_generator(
