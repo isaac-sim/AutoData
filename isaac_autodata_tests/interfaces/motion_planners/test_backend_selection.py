@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from isaac_autodata_interfaces.motion_planners.curobo.compat import (
+from isaac_autodata_interfaces.motion_planners.curobo.backend_selection import (
     CUROBO_V1_MARKERS,
     CUROBO_V2_MARKERS,
     SCHEDULESTREAM_V1_MARKERS,

@@ -3,7 +3,11 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Fail-closed lowering of custream and custream2 commands into AutoData plan IR."""
+"""Experimentally lower native ScheduleStream commands into task-motion plans.
+
+This module is not used by the live cuStream v1 product path. It remains isolated for evaluation
+while a future backend proves which native command forms the executor actually needs.
+"""
 
 from __future__ import annotations
 
@@ -38,7 +42,7 @@ from isaac_autodata_interfaces.autonomous.schedulestream.command_types import (
     ScheduleStreamTimingError,
     UnsupportedScheduleStreamCommandError,
 )
-from isaac_autodata_interfaces.autonomous.schedulestream.symbols import (
+from isaac_autodata_interfaces.autonomous.schedulestream.experimental.symbols import (
     load_schedulestream_command_symbols,
     native_type_name,
 )
@@ -128,7 +132,7 @@ class _JointSamples:
 class ScheduleStreamCommandLowerer:
     """Select, lazily load, validate, and lower one ScheduleStream command API.
 
-    Selection delegates to :mod:`isaac_autodata_interfaces.motion_planners.curobo.compat` only
+    Selection delegates to :mod:`isaac_autodata_interfaces.motion_planners.curobo.backend_selection` only
     when the boundary is first used. Native ScheduleStream modules are loaded one step later and
     only for the selected ``custream`` or ``custream2`` application.
     """
@@ -929,7 +933,7 @@ class ScheduleStreamCommandLowerer:
 
 
 def _select_backend(requested_motion_backend: str, capabilities: Any | None) -> Any:
-    from isaac_autodata_interfaces.motion_planners.curobo.compat import select_schedulestream_backend
+    from isaac_autodata_interfaces.motion_planners.curobo.backend_selection import select_schedulestream_backend
 
     return select_schedulestream_backend(requested_motion_backend, capabilities)
 

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 import pytest
 
@@ -26,6 +27,9 @@ from isaac_autodata_core.autonomous.task_motion import (
     WaitSegment,
     make_stable_id,
     matrix4,
+    matrix4_error,
+    matrix4_inverse,
+    matrix4_multiply,
 )
 
 IDENTITY = (
@@ -130,6 +134,23 @@ def test_stable_id_is_deterministic_and_namespaced():
 def test_matrix4_rejects_non_rigid_transforms(pose, match):
     with pytest.raises(ValueError, match=match):
         matrix4(pose)
+
+
+def test_matrix4_rigid_operations_are_consistent() -> None:
+    transform = (
+        (0.0, -1.0, 0.0, 0.1),
+        (1.0, 0.0, 0.0, -0.2),
+        (0.0, 0.0, 1.0, 0.3),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+    product = matrix4_multiply(transform, matrix4_inverse(transform))
+    assert tuple(value for row in product for value in row) == pytest.approx(
+        tuple(value for row in IDENTITY for value in row)
+    )
+    position_error, rotation_error = matrix4_error(IDENTITY, transform)
+    assert position_error == pytest.approx((0.1**2 + 0.2**2 + 0.3**2) ** 0.5)
+    assert rotation_error == pytest.approx(math.pi / 2)
 
 
 def test_scene_snapshot_round_trip_and_digest_are_deterministic():

@@ -12,7 +12,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from isaac_autodata_core.autonomous.schedulestream_goal import ScheduleStreamGoalSymbols
 from isaac_autodata_core.autonomous.task_motion import (
     AttachIntentSegment,
     CartesianTrajectorySegment,
@@ -36,6 +35,7 @@ from isaac_autodata_interfaces.autonomous.schedulestream.custream_v1 import (
     _validate_world_graspability,
 )
 from isaac_autodata_interfaces.autonomous.schedulestream.episode_planner import _world_eef_pose_reader
+from isaac_autodata_interfaces.autonomous.schedulestream.goal_lowering import ScheduleStreamGoalSymbols
 
 IDENTITY = (
     (1.0, 0.0, 0.0, 0.0),

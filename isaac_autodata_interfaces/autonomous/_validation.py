@@ -64,15 +64,6 @@ def require_mapping(value: Any, path: FieldPath, issues: IssueCollector) -> dict
     return value
 
 
-def require_list(value: Any, path: FieldPath, issues: IssueCollector) -> list[Any] | None:
-    """Return ``value`` as a list or report an exact-type error."""
-
-    if type(value) is not list:
-        issues.add(path, "invalid_type", f"expected list, got {type(value).__name__}")
-        return None
-    return value
-
-
 def require_string(
     value: Any,
     path: FieldPath,

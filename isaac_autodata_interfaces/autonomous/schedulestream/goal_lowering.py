@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed Arena/AutoData goal translation into ScheduleStream formulas."""
+"""Translate planner-neutral goals into ScheduleStream formulas."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def compile_schedulestream_goal(
         predicates: Goal clauses resolved to live scene IDs.
         symbols: Injected ScheduleStream language constructors.
         arm: ScheduleStream arm identifier used by ``holding``.
-        supported_relations: Relations admitted by the selected domain and runtime-support profile.
+        supported_relations: Relations admitted by the selected domain and runtime profile.
 
     Returns:
         A ScheduleStream formula object. Its concrete type remains behind the adapter boundary.
@@ -60,9 +60,8 @@ def compile_schedulestream_goal(
             continue
         if predicate.target is None:
             raise GoalCompilationError(f"goal[{index}] relation {relation!r} requires target")
-        # Both ScheduleStream domains represent final support/containment/at-placement facts through
-        # Attached(object) == destination. Domain placement streams remain responsible for testing
-        # whether that particular relation is geometrically feasible.
+        # ScheduleStream represents final support/containment/at-placement facts through
+        # Attached(object) == destination. Placement streams test geometric feasibility.
         clauses.append(symbols.attached_equals(predicate.subject, predicate.target))
 
     if not clauses:
@@ -77,8 +76,10 @@ def load_schedulestream_goal_symbols(application: str) -> ScheduleStreamGoalSymb
     """Lazily load goal symbols for ``custream`` (v1) or ``custream2`` (v2).
 
     Args:
-        application: ScheduleStream manipulation application selected by the runtime capability
-            probe.
+        application: ScheduleStream manipulation application selected by the runtime check.
+
+    Returns:
+        The native formula constructors wrapped behind an import-safe interface.
     """
 
     if application == "custream":
@@ -93,3 +94,11 @@ def load_schedulestream_goal_symbols(application: str) -> ScheduleStreamGoalSymb
         attached_equals=lambda subject, target: Attached(subject) == target,
         holding_equals=lambda arm, subject: Holding(arm) == subject,
     )
+
+
+__all__ = [
+    "GoalCompilationError",
+    "ScheduleStreamGoalSymbols",
+    "compile_schedulestream_goal",
+    "load_schedulestream_goal_symbols",
+]

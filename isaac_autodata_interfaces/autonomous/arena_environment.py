@@ -20,19 +20,10 @@ from typing import Any
 
 from isaac_autodata_core.autonomous.output_transaction import RecordingTargets
 from isaac_autodata_core.autonomous.task_motion import GoalPredicate
+from isaac_autodata_interfaces.autonomous.profiles.franka_pick_cube_into_bowl import FRANKA_PICK_CUBE_INTO_BOWL
 from isaac_autodata_interfaces.autonomous.task_request_types import CompiledTaskRequest
 
-_FRANKA_IK_COMMAND_TO_OBS_OFFSET_M = (0.0, 0.0, -0.0036)
-_CUSTREAM_V1_RUNTIME_ASSET_PROFILE = "franka_ik_custream_v1_official_root_usd"
-_CUSTREAM_V1_REGISTRY_USD_BASENAME = "franka_panda_hand_on_stand.usd"
-_CUSTREAM_V1_RUNTIME_USD_BASENAME = "panda_instanceable.usd"
-_CUSTREAM_V1_RUNTIME_USD_PATH = (
-    "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/IsaacLab/"
-    "Robots/FrankaEmika/panda_instanceable.usd"
-)
-_CUSTREAM_V1_RUNTIME_USD_BYTES = 8_038
-_CUSTREAM_V1_RUNTIME_USD_SHA256 = "7f5a0c0aa6760cfbd348e08bc464d4b94341f027f51c2d9e42406ceefcc7787f"
-_RUNTIME_USD_MAX_BYTES = 1 << 20
+_TASK_PROFILE = FRANKA_PICK_CUBE_INTO_BOWL
 _RUNTIME_USD_READ_CHUNK_BYTES = 64 << 10
 _RUNTIME_USD_TIMEOUT_S = 10.0
 
@@ -92,10 +83,10 @@ def make_embodiment_adapter(request: CompiledTaskRequest) -> Any:
     if len(embodiment_nodes) != 1:
         raise ValueError(f"autonomous generation requires exactly one embodiment node, got {len(embodiment_nodes)}")
     embodiment_name = embodiment_nodes[0].get("name")
-    if embodiment_name != "franka_ik":
+    if embodiment_name != _TASK_PROFILE.embodiment_name:
         raise NotImplementedError(
             f"autonomous runtime support for Arena embodiment {embodiment_name!r} is not available; "
-            "the prototype currently supports 'franka_ik'"
+            f"the prototype currently supports {_TASK_PROFILE.embodiment_name!r}"
         )
 
     from isaac_autodata_interfaces.embodiments.embodiment_types import PoseObsKeys
@@ -112,7 +103,7 @@ def make_embodiment_adapter(request: CompiledTaskRequest) -> Any:
         # 0.107 m. ``eef_offset`` is command-to-observation, so -3.6 mm makes the adapter
         # report the exact command frame. The live provider independently attests this against
         # the instantiated action term and fails closed if Arena changes either frame.
-        eef_offset=_FRANKA_IK_COMMAND_TO_OBS_OFFSET_M,
+        eef_offset=_TASK_PROFILE.command_to_observation_offset_m,
     )
 
 
@@ -149,9 +140,9 @@ def _validate_content_identity_inputs(
         isinstance(max_bytes, bool)
         or not isinstance(max_bytes, int)
         or max_bytes <= 0
-        or max_bytes > _RUNTIME_USD_MAX_BYTES
+        or max_bytes > _TASK_PROFILE.runtime_usd_max_bytes
     ):
-        raise ValueError(f"runtime USD download bound must be in [1, {_RUNTIME_USD_MAX_BYTES}]")
+        raise ValueError(f"runtime USD download bound must be in [1, {_TASK_PROFILE.runtime_usd_max_bytes}]")
     if not isinstance(expected_sha256, str) or len(expected_sha256) != 64:
         raise ValueError("runtime USD expected SHA-256 must contain 64 hexadecimal characters")
     try:
@@ -324,10 +315,10 @@ def attest_custream_v1_runtime_usd_root(
 
     return _attest_exact_url_content(
         runtime_usd_path,
-        expected_url=_CUSTREAM_V1_RUNTIME_USD_PATH,
-        expected_sha256=_CUSTREAM_V1_RUNTIME_USD_SHA256,
-        expected_bytes=_CUSTREAM_V1_RUNTIME_USD_BYTES,
-        max_bytes=_RUNTIME_USD_MAX_BYTES,
+        expected_url=_TASK_PROFILE.runtime_usd_path,
+        expected_sha256=_TASK_PROFILE.runtime_usd_sha256,
+        expected_bytes=_TASK_PROFILE.runtime_usd_bytes,
+        max_bytes=_TASK_PROFILE.runtime_usd_max_bytes,
         timeout_s=_RUNTIME_USD_TIMEOUT_S,
         opener=opener,
     )
@@ -339,17 +330,17 @@ def _validated_runtime_usd_root_evidence(value: Mapping[str, Any]) -> dict[str, 
     expected = {
         "attestation_method": "https_exact_url_sha256_v1",
         "attested": True,
-        "bytes": _CUSTREAM_V1_RUNTIME_USD_BYTES,
+        "bytes": _TASK_PROFILE.runtime_usd_bytes,
         "content_encoding": "identity",
-        "expected_bytes": _CUSTREAM_V1_RUNTIME_USD_BYTES,
-        "expected_sha256": _CUSTREAM_V1_RUNTIME_USD_SHA256,
-        "final_url": _CUSTREAM_V1_RUNTIME_USD_PATH,
+        "expected_bytes": _TASK_PROFILE.runtime_usd_bytes,
+        "expected_sha256": _TASK_PROFILE.runtime_usd_sha256,
+        "final_url": _TASK_PROFILE.runtime_usd_path,
         "http_status": 200,
-        "max_bytes": _RUNTIME_USD_MAX_BYTES,
+        "max_bytes": _TASK_PROFILE.runtime_usd_max_bytes,
         "redirects_allowed": False,
         "scope": "root_layer_bytes_only",
-        "sha256": _CUSTREAM_V1_RUNTIME_USD_SHA256,
-        "url": _CUSTREAM_V1_RUNTIME_USD_PATH,
+        "sha256": _TASK_PROFILE.runtime_usd_sha256,
+        "url": _TASK_PROFILE.runtime_usd_path,
     }
     if not isinstance(value, Mapping) or any(value.get(key) != item for key, item in expected.items()):
         raise ValueError("runtime USD root-layer attestor returned incomplete or mismatched identity evidence")
@@ -391,7 +382,7 @@ def apply_custream_v1_runtime_asset_profile(
     embodiment_names = [
         node.get("name") for node in nodes if isinstance(node, dict) and node.get("type") == "embodiment"
     ]
-    if embodiment_names != ["franka_ik"]:
+    if embodiment_names != [_TASK_PROFILE.embodiment_name]:
         raise ValueError(
             "custream v1 runtime asset profile requires exactly the Arena 'franka_ik' embodiment; "
             f"got {embodiment_names}"
@@ -403,20 +394,20 @@ def apply_custream_v1_runtime_asset_profile(
     if not isinstance(registry_usd_path, str) or not registry_usd_path:
         raise ValueError("composed Arena franka_ik scene has no robot spawn USD path")
     registry_usd_basename = os.path.basename(registry_usd_path)
-    if registry_usd_basename != _CUSTREAM_V1_REGISTRY_USD_BASENAME:
+    if registry_usd_basename != _TASK_PROFILE.registry_usd_basename:
         raise ValueError(
             "Arena franka_ik registry asset changed from the reviewed custream v1 source "
-            f"{_CUSTREAM_V1_REGISTRY_USD_BASENAME!r} to {registry_usd_basename!r}"
+            f"{_TASK_PROFILE.registry_usd_basename!r} to {registry_usd_basename!r}"
         )
     if not isinstance(runtime_usd_path, str) or not runtime_usd_path:
         raise ValueError("live FRANKA_PANDA_HIGH_PD_CFG has no runtime USD path")
     runtime_usd_basename = os.path.basename(runtime_usd_path)
-    if runtime_usd_basename != _CUSTREAM_V1_RUNTIME_USD_BASENAME:
+    if runtime_usd_basename != _TASK_PROFILE.runtime_usd_basename:
         raise ValueError(
             "IsaacLab Franka runtime asset changed from the reviewed custream v1 target "
-            f"{_CUSTREAM_V1_RUNTIME_USD_BASENAME!r} to {runtime_usd_basename!r}"
+            f"{_TASK_PROFILE.runtime_usd_basename!r} to {runtime_usd_basename!r}"
         )
-    if runtime_usd_path != _CUSTREAM_V1_RUNTIME_USD_PATH:
+    if runtime_usd_path != _TASK_PROFILE.runtime_usd_path:
         raise ValueError("custream v1 runtime asset must use the reviewed pinned official production URI")
     if registry_usd_path == runtime_usd_path:
         raise ValueError("custream v1 runtime asset substitution unexpectedly resolves to the registry asset")
@@ -439,7 +430,7 @@ def apply_custream_v1_runtime_asset_profile(
         "kinematic_frame_attestation": "separate_live_provider_attestation_required",
         "motion_backend": "curobo_v1",
         "override": "composed_scene.robot.spawn.usd_path_only",
-        "profile": _CUSTREAM_V1_RUNTIME_ASSET_PROFILE,
+        "profile": _TASK_PROFILE.runtime_asset_profile,
         "reason": "pinned_official_isaac_5_1_root_layer_content_identity",
         "referenced_usd_dependencies_attested": False,
         "registry_usd_basename": registry_usd_basename,
@@ -449,9 +440,9 @@ def apply_custream_v1_runtime_asset_profile(
         "runtime_usd_path": runtime_usd_path,
         "runtime_usd_release": "Isaac 5.1",
         "runtime_uri_policy": "pinned_exact_https_no_redirect",
-        "schedulestream_application": "custream",
+        "schedulestream_application": _TASK_PROFILE.schedulestream_application,
         "schema_version": 2,
-        "semantic_embodiment": "franka_ik",
+        "semantic_embodiment": _TASK_PROFILE.embodiment_name,
     }
 
 
@@ -511,10 +502,23 @@ def attest_pick_and_place_success_contract(
         raise ValueError("Arena success predicate does not bind the task-selected pickup object and contact sensor")
     force_threshold = predicate_params["force_threshold"]
     velocity_threshold = predicate_params["velocity_threshold"]
-    if type(force_threshold) not in (int, float) or not math.isclose(float(force_threshold), 0.1, abs_tol=1e-12):
-        raise ValueError("Arena success force threshold must remain exactly 0.1 N")
-    if type(velocity_threshold) not in (int, float) or not math.isclose(float(velocity_threshold), 0.1, abs_tol=1e-12):
-        raise ValueError("Arena success velocity threshold must remain exactly 0.1 m/s")
+    if type(force_threshold) not in (int, float) or not math.isclose(
+        float(force_threshold),
+        _TASK_PROFILE.arena_success_force_threshold_n,
+        abs_tol=1e-12,
+    ):
+        raise ValueError(
+            f"Arena success force threshold must remain exactly {_TASK_PROFILE.arena_success_force_threshold_n:g} N"
+        )
+    if type(velocity_threshold) not in (int, float) or not math.isclose(
+        float(velocity_threshold),
+        _TASK_PROFILE.arena_success_velocity_threshold_m_s,
+        abs_tol=1e-12,
+    ):
+        raise ValueError(
+            "Arena success velocity threshold must remain exactly "
+            f"{_TASK_PROFILE.arena_success_velocity_threshold_m_s:g} m/s"
+        )
 
     sensor_cfg = getattr(scene_cfg, "pick_up_object_contact_sensor", None)
     sensor_prim_path = getattr(sensor_cfg, "prim_path", None)
@@ -601,7 +605,7 @@ def build_arena_runtime(
     runtime_asset_evidence = apply_custream_v1_runtime_asset_profile(
         request,
         env_cfg.scene,
-        runtime_usd_path=_CUSTREAM_V1_RUNTIME_USD_PATH,
+        runtime_usd_path=_TASK_PROFILE.runtime_usd_path,
     )
 
     terminations = getattr(env_cfg, "terminations", None)

@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import pytest
 
-from isaac_autodata_core.autonomous.schedulestream_goal import (
+from isaac_autodata_core.autonomous.task_motion import GoalPredicate
+from isaac_autodata_interfaces.autonomous.schedulestream.goal_lowering import (
     GoalCompilationError,
     ScheduleStreamGoalSymbols,
     compile_schedulestream_goal,
 )
-from isaac_autodata_core.autonomous.task_motion import GoalPredicate
 
 
 class _Formula:

@@ -14,6 +14,7 @@ from isaac_autodata_core.autonomous.output_transaction import (
 )
 from isaac_autodata_core.autonomous.run_log import RunLogWriter, RunLogWriteUncertainError, safe_exception_record
 from isaac_autodata_core.autonomous.task_motion import (
+    IDENTITY_MATRIX4,
     AttachIntentSegment,
     BarrierSegment,
     CartesianTrajectorySegment,
@@ -33,6 +34,9 @@ from isaac_autodata_core.autonomous.task_motion import (
     TaskMotionPlan,
     WaitSegment,
     make_stable_id,
+    matrix4_error,
+    matrix4_inverse,
+    matrix4_multiply,
 )
 
 __all__ = [
@@ -46,6 +50,7 @@ __all__ = [
     "ExecutionEventType",
     "ExecutionOutcome",
     "GoalPredicate",
+    "IDENTITY_MATRIX4",
     "GripperCommandMode",
     "GripperCommandSegment",
     "JointTrajectorySegment",
@@ -62,5 +67,8 @@ __all__ = [
     "TaskMotionPlan",
     "WaitSegment",
     "make_stable_id",
+    "matrix4_error",
+    "matrix4_inverse",
+    "matrix4_multiply",
     "safe_exception_record",
 ]

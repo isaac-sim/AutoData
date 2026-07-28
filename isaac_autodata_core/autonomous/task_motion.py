@@ -28,6 +28,12 @@ Matrix4: TypeAlias = tuple[
     tuple[float, float, float, float],
     tuple[float, float, float, float],
 ]
+IDENTITY_MATRIX4: Matrix4 = (
+    (1.0, 0.0, 0.0, 0.0),
+    (0.0, 1.0, 0.0, 0.0),
+    (0.0, 0.0, 1.0, 0.0),
+    (0.0, 0.0, 0.0, 1.0),
+)
 
 TASK_MOTION_PLAN_SCHEMA_VERSION = 1
 SCENE_SNAPSHOT_SCHEMA_VERSION = 1
@@ -109,6 +115,39 @@ def matrix4(value: Sequence[Sequence[int | float]], field_name: str = "pose") ->
     if abs(determinant - 1.0) > 2e-3:
         raise ValueError(f"{field_name} rotation determinant must be +1")
     return rows  # type: ignore[return-value]
+
+
+def matrix4_multiply(first: Matrix4, second: Matrix4) -> Matrix4:
+    """Compose two rigid homogeneous transforms."""
+
+    return tuple(
+        tuple(sum(first[row][inner] * second[inner][column] for inner in range(4)) for column in range(4))
+        for row in range(4)
+    )  # type: ignore[return-value]
+
+
+def matrix4_inverse(value: Matrix4) -> Matrix4:
+    """Return the rigid inverse of a homogeneous transform."""
+
+    rotation_transpose = tuple(tuple(value[column][row] for column in range(3)) for row in range(3))
+    translation = tuple(value[row][3] for row in range(3))
+    inverse_translation = tuple(
+        -sum(rotation_transpose[row][column] * translation[column] for column in range(3)) for row in range(3)
+    )
+    return tuple(
+        tuple(rotation_transpose[row][column] for column in range(3)) + (inverse_translation[row],) for row in range(3)
+    ) + (
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def matrix4_error(first: Matrix4, second: Matrix4) -> tuple[float, float]:
+    """Return translation [m] and rotation [rad] error between rigid transforms."""
+
+    position_error = math.sqrt(sum((first[row][3] - second[row][3]) ** 2 for row in range(3)))
+    relative_trace = sum(first[row][column] * second[row][column] for row in range(3) for column in range(3))
+    cosine = max(-1.0, min(1.0, (relative_trace - 1.0) / 2.0))
+    return position_error, math.acos(cosine)
 
 
 def _json_value(value: Any, field_name: str = "metadata", depth: int = 0) -> JsonValue:

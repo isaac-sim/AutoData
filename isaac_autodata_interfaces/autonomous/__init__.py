@@ -14,6 +14,11 @@ from isaac_autodata_interfaces.autonomous.arena_bridge import (
     extract_goal_stages,
 )
 from isaac_autodata_interfaces.autonomous.errors import AutonomousValidationError, ValidationIssue
+from isaac_autodata_interfaces.autonomous.profiles.franka_pick_cube_into_bowl import (
+    FRANKA_PICK_CUBE_INTO_BOWL,
+    AutonomousTaskProfile,
+    PickPlaceSuccessThresholds,
+)
 from isaac_autodata_interfaces.autonomous.runtime_support import (
     CURRENT_RUNTIME_SUPPORT,
     RUNTIME_SUPPORT_SCHEMA_VERSION,
@@ -53,6 +58,7 @@ __all__ = [
     "TASK_COMPILER_VERSION",
     "RUNTIME_SUPPORT_SCHEMA_VERSION",
     "CURRENT_RUNTIME_SUPPORT",
+    "FRANKA_PICK_CUBE_INTO_BOWL",
     "REQUIRED_ARENA_CAPABILITY",
     "REQUIRED_ARENA_COMMIT",
     "TaskRequest",
@@ -60,6 +66,7 @@ __all__ = [
     "RuntimeSupportProfile",
     "ArenaCompilationResult",
     "ArenaIntentBridge",
+    "AutonomousTaskProfile",
     "AutonomousValidationError",
     "CompilerTraceEvent",
     "GenerationConfig",
@@ -69,6 +76,7 @@ __all__ = [
     "OutputConfig",
     "PlannerBackend",
     "PlannerConfig",
+    "PickPlaceSuccessThresholds",
     "CompiledTaskRequest",
     "ResolvedOutputConfig",
     "SpatialGoalConstraint",

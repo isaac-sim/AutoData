@@ -14,30 +14,21 @@ from typing import Any
 
 from isaac_autodata_core.autonomous.attempt_generation import AttemptGenerationError, AttemptRequest, FailureStage
 from isaac_autodata_core.autonomous.task_motion import SceneSnapshot, TaskMotionPlan
+from isaac_autodata_interfaces.autonomous.profiles.franka_pick_cube_into_bowl import FRANKA_PICK_CUBE_INTO_BOWL
 from isaac_autodata_interfaces.autonomous.schedulestream.command_types import (
     ScheduleStreamClosedError,
     ScheduleStreamLoweringContext,
     ScheduleStreamProviderError,
 )
 from isaac_autodata_interfaces.autonomous.schedulestream.custream_v1 import (
-    V1_REVIEWED_DESTINATION_ASSET,
-    V1_REVIEWED_GRASPABLE_ASSET,
     V1IsaacLabCommandPlanner,
     V1IsaacLabPlannerConfig,
     create_v1_isaaclab_command_planner,
 )
 
 _V1Factory = Callable[..., V1IsaacLabCommandPlanner]
-
-_PINNED_PANDA_USD = (
-    "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/IsaacLab/"
-    "Robots/FrankaEmika/panda_instanceable.usd"
-)
-_PINNED_PANDA_USD_BYTES = 8_038
-_PINNED_PANDA_USD_SHA256 = "7f5a0c0aa6760cfbd348e08bc464d4b94341f027f51c2d9e42406ceefcc7787f"
-_MAX_RUNTIME_USD_BYTES = 1 << 20
-_REVIEWED_REGISTRY_USD_BASENAME = "franka_panda_hand_on_stand.usd"
-_REVIEWED_REGISTRY_USD_SUFFIX = f"/Arena/assets/robot_library/{_REVIEWED_REGISTRY_USD_BASENAME}"
+_TASK_PROFILE = FRANKA_PICK_CUBE_INTO_BOWL
+_REVIEWED_REGISTRY_USD_SUFFIX = f"/Arena/assets/robot_library/{_TASK_PROFILE.registry_usd_basename}"
 _MAX_REGISTRY_USD_PATH_LENGTH = 4_096
 
 
@@ -139,7 +130,7 @@ def create_schedulestream_episode_planner(
     del attachment_state
     application = getattr(compatibility, "schedulestream_application", None)
     motion_backend = getattr(compatibility, "motion_backend", None)
-    if application != "custream" or motion_backend != "curobo_v1":
+    if application != _TASK_PROFILE.schedulestream_application or motion_backend != _TASK_PROFILE.motion_backend:
         if application == "custream2" and motion_backend == "curobo_v2":
             raise ScheduleStreamProviderError(
                 "custream2 command lowering is available, but no reviewed live v2 IsaacLab world/planner "
@@ -245,8 +236,8 @@ def _task_pick_place_binding(resolved_request: Any, predicates: tuple[Any, ...])
         raise ScheduleStreamProviderError("resolved graph node IDs are invalid or duplicated")
     nodes_by_id = {node["id"]: node for node in nodes}
     expected = (
-        (pick_up_object, V1_REVIEWED_GRASPABLE_ASSET, "pickup"),
-        (destination_object, V1_REVIEWED_DESTINATION_ASSET, "destination"),
+        (pick_up_object, _TASK_PROFILE.graspable_asset, "pickup"),
+        (destination_object, _TASK_PROFILE.destination_asset, "destination"),
     )
     for object_id, asset_name, role in expected:
         node = nodes_by_id.get(object_id)
@@ -259,7 +250,12 @@ def _task_pick_place_binding(resolved_request: Any, predicates: tuple[Any, ...])
             raise ScheduleStreamProviderError(
                 f"linked {role} {object_id!r} is not the unmodified reviewed asset {asset_name!r}"
             )
-    return pick_up_object, destination_object, V1_REVIEWED_GRASPABLE_ASSET, V1_REVIEWED_DESTINATION_ASSET
+    return (
+        pick_up_object,
+        destination_object,
+        _TASK_PROFILE.graspable_asset,
+        _TASK_PROFILE.destination_asset,
+    )
 
 
 def _bounded_graph_id(value: Any) -> bool:
@@ -272,35 +268,35 @@ def _require_v1_runtime_asset_evidence(evidence: Any) -> None:
     expected_root_layer = {
         "attestation_method": "https_exact_url_sha256_v1",
         "attested": True,
-        "bytes": _PINNED_PANDA_USD_BYTES,
+        "bytes": _TASK_PROFILE.runtime_usd_bytes,
         "content_encoding": "identity",
-        "expected_bytes": _PINNED_PANDA_USD_BYTES,
-        "expected_sha256": _PINNED_PANDA_USD_SHA256,
-        "final_url": _PINNED_PANDA_USD,
+        "expected_bytes": _TASK_PROFILE.runtime_usd_bytes,
+        "expected_sha256": _TASK_PROFILE.runtime_usd_sha256,
+        "final_url": _TASK_PROFILE.runtime_usd_path,
         "http_status": 200,
-        "max_bytes": _MAX_RUNTIME_USD_BYTES,
+        "max_bytes": _TASK_PROFILE.runtime_usd_max_bytes,
         "redirects_allowed": False,
         "scope": "root_layer_bytes_only",
-        "sha256": _PINNED_PANDA_USD_SHA256,
-        "url": _PINNED_PANDA_USD,
+        "sha256": _TASK_PROFILE.runtime_usd_sha256,
+        "url": _TASK_PROFILE.runtime_usd_path,
     }
     expected_top_level = {
         "attested": True,
         "attestation_scope": "runtime_usd_root_layer_identity_only",
         "kinematic_frame_attestation": "separate_live_provider_attestation_required",
-        "motion_backend": "curobo_v1",
+        "motion_backend": _TASK_PROFILE.motion_backend,
         "override": "composed_scene.robot.spawn.usd_path_only",
-        "profile": "franka_ik_custream_v1_official_root_usd",
+        "profile": _TASK_PROFILE.runtime_asset_profile,
         "reason": "pinned_official_isaac_5_1_root_layer_content_identity",
         "referenced_usd_dependencies_attested": False,
-        "registry_usd_basename": _REVIEWED_REGISTRY_USD_BASENAME,
-        "runtime_usd_basename": "panda_instanceable.usd",
-        "runtime_usd_path": _PINNED_PANDA_USD,
+        "registry_usd_basename": _TASK_PROFILE.registry_usd_basename,
+        "runtime_usd_basename": _TASK_PROFILE.runtime_usd_basename,
+        "runtime_usd_path": _TASK_PROFILE.runtime_usd_path,
         "runtime_usd_release": "Isaac 5.1",
         "runtime_uri_policy": "pinned_exact_https_no_redirect",
-        "schedulestream_application": "custream",
+        "schedulestream_application": _TASK_PROFILE.schedulestream_application,
         "schema_version": 2,
-        "semantic_embodiment": "franka_ik",
+        "semantic_embodiment": _TASK_PROFILE.embodiment_name,
     }
     if not isinstance(evidence, Mapping) or set(evidence) != set(expected_top_level) | {
         "registry_usd_path",

@@ -21,12 +21,17 @@ from isaac_autodata_core.autonomous.dense_trace import (
     DensePlanTrace,
     task_motion_plan_from_dense_trace,
 )
-from isaac_autodata_core.autonomous.schedulestream_goal import (
-    ScheduleStreamGoalSymbols,
-    compile_schedulestream_goal,
-    load_schedulestream_goal_symbols,
+from isaac_autodata_core.autonomous.task_motion import (
+    IDENTITY_MATRIX4,
+    GoalPredicate,
+    Matrix4,
+    TaskMotionPlan,
+    matrix4,
+    matrix4_error,
+    matrix4_inverse,
+    matrix4_multiply,
 )
-from isaac_autodata_core.autonomous.task_motion import GoalPredicate, Matrix4, TaskMotionPlan, matrix4
+from isaac_autodata_interfaces.autonomous.profiles.franka_pick_cube_into_bowl import FRANKA_PICK_CUBE_INTO_BOWL
 from isaac_autodata_interfaces.autonomous.schedulestream.command_types import (
     MalformedScheduleStreamCommandError,
     ScheduleStreamClosedError,
@@ -37,28 +42,29 @@ from isaac_autodata_interfaces.autonomous.schedulestream.command_types import (
     ScheduleStreamProviderError,
     ScheduleStreamTimingError,
 )
-
-V1_FRANKA_USD_BASENAMES = frozenset({
-    "franka_panda_hand_on_stand.usd",
-    "panda_instanceable.usd",
-})
-V1_IK_JOINT_LIMIT_MARGIN_RAD = 1e-3
-V1_FRAME_ATTESTATION_MAX_POSITION_ERROR_M = 0.005
-V1_FRAME_ATTESTATION_MAX_ROTATION_ERROR_RAD = 0.01
-V1_GRASP_GEOMETRY_MAX_POSITION_ROUNDOFF_M = 1e-7
-V1_GRASP_GEOMETRY_MAX_ROTATION_ROUNDOFF_RAD = 1e-6
-V1_REVIEWED_GRASPABLE_ASSET = "rubiks_cube_hot3d_robolab"
-V1_REVIEWED_DESTINATION_ASSET = "bowl_ycb_robolab"
-V1_DESTINATION_PLACEMENT_PROFILE = "franka_rubiks_cube_to_ycb_bowl_aabb_top_plane_v1"
-V1_GRASP_GEOMETRY_PROFILE = "franka_rubiks_cube_offcenter_cuboid_top_v1"
-V1_DESIRED_AABB_CENTER_VERTICAL_OFFSET_M = 0.03
-V1_VERTICAL_EVIDENCE_CORRIDOR_M = 0.04
-V1_REVIEWED_GRASPABLE_AABB_DIMENSION_BOUNDS_M = ((0.05, 0.065),) * 3
-V1_REVIEWED_DESTINATION_AABB_DIMENSION_BOUNDS_M = (
-    (0.14, 0.17),
-    (0.14, 0.17),
-    (0.04, 0.07),
+from isaac_autodata_interfaces.autonomous.schedulestream.goal_lowering import (
+    ScheduleStreamGoalSymbols,
+    compile_schedulestream_goal,
+    load_schedulestream_goal_symbols,
 )
+
+_TASK_PROFILE = FRANKA_PICK_CUBE_INTO_BOWL
+
+# Public compatibility aliases. New integration code should consume the task profile directly.
+V1_FRANKA_USD_BASENAMES = _TASK_PROFILE.franka_usd_basenames
+V1_IK_JOINT_LIMIT_MARGIN_RAD = _TASK_PROFILE.ik_joint_limit_margin_rad
+V1_FRAME_ATTESTATION_MAX_POSITION_ERROR_M = _TASK_PROFILE.frame_max_position_error_m
+V1_FRAME_ATTESTATION_MAX_ROTATION_ERROR_RAD = _TASK_PROFILE.frame_max_rotation_error_rad
+V1_GRASP_GEOMETRY_MAX_POSITION_ROUNDOFF_M = _TASK_PROFILE.grasp_max_position_roundoff_m
+V1_GRASP_GEOMETRY_MAX_ROTATION_ROUNDOFF_RAD = _TASK_PROFILE.grasp_max_rotation_roundoff_rad
+V1_REVIEWED_GRASPABLE_ASSET = _TASK_PROFILE.graspable_asset
+V1_REVIEWED_DESTINATION_ASSET = _TASK_PROFILE.destination_asset
+V1_DESTINATION_PLACEMENT_PROFILE = _TASK_PROFILE.destination_placement_profile
+V1_GRASP_GEOMETRY_PROFILE = _TASK_PROFILE.grasp_geometry_profile
+V1_DESIRED_AABB_CENTER_VERTICAL_OFFSET_M = _TASK_PROFILE.desired_aabb_center_vertical_offset_m
+V1_VERTICAL_EVIDENCE_CORRIDOR_M = _TASK_PROFILE.vertical_evidence_corridor_m
+V1_REVIEWED_GRASPABLE_AABB_DIMENSION_BOUNDS_M = _TASK_PROFILE.graspable_aabb_dimension_bounds_m
+V1_REVIEWED_DESTINATION_AABB_DIMENSION_BOUNDS_M = _TASK_PROFILE.destination_aabb_dimension_bounds_m
 
 _ModuleLoader = Callable[[], Any]
 _GoalSymbolsLoader = Callable[[str], ScheduleStreamGoalSymbols]
@@ -73,49 +79,6 @@ class _SeedSetter(Protocol):
 
     def __call__(self, *, seed: int) -> None:
         """Set the deterministic seed immediately before a planning attempt."""
-
-        ...
-
-
-class ScheduleStreamCommandPlanner(Protocol):
-    """Minimal planner-provider interface consumed before command lowering."""
-
-    application: str
-
-    def plan_commands(self, env_id: int = 0) -> tuple[Any, ...] | None:
-        """Return native commands, or ``None`` when the solver proves no plan."""
-
-        ...
-
-    def hold_commands(self, env_id: int = 0, *, steps: int) -> tuple[Any, ...]:
-        """Return explicit Configuration commands for a bounded hold."""
-
-        ...
-
-    def plan_dense_trace(
-        self,
-        context: ScheduleStreamLoweringContext,
-        env_id: int = 0,
-        *,
-        link_name: str | None = None,
-    ) -> DensePlanTrace | None:
-        """Return the upstream controller as an aligned, calibrated dense trace."""
-
-        ...
-
-    def plan_task_motion_plan(
-        self,
-        context: ScheduleStreamLoweringContext,
-        env_id: int = 0,
-        *,
-        link_name: str | None = None,
-    ) -> TaskMotionPlan | None:
-        """Return an IK-executor-compatible Cartesian task-motion plan."""
-
-        ...
-
-    def close(self) -> None:
-        """Release or forget owned planner resources."""
 
         ...
 
@@ -164,7 +127,7 @@ class V1IsaacLabPlannerConfig:
 class V1IsaacLabCommandPlanner:
     """Owned wrapper around a semantic subclass of upstream IsaacLab ``Planner``."""
 
-    application = "custream"
+    application = _TASK_PROFILE.schedulestream_application
 
     def __init__(
         self,
@@ -206,22 +169,6 @@ class V1IsaacLabCommandPlanner:
 
         diagnostics = getattr(self.world, "autodata_ik_joint_limit_evidence", None)
         return dict(diagnostics) if isinstance(diagnostics, Mapping) else {}
-
-    def plan_commands(self, env_id: int = 0) -> tuple[Any, ...] | None:
-        """Plan from one live environment and return unexecuted native commands."""
-
-        self._require_open()
-        _require_env_id(env_id)
-        return self._native_planner.plan_commands(env_id)
-
-    def hold_commands(self, env_id: int = 0, *, steps: int) -> tuple[Any, ...]:
-        """Capture the current configuration and repeat it for ``steps`` executor ticks."""
-
-        self._require_open()
-        _require_env_id(env_id)
-        if isinstance(steps, bool) or not isinstance(steps, int) or steps < 1 or steps > 1_000_000:
-            raise ValueError("steps must be an integer in [1, 1000000]")
-        return self._native_planner.hold_commands(env_id, steps=steps)
 
     def plan_dense_trace(
         self,
@@ -283,7 +230,7 @@ class V1IsaacLabCommandPlanner:
         if not raw_link_rows:
             raise MalformedScheduleStreamCommandError("PathController contains no link poses")
         raw_initial_body = _pose_vector_to_matrix(raw_link_rows[0], "controller.link_poses[0]")
-        initial_position_error, initial_rotation_error = _transform_error(
+        initial_position_error, initial_rotation_error = matrix4_error(
             raw_initial_body,
             frame_attestation["current_action_link"],
         )
@@ -297,7 +244,7 @@ class V1IsaacLabCommandPlanner:
         for index, row in enumerate(raw_link_rows):
             raw_body = _pose_vector_to_matrix(row, f"controller.link_poses[{index}]")
             raw_action_poses.append(raw_body)
-            lowered_eef = _matrix_multiply(raw_body, eef_offset)
+            lowered_eef = matrix4_multiply(raw_body, eef_offset)
             poses.append(matrix4(lowered_eef, f"controller.link_poses[{index}]"))
 
         joint_names = _bounded_names(controller.joints, "controller.joints", limits.max_joints)
@@ -400,7 +347,7 @@ class V1IsaacLabCommandPlanner:
             return None
         metadata = dict(context.metadata)
         metadata["schedulestream"] = {
-            "application": "custream",
+            "application": _TASK_PROFILE.schedulestream_application,
             "attachment_event_source": "aligned_binary_gripper_transitions",
             "attachment_events_preserved": True,
             "destination_placement": getattr(
@@ -417,7 +364,7 @@ class V1IsaacLabCommandPlanner:
             trace,
             request_digest=context.request_digest,
             snapshot_digest=context.snapshot_digest,
-            backend="schedulestream_custream",
+            backend=_TASK_PROFILE.schedulestream_plan_backend,
             backend_version=context.backend_version or "unknown",
             seed=context.seed,
             goal=context.goal,
@@ -510,7 +457,7 @@ def _initialize_semantic_v1_planner(
             object_pose_offset_evidence=object_pose_offset_evidence,
         )
         semantic_arm = _select_semantic_arm(tuple(native_world.arms), arm)
-        symbols = goal_symbols_loader("custream")
+        symbols = goal_symbols_loader(_TASK_PROFILE.schedulestream_application)
         semantic_goal = compile_schedulestream_goal(predicates, symbols, arm=semantic_arm)
     except Exception as exc:
         planner.world = None
@@ -747,7 +694,7 @@ def _validate_world_grasp_geometry(world: Any, graspable_object: str) -> dict[st
             raw["converted_object_origin_from_aabb_center"],
             "grasp_geometry.converted_object_origin_from_aabb_center",
         )
-        aabb_from_object = _rigid_inverse(object_from_aabb)
+        aabb_from_object = matrix4_inverse(object_from_aabb)
         primitive_transforms = tuple(
             _matrix_from_native(value, f"grasp_geometry.primitive[{index}]")
             for index, value in enumerate(primitive_values)
@@ -763,8 +710,8 @@ def _validate_world_grasp_geometry(world: Any, graspable_object: str) -> dict[st
     if len(set(link_from_object_transforms)) != 4:
         raise ScheduleStreamProviderError("v1 grasp geometry transforms are not unique")
     for index, (primitive, link_from_object) in enumerate(zip(primitive_transforms, link_from_object_transforms)):
-        expected = _matrix_multiply(primitive, aabb_from_object)
-        position_error, rotation_error = _transform_error(expected, link_from_object)
+        expected = matrix4_multiply(primitive, aabb_from_object)
+        position_error, rotation_error = matrix4_error(expected, link_from_object)
         if (
             position_error > V1_GRASP_GEOMETRY_MAX_POSITION_ROUNDOFF_M
             or rotation_error > V1_GRASP_GEOMETRY_MAX_ROTATION_ROUNDOFF_RAD
@@ -791,7 +738,7 @@ def _validate_world_grasp_geometry(world: Any, graspable_object: str) -> dict[st
         for index, pose in enumerate(configured_poses)
     )
     for index, (configured, link_from_object) in enumerate(zip(configured_transforms, link_from_object_transforms)):
-        position_error, rotation_error = _transform_error(configured, link_from_object)
+        position_error, rotation_error = matrix4_error(configured, link_from_object)
         if (
             position_error > V1_GRASP_GEOMETRY_MAX_POSITION_ROUNDOFF_M
             or rotation_error > V1_GRASP_GEOMETRY_MAX_ROTATION_ROUNDOFF_RAD
@@ -838,7 +785,7 @@ def _validate_world_destination_placement(
                 raw_geometry["converted_object_origin_from_aabb_center"],
                 f"converted_from_aabb[{expected_name}]",
             )
-            root_from_aabb = _matrix_multiply(root_from_converted, converted_from_aabb)
+            root_from_aabb = matrix4_multiply(root_from_converted, converted_from_aabb)
         except Exception as exc:
             raise ScheduleStreamProviderError(
                 f"failed to derive rigid-root-to-AABB-center transform for {expected_name!r}"
@@ -1133,16 +1080,6 @@ def create_v1_isaaclab_command_planner(
                 self.frames.extend(module.animate_commands(state, commands, frequency=1, record=self.video))
             return state, commands
 
-        def plan_commands(self, env_id: int) -> tuple[Any, ...] | None:
-            state, commands = self.solve_commands(env_id)
-            state.set()
-            if commands is None:
-                return None
-            try:
-                return tuple(module.Commands.flatten([commands]))
-            except Exception as exc:
-                raise ScheduleStreamProviderError("v1 planner returned a malformed command container") from exc
-
         def plan_controller(self, env_id: int) -> Any | None:
             state, commands = self.solve_commands(env_id)
             if commands is None:
@@ -1167,11 +1104,6 @@ def create_v1_isaaclab_command_planner(
                     f"failed to read current world pose for action link {link_name!r}"
                 ) from exc
             return _matrix_from_native(native_matrix, f"current_link[{link_name}]")
-
-        def hold_commands(self, env_id: int, *, steps: int) -> tuple[Any, ...]:
-            self.set_env_state(env_id)
-            command = self.world.configuration()
-            return (command,) * steps
 
     try:
         native_planner = SemanticV1Planner()
@@ -1833,7 +1765,7 @@ def _action_body_offset(env: Any, link_name: str) -> Matrix4:
         raise ScheduleStreamProviderError(f"expected one IK action term for body {link_name!r}, found {len(matches)}")
     offset = getattr(matches[0], "body_offset", None)
     if offset is None:
-        return _identity_matrix()
+        return IDENTITY_MATRIX4
     position = getattr(offset, "pos", (0.0, 0.0, 0.0))
     quaternion = getattr(offset, "rot", (0.0, 0.0, 0.0, 1.0))
     try:
@@ -1865,9 +1797,9 @@ def _attest_action_to_eef_transform(
     _require_rigid_transform(current_action_link, f"current_action_link[{action_link_name}]")
     _require_rigid_transform(observed_eef, "observed_eef_pose")
     _require_rigid_transform(configured_offset, f"configured_action_offset[{action_link_name}]")
-    observed_offset = _matrix_multiply(_rigid_inverse(current_action_link), observed_eef)
+    observed_offset = matrix4_multiply(matrix4_inverse(current_action_link), observed_eef)
     _require_rigid_transform(observed_offset, f"action_to_observed_eef[{action_link_name}]")
-    configured_position_error, configured_rotation_error = _transform_error(
+    configured_position_error, configured_rotation_error = matrix4_error(
         configured_offset,
         observed_offset,
     )
@@ -1996,21 +1928,6 @@ def _pose_vector_to_matrix(value: Any, field_name: str) -> Matrix4:
     return matrix4(result, field_name)
 
 
-def _matrix_multiply(first: Matrix4, second: Matrix4) -> Matrix4:
-    result = tuple(
-        tuple(sum(first[row][inner] * second[inner][column] for inner in range(4)) for column in range(4))
-        for row in range(4)
-    )
-    return matrix4(result, "pose_product")
-
-
-def _transform_error(first: Matrix4, second: Matrix4) -> tuple[float, float]:
-    position_error = math.sqrt(sum((first[row][3] - second[row][3]) ** 2 for row in range(3)))
-    relative_trace = sum(first[row][column] * second[row][column] for row in range(3) for column in range(3))
-    cosine = max(-1.0, min(1.0, (relative_trace - 1.0) / 2.0))
-    return position_error, math.acos(cosine)
-
-
 def _require_rigid_transform(value: Matrix4, field_name: str, *, tolerance: float = 1e-3) -> None:
     for first_column in range(3):
         for second_column in range(3):
@@ -2025,29 +1942,6 @@ def _require_rigid_transform(value: Matrix4, field_name: str, *, tolerance: floa
     )
     if abs(determinant - 1.0) > tolerance:
         raise ScheduleStreamProviderError(f"{field_name} rotation determinant is not +1")
-
-
-def _rigid_inverse(value: Matrix4) -> Matrix4:
-    rotation_t = tuple(tuple(value[column][row] for column in range(3)) for row in range(3))
-    translation = tuple(value[row][3] for row in range(3))
-    inverse_translation = tuple(
-        -sum(rotation_t[row][column] * translation[column] for column in range(3)) for row in range(3)
-    )
-    result = tuple(
-        tuple(rotation_t[row][column] for column in range(3)) + (inverse_translation[row],) for row in range(3)
-    ) + (
-        (0.0, 0.0, 0.0, 1.0),
-    )
-    return matrix4(result, "pose_inverse")
-
-
-def _identity_matrix() -> Matrix4:
-    return (
-        (1.0, 0.0, 0.0, 0.0),
-        (0.0, 1.0, 0.0, 0.0),
-        (0.0, 0.0, 1.0, 0.0),
-        (0.0, 0.0, 0.0, 1.0),
-    )
 
 
 def _to_builtin(value: Any, field_name: str) -> Any:

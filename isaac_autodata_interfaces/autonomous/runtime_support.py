@@ -19,30 +19,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from isaac_autodata_interfaces.autonomous.errors import AutonomousValidationError, ValidationIssue
+from isaac_autodata_interfaces.autonomous.profiles.franka_pick_cube_into_bowl import FRANKA_PICK_CUBE_INTO_BOWL
 from isaac_autodata_interfaces.autonomous.task_request_types import CompiledTaskRequest, canonical_json
 
 RUNTIME_SUPPORT_SCHEMA_VERSION = 1
-CURRENT_RUNTIME_SUPPORT = "franka_pick_and_place_custream_v1"
+CURRENT_RUNTIME_SUPPORT = FRANKA_PICK_CUBE_INTO_BOWL.name
 
-_SUPPORTED_MOTION_BACKEND = "curobo_v1"
-_SUPPORTED_SCHEDULESTREAM_APPLICATION = "custream"
-_SUPPORTED_EMBODIMENT = "franka_ik"
-_SUPPORTED_TASK_KIND = "PickAndPlaceTask"
-_SUPPORTED_RELATION = "on"
-_SUPPORTED_BACKGROUND_ASSET = "maple_table_robolab"
-_SUPPORTED_PICK_UP_ASSET = "rubiks_cube_hot3d_robolab"
-_SUPPORTED_DESTINATION_ASSET = "bowl_ycb_robolab"
-_REQUIRED_TASK_PARAMS = frozenset({"background_scene", "destination_location", "pick_up_object"})
 _MAX_GRAPH_ID_LENGTH = 128
 _LIVE_GRAPH_ID_PATTERN = re.compile(
     rf"[A-Za-z_][A-Za-z0-9_]{{0,{_MAX_GRAPH_ID_LENGTH - 1}}}",
     flags=re.ASCII,
 )
-_MAX_LIVE_BATCH_SIZE = 1024
-_MAX_LIVE_SUCCESSFUL_EPISODES = 10
-_MAX_LIVE_ATTEMPTS_PER_SUCCESS = 5
-_MAX_LIVE_PLANNER_TIME_S = 60.0
-_LIVE_INTERPOLATION_DT_S = 0.02
 
 
 class RuntimeSupportError(AutonomousValidationError):
@@ -244,20 +231,22 @@ def _validate_selected_runtime(
             )
         )
         return
-    if motion_backend != _SUPPORTED_MOTION_BACKEND:
+    if motion_backend != FRANKA_PICK_CUBE_INTO_BOWL.motion_backend:
         issues.append(
             ValidationIssue(
                 ("runtime", "selected_motion_backend"),
                 "live_motion_backend_unsupported",
-                f"the current live profile requires {_SUPPORTED_MOTION_BACKEND!r}; got {motion_backend!r}",
+                f"the current live profile requires {FRANKA_PICK_CUBE_INTO_BOWL.motion_backend!r}; "
+                f"got {motion_backend!r}",
             )
         )
-    if application != _SUPPORTED_SCHEDULESTREAM_APPLICATION:
+    if application != FRANKA_PICK_CUBE_INTO_BOWL.schedulestream_application:
         issues.append(
             ValidationIssue(
                 ("runtime", "schedulestream_application"),
                 "live_schedulestream_application_unsupported",
-                f"the current live profile requires {_SUPPORTED_SCHEDULESTREAM_APPLICATION!r}; got {application!r}",
+                "the current live profile requires "
+                f"{FRANKA_PICK_CUBE_INTO_BOWL.schedulestream_application!r}; got {application!r}",
             )
         )
 
@@ -278,16 +267,17 @@ def _validate_live_operational_limits(
         ),
         (
             type(getattr(planner, "max_time_s", None)) in (int, float)
-            and 0 < float(planner.max_time_s) <= _MAX_LIVE_PLANNER_TIME_S,
+            and 0 < float(planner.max_time_s) <= FRANKA_PICK_CUBE_INTO_BOWL.maximum_planner_time_s,
             ("planner", "max_time_s"),
             "live_planner_time_limit",
-            f"live planner max_time_s must be in (0, {_MAX_LIVE_PLANNER_TIME_S:g}]",
+            f"live planner max_time_s must be in (0, {FRANKA_PICK_CUBE_INTO_BOWL.maximum_planner_time_s:g}]",
         ),
         (
-            type(getattr(planner, "batch_size", None)) is int and 1 <= planner.batch_size <= _MAX_LIVE_BATCH_SIZE,
+            type(getattr(planner, "batch_size", None)) is int
+            and 1 <= planner.batch_size <= FRANKA_PICK_CUBE_INTO_BOWL.maximum_batch_size,
             ("planner", "batch_size"),
             "live_batch_size_limit",
-            f"live planner batch_size must be in [1, {_MAX_LIVE_BATCH_SIZE}]",
+            f"live planner batch_size must be in [1, {FRANKA_PICK_CUBE_INTO_BOWL.maximum_batch_size}]",
         ),
         (
             getattr(planner, "profile", None) is False,
@@ -303,24 +293,25 @@ def _validate_live_operational_limits(
         ),
         (
             type(getattr(planner, "interpolation_dt_s", None)) in (int, float)
-            and abs(float(planner.interpolation_dt_s) - _LIVE_INTERPOLATION_DT_S) <= 1e-9,
+            and abs(float(planner.interpolation_dt_s) - FRANKA_PICK_CUBE_INTO_BOWL.interpolation_dt_s) <= 1e-9,
             ("planner", "interpolation_dt_s"),
             "live_interpolation_dt_unsupported",
-            f"the reviewed live profile requires interpolation_dt_s={_LIVE_INTERPOLATION_DT_S:g}",
+            f"the reviewed live profile requires interpolation_dt_s={FRANKA_PICK_CUBE_INTO_BOWL.interpolation_dt_s:g}",
         ),
         (
             type(getattr(generation, "successful_episodes", None)) is int
-            and 1 <= generation.successful_episodes <= _MAX_LIVE_SUCCESSFUL_EPISODES,
+            and 1 <= generation.successful_episodes <= FRANKA_PICK_CUBE_INTO_BOWL.maximum_successful_episodes,
             ("generation", "successful_episodes"),
             "live_success_target_limit",
-            f"live successful_episodes must be in [1, {_MAX_LIVE_SUCCESSFUL_EPISODES}]",
+            f"live successful_episodes must be in [1, {FRANKA_PICK_CUBE_INTO_BOWL.maximum_successful_episodes}]",
         ),
         (
             type(getattr(generation, "max_attempts", None)) is int
             and type(getattr(generation, "successful_episodes", None)) is int
             and generation.successful_episodes >= 1
             and generation.successful_episodes <= generation.max_attempts
-            and generation.max_attempts <= generation.successful_episodes * _MAX_LIVE_ATTEMPTS_PER_SUCCESS,
+            and generation.max_attempts
+            <= generation.successful_episodes * FRANKA_PICK_CUBE_INTO_BOWL.maximum_attempts_per_success,
             ("generation", "max_attempts"),
             "live_attempt_limit",
             "live max_attempts must be at least successful_episodes and at most five attempts per requested success",
@@ -403,12 +394,12 @@ def _select_embodiment(
         return None
     index, embodiment = indexed[0]
     name = embodiment.get("name")
-    if name != _SUPPORTED_EMBODIMENT:
+    if name != FRANKA_PICK_CUBE_INTO_BOWL.embodiment_name:
         issues.append(
             ValidationIssue(
                 ("arena", "linked_graph", "nodes", index, "name"),
                 "live_embodiment_unsupported",
-                f"the current live profile requires {_SUPPORTED_EMBODIMENT!r}; got {name!r}",
+                f"the current live profile requires {FRANKA_PICK_CUBE_INTO_BOWL.embodiment_name!r}; got {name!r}",
             )
         )
     if embodiment.get("params") != {}:
@@ -436,12 +427,12 @@ def _select_task(
         )
         return None
     task = tasks[0]
-    if task.get("kind") != _SUPPORTED_TASK_KIND:
+    if task.get("kind") != FRANKA_PICK_CUBE_INTO_BOWL.task_kind:
         issues.append(
             ValidationIssue(
                 ("arena", "linked_graph", "tasks", 0, "kind"),
                 "live_task_kind_unsupported",
-                f"the current live profile requires {_SUPPORTED_TASK_KIND!r}; got {task.get('kind')!r}",
+                f"the current live profile requires {FRANKA_PICK_CUBE_INTO_BOWL.task_kind!r}; got {task.get('kind')!r}",
             )
         )
     return task
@@ -549,7 +540,7 @@ def _validate_task(
         )
         return None
     actual_keys = frozenset(params)
-    for missing in sorted(_REQUIRED_TASK_PARAMS - actual_keys):
+    for missing in sorted(FRANKA_PICK_CUBE_INTO_BOWL.required_task_params - actual_keys):
         issues.append(
             ValidationIssue(
                 task_path + ("params", missing),
@@ -557,7 +548,7 @@ def _validate_task(
                 f"the current PickAndPlaceTask profile requires param {missing!r}",
             )
         )
-    for unsupported in sorted(actual_keys - _REQUIRED_TASK_PARAMS):
+    for unsupported in sorted(actual_keys - FRANKA_PICK_CUBE_INTO_BOWL.required_task_params):
         issues.append(
             ValidationIssue(
                 task_path + ("params", unsupported),
@@ -573,16 +564,16 @@ def _validate_task(
         "pick_up_object": "object",
     }
     expected_assets = {
-        "background_scene": _SUPPORTED_BACKGROUND_ASSET,
-        "destination_location": _SUPPORTED_DESTINATION_ASSET,
-        "pick_up_object": _SUPPORTED_PICK_UP_ASSET,
+        "background_scene": FRANKA_PICK_CUBE_INTO_BOWL.background_asset,
+        "destination_location": FRANKA_PICK_CUBE_INTO_BOWL.destination_asset,
+        "pick_up_object": FRANKA_PICK_CUBE_INTO_BOWL.graspable_asset,
     }
     asset_issue_codes = {
         "background_scene": "live_background_asset_unsupported",
         "destination_location": "live_destination_asset_unsupported",
         "pick_up_object": "live_pick_up_geometry_unsupported",
     }
-    for name in sorted(_REQUIRED_TASK_PARAMS & actual_keys):
+    for name in sorted(FRANKA_PICK_CUBE_INTO_BOWL.required_task_params & actual_keys):
         value = params[name]
         path = task_path + ("params", name)
         if not _is_graph_id(value):
@@ -621,7 +612,7 @@ def _validate_task(
                 "pick_up_object and destination_location must reference distinct graph nodes",
             )
         )
-    return typed if set(typed) == _REQUIRED_TASK_PARAMS else None
+    return typed if set(typed) == FRANKA_PICK_CUBE_INTO_BOWL.required_task_params else None
 
 
 def _validate_initial_state(
@@ -760,12 +751,13 @@ def _validate_constraint(
     if not _is_graph_id(constraint_id):
         issues.append(ValidationIssue(path + ("id",), "graph_id_invalid", _graph_id_message(constraint_id)))
     relation = getattr(constraint, "kind", None)
-    if relation != _SUPPORTED_RELATION:
+    if relation != FRANKA_PICK_CUBE_INTO_BOWL.success_relation:
         issues.append(
             ValidationIssue(
                 path + ("kind",),
                 "live_goal_relation_unsupported",
-                f"the current live profile requires relation {_SUPPORTED_RELATION!r}; got {relation!r}",
+                "the current live profile requires relation "
+                f"{FRANKA_PICK_CUBE_INTO_BOWL.success_relation!r}; got {relation!r}",
             )
         )
     subject = getattr(constraint, "subject", None)

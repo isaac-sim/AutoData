@@ -25,7 +25,7 @@ def main() -> None:
         from schedulestream.applications.isaaclab.controller import PathController
         from schedulestream.applications.isaaclab.planner import Planner
 
-        from isaac_autodata_interfaces.motion_planners.curobo.compat import (
+        from isaac_autodata_interfaces.motion_planners.curobo.backend_selection import (
             detect_curobo_runtime,
             select_schedulestream_backend,
         )

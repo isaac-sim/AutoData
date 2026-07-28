@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Import-free cuRobo and ScheduleStream runtime capability detection.
+"""Import-free cuRobo detection and ScheduleStream backend selection.
 
 ScheduleStream has two distinct manipulation applications: ``custream`` targets the cuRobo v1
 module layout, while ``custream2`` targets cuRobo v2. This module detects concrete API markers on

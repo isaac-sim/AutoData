@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Lazy native symbol loading for ScheduleStream's cuRobo v1 and v2 applications."""
+"""Lazy native symbols for experimental ScheduleStream v1/v2 command lowering."""
 
 from __future__ import annotations
 

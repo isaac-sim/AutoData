@@ -23,14 +23,16 @@ from isaac_autodata_core.autonomous.task_motion import (
     JointTrajectorySegment,
     WaitSegment,
 )
-from isaac_autodata_interfaces.autonomous.schedulestream import (
+from isaac_autodata_interfaces.autonomous.schedulestream.command_types import (
     MalformedScheduleStreamCommandError,
     ScheduleStreamClosedError,
-    ScheduleStreamCommandLowerer,
     ScheduleStreamCommandSymbols,
     ScheduleStreamLoweringContext,
     ScheduleStreamTimingError,
     UnsupportedScheduleStreamCommandError,
+)
+from isaac_autodata_interfaces.autonomous.schedulestream.experimental.command_lowering import (
+    ScheduleStreamCommandLowerer,
 )
 
 IDENTITY = (

@@ -440,7 +440,7 @@ def _run_parent(
     capabilities: Any | None = None
     try:
         if capability_detector is None or backend_selector is None:
-            from isaac_autodata_interfaces.motion_planners.curobo.compat import (
+            from isaac_autodata_interfaces.motion_planners.curobo.backend_selection import (
                 detect_curobo_runtime,
                 select_schedulestream_backend,
             )
@@ -652,7 +652,7 @@ def _run_runtime_child(  # noqa: C901 - explicit phase/cleanup boundary is inten
         capabilities: Any | None = None
         try:
             if capability_detector is None or backend_selector is None:
-                from isaac_autodata_interfaces.motion_planners.curobo.compat import (
+                from isaac_autodata_interfaces.motion_planners.curobo.backend_selection import (
                     detect_curobo_runtime,
                     select_schedulestream_backend,
                 )

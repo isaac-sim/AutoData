@@ -3,26 +3,22 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Import-safe ScheduleStream compatibility, command lowering, and planner factories."""
+"""Import-safe public surface for the live ScheduleStream planner."""
 
-from isaac_autodata_interfaces.autonomous.schedulestream.command_lowering import ScheduleStreamCommandLowerer
 from isaac_autodata_interfaces.autonomous.schedulestream.command_types import (
     MalformedScheduleStreamCommandError,
     ScheduleStreamBoundaryError,
     ScheduleStreamClosedError,
     ScheduleStreamCommandError,
-    ScheduleStreamCommandSymbols,
     ScheduleStreamImportError,
     ScheduleStreamLimitError,
     ScheduleStreamLoweringContext,
     ScheduleStreamLoweringLimits,
     ScheduleStreamProviderError,
     ScheduleStreamTimingError,
-    UnsupportedScheduleStreamCommandError,
 )
 from isaac_autodata_interfaces.autonomous.schedulestream.custream_v1 import (
     V1_FRANKA_USD_BASENAMES,
-    ScheduleStreamCommandPlanner,
     V1IsaacLabCommandPlanner,
     V1IsaacLabPlannerConfig,
     build_v1_isaaclab_world,
@@ -32,29 +28,33 @@ from isaac_autodata_interfaces.autonomous.schedulestream.episode_planner import 
     V1ScheduleStreamEpisodePlanner,
     create_schedulestream_episode_planner,
 )
-from isaac_autodata_interfaces.autonomous.schedulestream.symbols import load_schedulestream_command_symbols
+from isaac_autodata_interfaces.autonomous.schedulestream.goal_lowering import (
+    GoalCompilationError,
+    ScheduleStreamGoalSymbols,
+    compile_schedulestream_goal,
+    load_schedulestream_goal_symbols,
+)
 
 __all__ = [
     "V1_FRANKA_USD_BASENAMES",
+    "GoalCompilationError",
     "MalformedScheduleStreamCommandError",
     "ScheduleStreamBoundaryError",
     "ScheduleStreamClosedError",
     "ScheduleStreamCommandError",
-    "ScheduleStreamCommandPlanner",
-    "ScheduleStreamCommandSymbols",
-    "ScheduleStreamCommandLowerer",
+    "ScheduleStreamGoalSymbols",
     "ScheduleStreamImportError",
     "ScheduleStreamLimitError",
     "ScheduleStreamLoweringContext",
     "ScheduleStreamLoweringLimits",
     "ScheduleStreamProviderError",
     "ScheduleStreamTimingError",
-    "UnsupportedScheduleStreamCommandError",
     "V1IsaacLabCommandPlanner",
     "V1IsaacLabPlannerConfig",
     "V1ScheduleStreamEpisodePlanner",
     "build_v1_isaaclab_world",
+    "compile_schedulestream_goal",
     "create_schedulestream_episode_planner",
     "create_v1_isaaclab_command_planner",
-    "load_schedulestream_command_symbols",
+    "load_schedulestream_goal_symbols",
 ]

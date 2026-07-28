@@ -185,7 +185,7 @@ def run_cli(
 
     preflight: RuntimePreflightReport | None = None
     if not args.dry_run:
-        from isaac_autodata_interfaces.motion_planners.curobo.compat import (
+        from isaac_autodata_interfaces.motion_planners.curobo.backend_selection import (
             BackendCompatibilityError,
             detect_curobo_runtime,
             select_schedulestream_backend,

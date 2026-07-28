@@ -20,42 +20,19 @@ from isaac_autodata_core.autonomous.task_motion import (
     GripperCommandMode,
     GripperCommandSegment,
     TaskMotionPlan,
+    matrix4_inverse,
+    matrix4_multiply,
+)
+from isaac_autodata_interfaces.autonomous.profiles.franka_pick_cube_into_bowl import (
+    FRANKA_PICK_CUBE_INTO_BOWL,
+    PickPlaceSuccessThresholds,
 )
 
-_SCHEDULESTREAM_BACKENDS = frozenset({"schedulestream_custream", "schedulestream_custream2"})
-_FINGER_JOINT_NAMES = ("panda_finger_joint1", "panda_finger_joint2")
-_DESTINATION_PLACEMENT_PROFILE = "franka_rubiks_cube_to_ycb_bowl_aabb_top_plane_v1"
-_GRASP_GEOMETRY_PROFILE = "franka_rubiks_cube_offcenter_cuboid_top_v1"
-_REVIEWED_SUBJECT_ASSET = "rubiks_cube_hot3d_robolab"
-_REVIEWED_DESTINATION_ASSET = "bowl_ycb_robolab"
-
-
-@dataclass(frozen=True)
-class PickPlaceSuccessThresholds:
-    """Thresholds for the name-pinned v1 cube/bowl physical-success profile.
-
-    The geometry corridor is intentionally asset-specific and conservative. The admitted
-    capability pins the Rubik and bowl asset identities, while the provider attests their actual
-    converted AABBs inside reviewed drift envelopes. These thresholds are not general container
-    semantics; Arena's attested success term remains authoritative.
-    """
-
-    attachment_distance_m: float = 0.05
-    grasp_aperture_min_m: float = 0.040
-    grasp_aperture_max_m: float = 0.075
-    minimum_closed_samples: int = 10
-    minimum_lift_m: float = 0.030
-    minimum_transport_m: float = 0.050
-    maximum_relative_translation_drift_m: float = 0.020
-    maximum_relative_rotation_drift_rad: float = 0.35
-    minimum_success_streak: int = 5
-    maximum_final_linear_speed_m_s: float = 0.05
-    maximum_final_angular_speed_rad_s: float = 0.5
-    maximum_final_horizontal_radius_m: float = 0.028
-    maximum_final_vertical_offset_m: float = 0.040
-    maximum_destination_drift_m: float = 0.020
-    minimum_final_eef_separation_m: float = 0.060
-    minimum_final_aperture_m: float = 0.075
+_TASK_PROFILE = FRANKA_PICK_CUBE_INTO_BOWL
+_SCHEDULESTREAM_BACKENDS = frozenset({
+    _TASK_PROFILE.schedulestream_plan_backend,
+    "schedulestream_custream2",
+})
 
 
 @dataclass(frozen=True)
@@ -76,7 +53,7 @@ class PickPlaceSuccessTracker:
     """Accumulate live observations and check one physical pick-and-place execution."""
 
     schema_version = 3
-    profile = "franka_rubiks_cube_into_ycb_bowl_v1"
+    profile = _TASK_PROFILE.success_profile
 
     def __init__(
         self,
@@ -109,7 +86,7 @@ class PickPlaceSuccessTracker:
         self.placement_geometry = dict(placement_geometry)
         self.subject_aabb_center_offset_m = subject_aabb_center_offset_m
         self.target_aabb_center_offset_m = target_aabb_center_offset_m
-        self.thresholds = thresholds or PickPlaceSuccessThresholds()
+        self.thresholds = thresholds or _TASK_PROFILE.success_thresholds
         self._baseline: _PhysicalSample | None = None
         self._baseline_goal_satisfied: bool | None = None
         self._attachment_candidate: _PhysicalSample | None = None
@@ -575,7 +552,9 @@ class PickPlaceSuccessTracker:
         eef_poses = _mapping(sample.get("eef_poses_env"), "eef_poses_env")
         eef_pose = _matrix4(eef_poses.get(self.eef_name), f"eef_poses_env.{self.eef_name}")
         joint_positions = _mapping(sample.get("joint_positions"), "joint_positions")
-        aperture = sum(_finite(joint_positions.get(name), f"joint_positions.{name}") for name in _FINGER_JOINT_NAMES)
+        aperture = sum(
+            _finite(joint_positions.get(name), f"joint_positions.{name}") for name in _TASK_PROFILE.finger_joint_names
+        )
         subject_position = _vector3(subject.get("position_env_m"), f"objects.{self.subject}.position_env_m")
         subject_rotation = _quaternion_rotation(
             subject.get("quaternion_xyzw"),
@@ -618,7 +597,7 @@ def _validate_grasp_geometry(value: Any, subject_id: str) -> dict[str, Any]:
     """Validate the finite, name-pinned grasp geometry for the off-center mesh."""
 
     expected_scalars = {
-        "asset_name": _REVIEWED_SUBJECT_ASSET,
+        "asset_name": _TASK_PROFILE.graspable_asset,
         "attested": True,
         "composition_formula": "primitive_link_from_aabb_center*inverse(converted_object_origin_from_aabb_center)",
         "generator_storage": "reusable_finite_tuple",
@@ -630,7 +609,7 @@ def _validate_grasp_geometry(value: Any, subject_id: str) -> dict[str, Any]:
         "pitch_interval": "top",
         "pose_convention": "link_from_object_parent_from_child_homogeneous_4x4",
         "primitive": "cuboid",
-        "profile": _GRASP_GEOMETRY_PROFILE,
+        "profile": _TASK_PROFILE.grasp_geometry_profile,
         "schema_version": 1,
         "source": "schedulestream.applications.custream.grasp.primitive_grasp_generator",
     }
@@ -662,9 +641,9 @@ def _validate_grasp_geometry(value: Any, subject_id: str) -> dict[str, Any]:
     )
     if len(set(primitive)) != 4:
         raise ValueError("ScheduleStream grasp primitives must be unique")
-    aabb_from_object = _rigid_inverse4(object_from_aabb)
+    aabb_from_object = matrix4_inverse(object_from_aabb)
     for index, (primitive_pose, link_from_object_pose) in enumerate(zip(primitive, link_from_object)):
-        expected = _matrix_multiply4(primitive_pose, aabb_from_object)
+        expected = matrix4_multiply(primitive_pose, aabb_from_object)
         if any(
             not math.isclose(expected[row][column], link_from_object_pose[row][column], abs_tol=1e-7)
             for row in range(4)
@@ -682,7 +661,7 @@ def _validate_placement_geometry(value: Any, subject_id: str, target_id: str) ->
     if (
         value.get("attested") is not True
         or value.get("schema_version") != 1
-        or value.get("profile") != _DESTINATION_PLACEMENT_PROFILE
+        or value.get("profile") != _TASK_PROFILE.destination_placement_profile
         or value.get("relation") != "on"
         or value.get("general_inside_semantics") is not False
         or value.get("frame_convention") != "parent_from_child_homogeneous_4x4"
@@ -715,11 +694,15 @@ def _validate_placement_geometry(value: Any, subject_id: str, target_id: str) ->
     object_from_aabb = {}
     dimensions_by_role = {}
     expected_records = {
-        "subject": (subject_id, _REVIEWED_SUBJECT_ASSET, ((0.05, 0.065),) * 3),
+        "subject": (
+            subject_id,
+            _TASK_PROFILE.graspable_asset,
+            _TASK_PROFILE.graspable_aabb_dimension_bounds_m,
+        ),
         "destination": (
             target_id,
-            _REVIEWED_DESTINATION_ASSET,
-            ((0.14, 0.17), (0.14, 0.17), (0.04, 0.07)),
+            _TASK_PROFILE.destination_asset,
+            _TASK_PROFILE.destination_aabb_dimension_bounds_m,
         ),
     }
     for role, (object_id, asset_name, dimension_bounds) in expected_records.items():
@@ -875,31 +858,6 @@ def _matrix4(value: Any, field_name: str) -> tuple[tuple[float, float, float, fl
     if abs(determinant - 1.0) > 1e-4:
         raise ValueError(f"physical evidence {field_name} rotation determinant must be +1")
     return tuple(rows)  # type: ignore[return-value]
-
-
-def _rigid_inverse4(
-    value: tuple[tuple[float, float, float, float], ...],
-) -> tuple[tuple[float, float, float, float], ...]:
-    rotation_transpose = tuple(tuple(value[column][row] for column in range(3)) for row in range(3))
-    translation = tuple(value[row][3] for row in range(3))
-    inverse_translation = tuple(
-        -sum(rotation_transpose[row][column] * translation[column] for column in range(3)) for row in range(3)
-    )
-    return tuple(
-        tuple(rotation_transpose[row][column] for column in range(3)) + (inverse_translation[row],) for row in range(3)
-    ) + (
-        (0.0, 0.0, 0.0, 1.0),
-    )
-
-
-def _matrix_multiply4(
-    left: tuple[tuple[float, float, float, float], ...],
-    right: tuple[tuple[float, float, float, float], ...],
-) -> tuple[tuple[float, float, float, float], ...]:
-    return tuple(
-        tuple(sum(left[row][index] * right[index][column] for index in range(4)) for column in range(4))
-        for row in range(4)
-    )  # type: ignore[return-value]
 
 
 def _quaternion_rotation(value: Any, field_name: str) -> tuple[tuple[float, float, float], ...]:

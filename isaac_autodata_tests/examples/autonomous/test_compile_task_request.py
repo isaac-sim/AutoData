@@ -31,7 +31,7 @@ from isaac_autodata_interfaces.autonomous.task_request_types import (
     canonical_json,
     sha256_json,
 )
-from isaac_autodata_interfaces.motion_planners.curobo.compat import (
+from isaac_autodata_interfaces.motion_planners.curobo.backend_selection import (
     CuroboApiGeneration,
     CuroboRuntimeCapabilities,
     DistributionIdentity,
@@ -192,7 +192,7 @@ def test_module_import_does_not_load_simulator_or_planner_stacks() -> None:
 
 def test_dry_run_does_not_import_runtime_probe_or_heavy_stacks() -> None:
     forbidden = (
-        "isaac_autodata_interfaces.motion_planners.curobo.compat",
+        "isaac_autodata_interfaces.motion_planners.curobo.backend_selection",
         "isaaclab",
         "isaaclab_arena",
         "isaacsim",
