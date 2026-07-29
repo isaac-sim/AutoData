@@ -78,7 +78,7 @@ ARG INSTALL_CUROBO=false
 ARG TORCH_CUDA_ARCH_LIST=8.0+PTX
 
 ENV CUDA_HOME=/usr/local/cuda-12.8
-ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV PATH=/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}
 ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
 COPY docker/setup/install_curobo.sh /tmp/install_curobo.sh
 RUN if [ "$INSTALL_CUROBO" = "true" ]; then \
@@ -88,7 +88,8 @@ RUN if [ "$INSTALL_CUROBO" = "true" ]; then \
     fi && rm -f /tmp/install_curobo.sh
 
 # Set aliases for the shell
-RUN echo "alias python='/isaac-sim/python.sh'" >> /etc/bash.bashrc \
+RUN echo 'export PATH="/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}"' >> /etc/bash.bashrc \
+ && echo "alias python='/isaac-sim/python.sh'" >> /etc/bash.bashrc \
  && echo "alias pip3='/isaac-sim/python.sh -m pip'" >> /etc/bash.bashrc \
  && echo "alias pytest='/isaac-sim/python.sh -m pytest'" >> /etc/bash.bashrc \
  && echo "alias pre-commit='/isaac-sim/python.sh -m pre_commit'" >> /etc/bash.bashrc \
