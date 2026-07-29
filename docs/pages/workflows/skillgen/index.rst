@@ -136,6 +136,7 @@ the keyboard.
 
    python scripts/annotate_demos.py \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --viz kit \
        --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
        --input_file ./datasets/dataset_franka.hdf5 \
