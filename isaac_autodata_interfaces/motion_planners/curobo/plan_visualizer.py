@@ -145,12 +145,16 @@ class PlanVisualizer:
         # Initialize Rerun
         rr.init(self.recording_id, spawn=False)
 
-        # Spawn viewer and keep handle if provided so we can terminate it later
+        # Spawn the viewer. Recent Rerun SDK versions return ``None`` while older versions may
+        # return a process handle, so cleanup supports either result.
+        self._rerun_process = None
         try:
             self._rerun_process = rr.spawn()
-        except Exception:
-            # Older versions of Rerun may not return a process handle
-            self._rerun_process = None
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to spawn the Rerun viewer. Ensure the `rerun` executable is installed "
+                "and available on PATH; Isaac Sim installs it under /isaac-sim/kit/python/bin."
+            ) from exc
 
         # Set up coordinate system
         rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_UP)
