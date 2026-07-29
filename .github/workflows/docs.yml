@@ -1,0 +1,71 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Isaac AutoData Docs
+
+# Publish after updates to main while retaining the existing nightly, manual, and release-tag publication paths.
+# Keeping deployment separate prevents documentation updates from launching the full GPU nightly suite.
+on:
+  push:
+    branches: ["main"]
+    tags:
+      - "v*"
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+
+  publish_docs:
+    name: Publish docs (GitHub Pages)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: false
+          lfs: true
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build docs
+        run: |
+          pip install --no-cache-dir -r docs/requirements.txt
+          make -C docs multi-docs SPHINXOPTS=-W
+          touch docs/_build/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
