@@ -12,18 +12,7 @@ import torch
 
 import isaaclab.utils.math as PoseUtils
 
-
-def _load_tps_functions():
-    """Load the pinned Rapprentice TPS implementation on first use."""
-
-    try:
-        from rapprentice.tps import tps_cost, tps_eval, tps_fit, tps_fit2, tps_grad
-    except ImportError as exc:
-        raise ImportError(
-            "SoftMimicGen requires the 'rapprentice' package. Rebuild the AutoData Docker image "
-            "after the SoftMimicGen dependency change."
-        ) from exc
-    return tps_cost, tps_eval, tps_fit, tps_fit2, tps_grad
+from isaac_autodata_utils import thin_plate_spline as tps
 
 
 def transform_source_data_segment_using_nodal_registration(
@@ -64,33 +53,32 @@ def transform_source_data_segment_using_nodal_registration(
         f"{src_obj_nodal_pos.shape[0]} != {tgt_obj_nodal_pos.shape[0]}"
     )
 
-    _, tps_eval, _, tps_fit2, tps_grad = _load_tps_functions()
     src_nodal_np = src_obj_nodal_pos.detach().cpu().numpy()
     tgt_nodal_np = tgt_obj_nodal_pos.detach().cpu().numpy()
-    lin_ag, trans_g, w_ng = tps_fit2(
-        x_na=src_nodal_np,
-        y_ng=tgt_nodal_np,
-        bend_coef=bend_coef,
-        rot_coef=rot_coef,
+    linear, translation, weights = tps.fit_reduced(
+        source_points=src_nodal_np,
+        target_points=tgt_nodal_np,
+        bend_coefficient=bend_coef,
+        rotation_coefficient=rot_coef,
     )
 
     src_eef_pos, src_eef_rot = PoseUtils.unmake_pose(src_eef_poses)
     src_eef_pos_np = src_eef_pos.detach().cpu().numpy()
-    transformed_pos_np = tps_eval(
-        x_ma=src_eef_pos_np,
-        lin_ag=lin_ag,
-        trans_g=trans_g,
-        w_ng=w_ng,
-        x_na=src_nodal_np,
+    transformed_pos_np = tps.evaluate(
+        query_points=src_eef_pos_np,
+        linear=linear,
+        translation=translation,
+        weights=weights,
+        source_points=src_nodal_np,
     )
 
     if use_rotation_transform:
-        jacobians = tps_grad(
-            x_ma=src_eef_pos_np,
-            lin_ag=lin_ag,
-            _trans_g=trans_g,
-            w_ng=w_ng,
-            x_na=src_nodal_np,
+        jacobians = tps.gradient(
+            query_points=src_eef_pos_np,
+            linear=linear,
+            translation=translation,
+            weights=weights,
+            source_points=src_nodal_np,
         )
         src_eef_rot_np = src_eef_rot.detach().cpu().numpy()
         transformed_rot_np = np.empty_like(src_eef_rot_np)
@@ -147,22 +135,19 @@ def nodal_registration_cost(
         src_obj_nodal_pos.ndim == 2 and src_obj_nodal_pos.shape[1] == 3
     ), f"nodal positions must have shape (N, 3), got {tuple(src_obj_nodal_pos.shape)}"
 
-    tps_cost, _, tps_fit, _, _ = _load_tps_functions()
     src_nodal_np = src_obj_nodal_pos.detach().cpu().numpy()
     tgt_nodal_np = tgt_obj_nodal_pos.detach().cpu().numpy()
-    lin_ag, trans_g, w_ng = tps_fit(
-        src_nodal_np,
-        tgt_nodal_np,
-        bend_coef,
-        rot_reg,
+    linear, translation, weights = tps.fit(
+        source_points=src_nodal_np,
+        target_points=tgt_nodal_np,
+        bend_coefficient=bend_coef,
+        rotation_coefficient=rot_reg,
     )
-    return float(
-        tps_cost(
-            lin_ag,
-            trans_g,
-            w_ng,
-            src_nodal_np,
-            tgt_nodal_np,
-            bend_coef,
-        )
+    return tps.cost(
+        linear=linear,
+        translation=translation,
+        weights=weights,
+        source_points=src_nodal_np,
+        target_points=tgt_nodal_np,
+        bend_coefficient=bend_coef,
     )
