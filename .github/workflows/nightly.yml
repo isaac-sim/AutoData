@@ -34,7 +34,7 @@ jobs:
       PYTEST_MARK: ""
       ISAAC_AUTODATA_RESULTS_DIR: test-results
       # Isolate registry authentication from credentials cached on persistent self-hosted runners.
-      DOCKER_CONFIG: ${{ runner.temp }}/autodata-docker-${{ github.run_id }}-${{ github.run_attempt }}
+      DOCKER_CONFIG: /tmp/autodata-docker-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       # Self-hosted runners persist the workspace; clear prior results so an early

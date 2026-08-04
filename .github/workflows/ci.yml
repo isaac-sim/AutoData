@@ -66,7 +66,7 @@ jobs:
     env:
       TEST_PATH: "isaac_autodata_tests/e2e/ isaac_autodata_tests/interfaces/ isaac_autodata_tests/core/"
       # Isolate registry authentication from credentials cached on persistent self-hosted runners.
-      DOCKER_CONFIG: ${{ runner.temp }}/autodata-docker-${{ github.run_id }}-${{ github.run_attempt }}
+      DOCKER_CONFIG: /tmp/autodata-docker-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: nvidia-smi
