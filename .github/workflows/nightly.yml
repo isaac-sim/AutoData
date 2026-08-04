@@ -33,8 +33,6 @@ jobs:
       FORCE_REBUILD: "true"
       PYTEST_MARK: ""
       ISAAC_AUTODATA_RESULTS_DIR: test-results
-      # Isolate registry authentication from credentials cached on persistent self-hosted runners.
-      DOCKER_CONFIG: /tmp/autodata-docker-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       # Self-hosted runners persist the workspace; clear prior results so an early
@@ -62,14 +60,6 @@ jobs:
         run: |
           git lfs install --local
           git lfs pull
-
-      - name: Log in to NVIDIA NGC
-        uses: docker/login-action@v4
-        with:
-          registry: nvcr.io
-          username: '$oauthtoken'
-          password: ${{ secrets.NGC_API_KEY }}
-          logout: true
 
       - name: Run full E2E suite
         run: ./scripts/ci/run_tests.sh
