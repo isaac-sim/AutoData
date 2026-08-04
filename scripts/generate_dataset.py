@@ -21,9 +21,8 @@ The ``--alg`` choice selects the :class:`GenerationAlgorithm` plug-in driving th
 
 * ``mimicgen`` — single-arm MimicGen.
 * ``dexmimicgen`` — two-arm MimicGen with subtask coordination constraints.
-* ``skillgen`` — single-arm SkillGen. SkillGen depends on a motion-planner interface; until the
-  planner code is ported into this repo, the CLI satisfies that interface with the upstream Arena
-  ``CuroboPlanner``.
+* ``skillgen`` — single-arm SkillGen. SkillGen needs a motion planner; ``--planner_backend``
+  selects the cuRobo backend that provides it (see :func:`_build_motion_planners`).
 
 The CLI composes a :class:`Datastream` from the task descriptor YAML, the embodiment YAML, the
 live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
@@ -38,6 +37,9 @@ from isaaclab.app import AppLauncher
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in isaac_autodata_core.algorithms.
 _ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
+# Mirrors isaac_autodata_interfaces.motion_planners.PLANNER_BACKENDS; hardcoded for the same
+# reason, since resolving a backend imports its cuRobo version.
+_PLANNER_BACKEND_CHOICES = ["curobo", "curobo_v2"]
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument(
@@ -98,6 +100,13 @@ parser.add_argument(
     "--visualize_plan",
     action="store_true",
     help="Visualize SkillGen motion plans in a Rerun viewer (env 0 only; requires the rerun package).",
+)
+parser.add_argument(
+    "--planner_backend",
+    type=str,
+    choices=_PLANNER_BACKEND_CHOICES,
+    default="curobo",
+    help="Motion-planner backend for skillgen. Each backend needs its matching cuRobo version installed.",
 )
 
 AppLauncher.add_app_launcher_args(parser)
@@ -229,32 +238,51 @@ def setup_async_generation(
 
 
 def _build_motion_planners(
-    datastream, num_envs: int, env_name: str, *, planner_profile: str | None = None, visualize_plan: bool = False
+    datastream,
+    num_envs: int,
+    env_name: str,
+    *,
+    backend: str = "curobo",
+    planner_profile: str | None = None,
+    visualize_plan: bool = False,
 ) -> dict:
-    """Construct one cuRobo v1 motion planner per env_id satisfying the SkillGen interface.
+    """Construct one motion planner per env_id satisfying the SkillGen interface.
 
     Planners read all world state (collision-geometry source, object poses, joint configuration)
     through the shared :class:`Datastream`, so they never touch the env/robot handles directly.
     The planner config comes from ``planner_profile`` (named by the environment profile) when
     given, else from task-name matching. Rerun plan visualization is opt-in via
     ``visualize_plan`` and limited to env 0.
-    """
-    from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner
-    from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
 
-    planners: dict[int, CuroboPlanner] = {}
+    Args:
+        datastream: Shared read facade the planners pull world state from.
+        num_envs: Number of parallel environments; one planner is built per env id.
+        env_name: Gym task id, used for planner-config lookup when no profile is given.
+        backend: Planner backend name (see
+            :data:`isaac_autodata_interfaces.motion_planners.PLANNER_BACKENDS`).
+        planner_profile: Planner-profile name from the environment profile, or None.
+        visualize_plan: Enable the Rerun plan visualizer on env 0.
+
+    Returns:
+        Mapping of env id to the planner serving it.
+    """
+    from isaac_autodata_interfaces.motion_planners import get_planner_backend
+
+    planner_cls, config_cls = get_planner_backend(backend)
+
+    planners: dict[int, object] = {}
     for env_id in range(num_envs):
         if planner_profile is not None:
-            planner_config = CuroboPlannerCfg.from_profile(planner_profile)
+            planner_config = config_cls.from_profile(planner_profile)
         else:
-            planner_config = CuroboPlannerCfg.from_task_name(env_name)
+            planner_config = config_cls.from_task_name(env_name)
         # Visualization is rerun-based; limit to env_id 0 to keep simulation responsive.
         if env_id == 0:
             planner_config.visualize_plan = planner_config.visualize_plan or visualize_plan
         else:
             planner_config.visualize_spheres = False
             planner_config.visualize_plan = False
-        planners[env_id] = CuroboPlanner(
+        planners[env_id] = planner_cls(
             datastream=datastream,
             config=planner_config,
             env_id=env_id,
@@ -330,6 +358,7 @@ def main() -> None:
             datastream,
             args_cli.num_envs,
             env_name,
+            backend=args_cli.planner_backend,
             planner_profile=env_profile.planner if env_profile else None,
             visualize_plan=args_cli.visualize_plan,
         )
