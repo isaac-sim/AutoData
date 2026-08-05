@@ -9,7 +9,6 @@ Guidelines for modifications:
 
 ## Core Team
 * Ansh Gandhi <anshg-NV, anshg@nvidia.com> (NVIDIA)
-* Benjamin Butin <bbutin-nvidia, bbutin@nvidia.com> (NVIDIA)
 * Heron Ordonez Guillen <hguillen, hguillen@nvidia.com> (NVIDIA)
 * Neel Jawale <njawale42, njawale@nvidia.com> (NVIDIA)
 * Peter Du <peter-NV, peterd@nvidia.com> (NVIDIA)
@@ -19,5 +18,5 @@ Guidelines for modifications:
 ## Contributors
 
 * Ashley Chow <ashchow@nvidia.com> (NVIDIA)
-* Caelan Gerrit <nv-caelan, cgarrett@nvidia.com> (NVIDIA)
+* Caelan Garrett <nv-caelan, cgarrett@nvidia.com> (NVIDIA)
 * Xinjie Yao <xyao-nv, xyao@nvidia.com> (NVIDIA)
