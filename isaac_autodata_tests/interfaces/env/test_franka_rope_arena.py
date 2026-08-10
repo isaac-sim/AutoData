@@ -40,7 +40,7 @@ def test_rope_task_exposes_annotation_and_success_terms():
     task = FrankaRopeTask()
     assert task.get_observation_cfg().subtask_terms.grasp is not None
     assert task.get_termination_cfg().success is not None
-    assert task.get_events_cfg().settle_rope_after_reset.params["settling_steps"] == 10
+    assert task.get_events_cfg().reset_object_position is not None
 
 
 def test_rope_embodiment_preserves_arena_observation_names():
