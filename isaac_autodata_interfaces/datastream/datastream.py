@@ -14,6 +14,7 @@ from isaaclab.utils.datasets import EpisodeData
 
 from isaac_autodata_core.pool import DataGenInfoPool
 from isaac_autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+from isaac_autodata_interfaces.env.scene_state import get_scene_state
 from isaac_autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from isaac_autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint
 from isaac_autodata_interfaces.tasks.subtask_spec import Subtask, SubtaskAlgoParams
@@ -345,7 +346,7 @@ class Datastream:
         hatch for callers that need the full dict (e.g. recorder ``initial_state``).
         """
 
-        return self.env.scene.get_state(is_relative=is_relative)
+        return get_scene_state(self.env.scene, is_relative=is_relative)
 
     # ------------------------------------------------------------------
     # Collision-world source

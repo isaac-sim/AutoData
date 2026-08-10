@@ -53,7 +53,7 @@ class FrankaRopeTaskObservationsCfg:
 
 @configclass
 class FrankaRopeTaskEventsCfg:
-    """Rope randomization, endpoint tracking, and post-reset settling."""
+    """Rope randomization and endpoint tracking events."""
 
     reset_rope_end_tracking = EventTerm(
         func=mdp.reset_rope_end_tracking,
@@ -82,12 +82,6 @@ class FrankaRopeTaskEventsCfg:
             },
             "asset_cfg": SceneEntityCfg("object"),
         },
-    )
-
-    settle_rope_after_reset = EventTerm(
-        func=mdp.settle_rope_after_reset,
-        mode="reset",
-        params={"settling_steps": 10},
     )
 
 
@@ -133,7 +127,7 @@ class FrankaRopeTask(TaskBase):
         return self.termination_cfg
 
     def get_events_cfg(self) -> FrankaRopeTaskEventsCfg:
-        """Return deformable reset and settling events."""
+        """Return deformable reset events."""
 
         return self.events_cfg
 

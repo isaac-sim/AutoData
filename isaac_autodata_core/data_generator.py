@@ -30,6 +30,7 @@ from isaac_autodata_core.transforms import (
     transform_source_data_segment_using_object_pose,
 )
 from isaac_autodata_core.waypoint import MultiWaypoint, Waypoint, WaypointSequence, WaypointTrajectory
+from isaac_autodata_interfaces.env.reset_request import EnvResetRequest
 from isaac_autodata_interfaces.tasks.subtask_constraint_spec import (
     SubTaskConstraintCoordinationScheme,
     SubTaskConstraintType,
@@ -654,8 +655,9 @@ class DataGenerator:
         # Recorder + reset queue stay on env. The initial scene state
         # snapshot is read through the Datastream interface.
         self.datastream.get_env().recorder_manager.reset(env_ids=env_id_tensor)
-        await env_reset_queue.put(env_id)
-        await env_reset_queue.join()
+        completion = asyncio.get_running_loop().create_future()
+        await env_reset_queue.put(EnvResetRequest(env_id=env_id, completion=completion))
+        await completion
         return env_id_tensor, self.datastream.get_scene_state(is_relative=True)
 
     def _build_runtime_subtask_constraints(self) -> dict:

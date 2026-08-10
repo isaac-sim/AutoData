@@ -20,6 +20,7 @@ def test_generation_policy_defaults():
     assert p.task_name is None
     assert p.use_skillgen is False
     assert p.use_navigation_controller is False
+    assert p.reset_settling_steps == 0
     assert p.select_src_per_subtask is False
     assert p.select_src_per_arm is False
     assert p.transform_first_robot_pose is False
@@ -27,11 +28,12 @@ def test_generation_policy_defaults():
 
 
 def test_generation_policy_from_kwargs():
-    p = GenerationPolicy(name="run", seed=42, num_trials=100, use_skillgen=True)
+    p = GenerationPolicy(name="run", seed=42, num_trials=100, use_skillgen=True, reset_settling_steps=10)
     assert p.name == "run"
     assert p.seed == 42
     assert p.num_trials == 100
     assert p.use_skillgen is True
+    assert p.reset_settling_steps == 10
     # Unspecified fields keep their defaults.
     assert p.guarantee_success is True
     assert p.interpolate_from_last_target_pose is True

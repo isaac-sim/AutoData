@@ -18,6 +18,7 @@ generation_policy:
   task_name: null
   use_skillgen: false
   use_navigation_controller: false
+  reset_settling_steps: 10
   select_src_per_subtask: false
   select_src_per_arm: false
   transform_first_robot_pose: false
