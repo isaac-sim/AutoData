@@ -1,6 +1,0 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
-# SPDX-License-Identifier: Apache-2.0
-
-"""Tests for experimental ScheduleStream integration surfaces."""

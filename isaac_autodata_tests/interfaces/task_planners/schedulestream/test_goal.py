@@ -3,16 +3,18 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+"""Tests for planner-neutral goal compilation into ScheduleStream formulas."""
+
 from __future__ import annotations
 
 import pytest
 
-from isaac_autodata_core.autonomous.task_motion import GoalPredicate
-from isaac_autodata_interfaces.autonomous.schedulestream.goal_lowering import (
+from isaac_autodata_interfaces.task_planners.schedulestream.goal import (
     GoalCompilationError,
     ScheduleStreamGoalSymbols,
     compile_schedulestream_goal,
 )
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 
 class _Formula:

@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import Any
 
 from isaac_autodata_core.autonomous.output_transaction import RecordingTargets
-from isaac_autodata_core.autonomous.task_motion import GoalPredicate
 from isaac_autodata_interfaces.autonomous.profiles.franka_pick_cube_into_bowl import FRANKA_PICK_CUBE_INTO_BOWL
 from isaac_autodata_interfaces.autonomous.task_request_types import CompiledTaskRequest
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 _TASK_PROFILE = FRANKA_PICK_CUBE_INTO_BOWL
 _RUNTIME_USD_READ_CHUNK_BYTES = 64 << 10

@@ -23,7 +23,6 @@ from isaac_autodata_core.autonomous.dense_trace import (
 )
 from isaac_autodata_core.autonomous.task_motion import (
     IDENTITY_MATRIX4,
-    GoalPredicate,
     Matrix4,
     TaskMotionPlan,
     matrix4,
@@ -42,11 +41,12 @@ from isaac_autodata_interfaces.autonomous.schedulestream.command_types import (
     ScheduleStreamProviderError,
     ScheduleStreamTimingError,
 )
-from isaac_autodata_interfaces.autonomous.schedulestream.goal_lowering import (
+from isaac_autodata_interfaces.task_planners.schedulestream.goal import (
     ScheduleStreamGoalSymbols,
     compile_schedulestream_goal,
     load_schedulestream_goal_symbols,
 )
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 _TASK_PROFILE = FRANKA_PICK_CUBE_INTO_BOWL
 

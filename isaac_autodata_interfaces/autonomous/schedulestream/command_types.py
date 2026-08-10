@@ -8,11 +8,12 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from isaac_autodata_core.autonomous.task_motion import GoalPredicate, JsonValue
+from isaac_autodata_core.autonomous.task_motion import JsonValue
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 
 class ScheduleStreamBoundaryError(RuntimeError):
@@ -50,12 +51,6 @@ class MalformedScheduleStreamCommandError(ScheduleStreamCommandError):
     code = "malformed_schedulestream_command"
 
 
-class UnsupportedScheduleStreamCommandError(ScheduleStreamCommandError):
-    """Raised when a native command has no faithful backend-neutral representation."""
-
-    code = "unsupported_schedulestream_command"
-
-
 class ScheduleStreamLimitError(ScheduleStreamCommandError):
     """Raised before an untrusted native stream exceeds a configured resource limit."""
 
@@ -75,53 +70,9 @@ class ScheduleStreamProviderError(ScheduleStreamBoundaryError):
 
 
 @dataclass(frozen=True)
-class ScheduleStreamCommandSymbols:
-    """Native command types and pose conversion for one ScheduleStream application.
-
-    The concrete classes are injected so pure tests need neither ScheduleStream nor cuRobo. The
-    production symbol loader imports the selected application only when lowering begins.
-    """
-
-    application: str
-    commands_type: type
-    composite_type: type
-    configuration_type: type
-    trajectory_type: type
-    link_path_type: type
-    open_type: type
-    close_type: type
-    attach_type: type
-    detach_type: type
-    pose_to_matrix: Callable[[Any], Any]
-
-    def __post_init__(self) -> None:
-        if self.application not in ("custream", "custream2"):
-            raise ValueError("application must be 'custream' or 'custream2'")
-        type_fields = (
-            "commands_type",
-            "composite_type",
-            "configuration_type",
-            "trajectory_type",
-            "link_path_type",
-            "open_type",
-            "close_type",
-            "attach_type",
-            "detach_type",
-        )
-        for field_name in type_fields:
-            if not isinstance(getattr(self, field_name), type):
-                raise TypeError(f"{field_name} must be a class")
-        if not callable(self.pose_to_matrix):
-            raise TypeError("pose_to_matrix must be callable")
-
-
-@dataclass(frozen=True)
 class ScheduleStreamLoweringLimits:
-    """Hard bounds applied before native arrays or recursive streams are materialized."""
+    """Hard bounds applied before a native dense controller is materialized."""
 
-    max_command_nodes: int = 100_000
-    max_nesting_depth: int = 32
-    max_composite_width: int = 64
     max_samples_per_segment: int = 100_000
     max_total_samples: int = 1_000_000
     max_joints: int = 256
@@ -129,9 +80,6 @@ class ScheduleStreamLoweringLimits:
 
     def __post_init__(self) -> None:
         integer_fields = (
-            "max_command_nodes",
-            "max_nesting_depth",
-            "max_composite_width",
             "max_samples_per_segment",
             "max_total_samples",
             "max_joints",

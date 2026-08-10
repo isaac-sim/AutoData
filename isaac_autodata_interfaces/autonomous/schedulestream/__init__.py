@@ -28,7 +28,7 @@ from isaac_autodata_interfaces.autonomous.schedulestream.episode_planner import 
     V1ScheduleStreamEpisodePlanner,
     create_schedulestream_episode_planner,
 )
-from isaac_autodata_interfaces.autonomous.schedulestream.goal_lowering import (
+from isaac_autodata_interfaces.task_planners.schedulestream.goal import (
     GoalCompilationError,
     ScheduleStreamGoalSymbols,
     compile_schedulestream_goal,

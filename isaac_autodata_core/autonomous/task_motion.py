@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, ClassVar, TypeAlias
 
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
+
 JsonScalar: TypeAlias = str | int | float | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 Matrix4: TypeAlias = tuple[
@@ -167,31 +169,6 @@ def _json_value(value: Any, field_name: str = "metadata", depth: int = 0) -> Jso
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return [_json_value(item, f"{field_name}[{index}]", depth + 1) for index, item in enumerate(value)]
     raise ValueError(f"{field_name} contains unsupported value type {type(value).__name__}")
-
-
-@dataclass(frozen=True, order=True)
-class GoalPredicate:
-    """One planner-neutral relational predicate."""
-
-    relation: str
-    subject: str
-    target: str | None = None
-
-    def __post_init__(self) -> None:
-        _require_text(self.relation, "relation", maximum=128)
-        _require_text(self.subject, "subject")
-        if self.target is not None:
-            _require_text(self.target, "target")
-
-    def to_dict(self) -> dict[str, str]:
-        result = {"relation": self.relation, "subject": self.subject}
-        if self.target is not None:
-            result["target"] = self.target
-        return result
-
-    @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> GoalPredicate:
-        return cls(relation=value["relation"], subject=value["subject"], target=value.get("target"))
 
 
 @dataclass(frozen=True)

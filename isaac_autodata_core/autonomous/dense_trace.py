@@ -13,7 +13,6 @@ from isaac_autodata_core.autonomous.task_motion import (
     AttachIntentSegment,
     CartesianTrajectorySegment,
     DetachIntentSegment,
-    GoalPredicate,
     GripperCommandMode,
     GripperCommandSegment,
     Matrix4,
@@ -22,6 +21,7 @@ from isaac_autodata_core.autonomous.task_motion import (
     make_stable_id,
     matrix4,
 )
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 
 @dataclass(frozen=True)

@@ -23,7 +23,6 @@ from isaac_autodata_core.autonomous.task_motion import (
     ExecutionEvent,
     ExecutionEventType,
     ExecutionOutcome,
-    GoalPredicate,
     GripperCommandMode,
     GripperCommandSegment,
     JointTrajectorySegment,
@@ -38,6 +37,7 @@ from isaac_autodata_core.autonomous.task_motion import (
     matrix4_inverse,
     matrix4_multiply,
 )
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 __all__ = [
     "AttachIntentSegment",

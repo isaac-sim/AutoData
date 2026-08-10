@@ -23,12 +23,12 @@ from isaac_autodata_core.autonomous.run_log import (
 )
 from isaac_autodata_core.autonomous.task_motion import (
     ExecutionEvent,
-    GoalPredicate,
     JsonValue,
     SceneSnapshot,
     TaskMotionPlan,
     make_stable_id,
 )
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 MAX_INLINE_PLAN_RECORD_BYTES = 512_000
 MAX_RESET_EVIDENCE_RECORD_BYTES = 64_000

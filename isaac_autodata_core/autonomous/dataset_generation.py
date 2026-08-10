@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from isaac_autodata_core.autonomous.attempt_generation import AttemptGenerator, AttemptRequest, AttemptResult
-from isaac_autodata_core.autonomous.task_motion import GoalPredicate
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 MAX_ATTEMPT_SEED = 2**63 - 1
 

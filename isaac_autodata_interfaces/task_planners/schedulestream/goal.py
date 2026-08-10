@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from isaac_autodata_core.autonomous.task_motion import GoalPredicate
+from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 
 class GoalCompilationError(ValueError):
