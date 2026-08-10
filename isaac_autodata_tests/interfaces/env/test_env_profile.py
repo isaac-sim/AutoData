@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Unit tests for the :mod:`isaac_autodata_interfaces.env.env_profile` schema.

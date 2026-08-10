@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # Franka bin cube stack (SkillGen). Runs on the neutral Isaac-Stack-Cube-Franka-IK-Rel-v0 task

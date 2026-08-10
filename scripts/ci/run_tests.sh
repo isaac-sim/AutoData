@@ -1,7 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Run the Isaac AutoData test suite inside the repo's GPU Docker image.
