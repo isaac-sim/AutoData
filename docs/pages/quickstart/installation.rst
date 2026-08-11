@@ -142,8 +142,8 @@ commands from the rest of the documentation:
 Installing cuRobo for SkillGen
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-SkillGen additionally requires cuRobo. Before installing it, review the
-`NVIDIA cuRobo license <https://github.com/isaac-sim/IsaacLab/blob/main/docs/licenses/dependencies/cuRobo-license.txt>`_.
+SkillGen additionally requires cuRobo. Before installing it, review the NVIDIA cuRobo license in
+:isaac_autodata_code_link:`<docs/licenses/curobo-license.txt>`.
 
 .. warning::
 
