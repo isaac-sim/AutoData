@@ -35,6 +35,7 @@ from isaac_autodata_interfaces.autonomous.schedulestream.custream_v1 import (
     _validate_world_graspability,
 )
 from isaac_autodata_interfaces.autonomous.schedulestream.episode_planner import _world_eef_pose_reader
+from isaac_autodata_interfaces.task_planners import GraspCandidateSet
 from isaac_autodata_interfaces.task_planners.schedulestream.goal import ScheduleStreamGoalSymbols
 
 IDENTITY = (
@@ -734,6 +735,11 @@ def test_v1_world_factory_makes_only_task_selected_dynamic_object_graspable() ->
         [-0.004, 0.005, 0.006]
     )
     grasp_geometry = world.autodata_grasp_geometry
+    grasp_candidates = world.autodata_grasp_candidates
+    assert isinstance(grasp_candidates, GraspCandidateSet)
+    assert grasp_candidates.method == "analytical"
+    assert grasp_candidates.object_id == "pick_cube"
+    assert len(grasp_candidates) == 4
     assert grasp_geometry["grasp_count"] == 4
     assert grasp_geometry["generator_storage"] == "reusable_finite_tuple"
     assert len(grasp_geometry["primitive_link_from_aabb_center_transforms"]) == 4
@@ -874,11 +880,18 @@ def test_v1_world_factory_rejects_malformed_analytical_grasp_sources(failure: st
 
 def test_world_graspability_rejects_missing_or_tampered_grasp_geometry() -> None:
     with pytest.raises(ScheduleStreamProviderError, match="grasp geometry"):
-        _validate_world_graspability(SimpleNamespace(movable_names=("cube",)), "cube")
+        _validate_world_graspability(
+            SimpleNamespace(
+                autodata_grasp_candidates=_factory_grasp_candidates("cube"),
+                movable_names=("cube",),
+            ),
+            "cube",
+        )
 
     grasp_geometry = _factory_grasp_geometry("cube")
     grasp_geometry["link_from_object_transforms"][0][0][3] = 1e-6
     world = SimpleNamespace(
+        autodata_grasp_candidates=_factory_grasp_candidates("cube"),
         autodata_grasp_geometry=grasp_geometry,
         movable_names=("cube",),
     )
@@ -1103,6 +1116,18 @@ def _factory_grasp_geometry(subject: str) -> dict:
     }
 
 
+def _factory_grasp_candidates(subject: str) -> GraspCandidateSet:
+    geometry = _factory_grasp_geometry(subject)
+    return GraspCandidateSet(
+        method="analytical",
+        object_id=subject,
+        link_from_object=tuple(
+            tuple(tuple(float(item) for item in row) for row in transform)
+            for transform in geometry["link_from_object_transforms"]
+        ),
+    )
+
+
 def _factory_destination_placement_geometry(subject: str, destination: str) -> dict:
     identity = [list(row) for row in np.eye(4)]
     return {
@@ -1238,6 +1263,7 @@ def test_concrete_v1_factory_compiles_semantic_goal_with_injected_runtime() -> N
         "table": _FactoryPose(),
     })
     world.autodata_destination_placement_geometry = _factory_destination_placement_geometry("cube", "table")
+    world.autodata_grasp_candidates = _factory_grasp_candidates("cube")
     world.autodata_grasp_geometry = _factory_grasp_geometry("cube")
     symbols = ScheduleStreamGoalSymbols(
         attached_equals=lambda subject, target: _Clause((("attached", subject, target),)),
@@ -1327,6 +1353,7 @@ def test_root_to_mesh_restore_preserves_rotated_noncommuting_offsets_after_upstr
     }
     world = _FactoryWorld({name: _multiply_factory_poses(initial_roots[name], offsets[name]) for name in initial_roots})
     world.autodata_destination_placement_geometry = _factory_destination_placement_geometry("cube", "bowl")
+    world.autodata_grasp_candidates = _factory_grasp_candidates("cube")
     world.autodata_grasp_geometry = _factory_grasp_geometry("cube")
     symbols = ScheduleStreamGoalSymbols(
         attached_equals=lambda subject, target: _Clause((("attached", subject, target),)),

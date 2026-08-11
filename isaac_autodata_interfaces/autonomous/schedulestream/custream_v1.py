@@ -21,10 +21,10 @@ from isaac_autodata_core.autonomous.dense_trace import (
     DensePlanTrace,
     task_motion_plan_from_dense_trace,
 )
-from isaac_autodata_core.autonomous.task_motion import (
+from isaac_autodata_core.autonomous.task_motion import TaskMotionPlan
+from isaac_autodata_core.transform import (
     IDENTITY_MATRIX4,
     Matrix4,
-    TaskMotionPlan,
     matrix4,
     matrix4_error,
     matrix4_inverse,
@@ -41,6 +41,7 @@ from isaac_autodata_interfaces.autonomous.schedulestream.command_types import (
     ScheduleStreamProviderError,
     ScheduleStreamTimingError,
 )
+from isaac_autodata_interfaces.task_planners.grasp_candidate import GraspCandidateSet
 from isaac_autodata_interfaces.task_planners.schedulestream.goal import (
     ScheduleStreamGoalSymbols,
     compile_schedulestream_goal,
@@ -447,7 +448,12 @@ def _initialize_semantic_v1_planner(
         native_world.initialize(batch_size=config.batch_size)
         _install_v1_ik_joint_limit_filter(native_world)
         planner.world = native_world
-        grasp_configuration = _validate_world_graspability(native_world, graspable_object)
+        grasp_candidates = _validate_world_grasp_candidates(native_world, graspable_object)
+        grasp_configuration = _validate_world_graspability(
+            native_world,
+            graspable_object,
+            grasp_candidates,
+        )
         grasp_geometry = grasp_configuration["grasp_geometry"]
         object_pose_offsets, object_pose_offset_evidence = _capture_v1_object_pose_offsets(planner, module)
         destination_placement_geometry = _validate_world_destination_placement(
@@ -468,6 +474,7 @@ def _initialize_semantic_v1_planner(
     planner.object_pose_offsets = object_pose_offsets
     planner.object_pose_offset_evidence = object_pose_offset_evidence
     planner.grasp_configuration = grasp_configuration
+    planner.grasp_candidates = grasp_candidates
     planner.grasp_geometry = grasp_geometry
     planner.destination_placement_geometry = destination_placement_geometry
     planner.semantic_graspable_object = graspable_object
@@ -629,7 +636,11 @@ def _infer_attachment_events(
     return tuple(events)
 
 
-def _validate_world_graspability(world: Any, graspable_object: str) -> dict[str, Any]:
+def _validate_world_graspability(
+    world: Any,
+    graspable_object: str,
+    candidates: GraspCandidateSet | None = None,
+) -> dict[str, Any]:
     """Prove the constructed TAMP world exposes exactly the task-selected movable object."""
 
     raw_names = getattr(world, "movable_names", None)
@@ -646,14 +657,32 @@ def _validate_world_graspability(world: Any, graspable_object: str) -> dict[str,
             "v1 world graspability does not match the task-selected pickup object; "
             f"expected {(graspable_object,)}, got {movable_names}"
         )
+    candidates = candidates or _validate_world_grasp_candidates(world, graspable_object)
     return {
-        "grasp_geometry": _validate_world_grasp_geometry(world, graspable_object),
+        "grasp_geometry": _validate_world_grasp_geometry(world, graspable_object, candidates),
         "task_selected_graspable_object": graspable_object,
         "world_movable_names": list(movable_names),
     }
 
 
-def _validate_world_grasp_geometry(world: Any, graspable_object: str) -> dict[str, Any]:
+def _validate_world_grasp_candidates(world: Any, graspable_object: str) -> GraspCandidateSet:
+    """Return the normalized candidates installed into the native v1 world."""
+
+    candidates = getattr(world, "autodata_grasp_candidates", None)
+    if not isinstance(candidates, GraspCandidateSet):
+        raise ScheduleStreamProviderError("v1 world has no normalized grasp candidate set")
+    if candidates.method != "analytical" or candidates.object_id != graspable_object:
+        raise ScheduleStreamProviderError("v1 world grasp candidates do not match the selected analytical task object")
+    if len(candidates) != 4 or candidates.scores is not None:
+        raise ScheduleStreamProviderError("reviewed v1 analytical grasp candidates must contain four unscored poses")
+    return candidates
+
+
+def _validate_world_grasp_geometry(
+    world: Any,
+    graspable_object: str,
+    candidates: GraspCandidateSet | None = None,
+) -> dict[str, Any]:
     """Validate the staged world's finite grasp transforms for the off-center mesh."""
 
     raw = getattr(world, "autodata_grasp_geometry", None)
@@ -720,6 +749,9 @@ def _validate_world_grasp_geometry(world: Any, graspable_object: str) -> dict[st
                 f"v1 grasp transform {index} does not match the validated composition formula "
                 f"(position={position_error:.6g}m, rotation={rotation_error:.6g}rad)"
             )
+    candidates = candidates or _validate_world_grasp_candidates(world, graspable_object)
+    if candidates.link_from_object != link_from_object_transforms:
+        raise ScheduleStreamProviderError("v1 normalized grasp candidates do not match the installed grasp geometry")
     try:
         world_object = world.get_object(graspable_object)
         grasp_config = world_object.grasp_config
@@ -1153,7 +1185,7 @@ def build_v1_isaaclab_world(
             f"unsupported v1 robot USD {usd_name!r}; supported: {sorted(V1_FRANKA_USD_BASENAMES)}"
         )
     objects = planner_module.create_objects(scene, env_id=0)
-    grasp_geometry = _repair_converted_rigid_object_mobility(
+    grasp_geometry, grasp_candidates = _repair_converted_rigid_object_mobility(
         planner_module,
         scene,
         objects,
@@ -1187,6 +1219,7 @@ def build_v1_isaaclab_world(
         interpolation_dt=interpolation_dt,
     )
     world.autodata_destination_placement_geometry = destination_placement_geometry
+    world.autodata_grasp_candidates = grasp_candidates
     world.autodata_grasp_geometry = grasp_geometry
     try:
         _rebase_v1_world_objects(world, planner_module, robot_reference_pose)
@@ -1492,7 +1525,7 @@ def _repair_converted_rigid_object_mobility(
     graspable_object: str,
     graspable_asset_name: str,
     primitive_grasp_generator: _PrimitiveGraspGenerator | None,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], GraspCandidateSet]:
     """Make only the task-selected object graspable with the reviewed cube strategy."""
 
     entries = _scene_rigid_object_entries(scene)
@@ -1532,7 +1565,7 @@ def _repair_converted_rigid_object_mobility(
             raise ScheduleStreamProviderError(
                 f"failed to classify converted custream object {scene_name!r} as non-graspable"
             ) from exc
-    link_from_object_poses, grasp_geometry = _build_v1_analytical_grasps(
+    link_from_object_poses, grasp_candidates, grasp_geometry = _build_v1_analytical_grasps(
         planner_module,
         converted_by_name[graspable_object],
         graspable_object=graspable_object,
@@ -1549,7 +1582,7 @@ def _repair_converted_rigid_object_mobility(
         raise ScheduleStreamProviderError(
             f"failed to install analytical grasp generator for {graspable_object!r}"
         ) from exc
-    return grasp_geometry
+    return grasp_geometry, grasp_candidates
 
 
 def _build_v1_analytical_grasps(
@@ -1559,7 +1592,7 @@ def _build_v1_analytical_grasps(
     graspable_object: str,
     graspable_asset_name: str,
     primitive_grasp_generator: _PrimitiveGraspGenerator | None,
-) -> tuple[tuple[Any, ...], dict[str, Any]]:
+) -> tuple[tuple[Any, ...], GraspCandidateSet, dict[str, Any]]:
     """Materialize the reviewed analytical top grasps in the object's true mesh frame."""
 
     if graspable_asset_name != V1_REVIEWED_GRASPABLE_ASSET:
@@ -1608,28 +1641,39 @@ def _build_v1_analytical_grasps(
         raise
     except Exception as exc:
         raise ScheduleStreamProviderError("failed to compose off-center cube grasp transforms") from exc
-    return link_from_object_poses, {
-        "asset_name": graspable_asset_name,
-        "attested": True,
-        "composition_formula": "primitive_link_from_aabb_center*inverse(converted_object_origin_from_aabb_center)",
-        "converted_object_origin_from_aabb_center": geometry["converted_object_origin_from_aabb_center"],
-        "link_from_object_transforms": [[list(row) for row in transform] for transform in link_from_object_transforms],
-        "generator_storage": "reusable_finite_tuple",
-        "grasp_count": len(link_from_object_poses),
-        "link_target_formula": (
-            "world_from_object*converted_object_origin_from_aabb_center*inverse(primitive_link_from_aabb_center)"
-        ),
-        "object_id": graspable_object,
-        "pitch_interval": "top",
-        "pose_convention": "link_from_object_parent_from_child_homogeneous_4x4",
-        "primitive": "cuboid",
-        "primitive_link_from_aabb_center_transforms": [
-            [list(row) for row in transform] for transform in primitive_transforms
-        ],
-        "profile": V1_GRASP_GEOMETRY_PROFILE,
-        "schema_version": 1,
-        "source": "schedulestream.applications.custream.grasp.primitive_grasp_generator",
-    }
+    candidates = GraspCandidateSet(
+        method="analytical",
+        object_id=graspable_object,
+        link_from_object=link_from_object_transforms,
+    )
+    return (
+        link_from_object_poses,
+        candidates,
+        {
+            "asset_name": graspable_asset_name,
+            "attested": True,
+            "composition_formula": "primitive_link_from_aabb_center*inverse(converted_object_origin_from_aabb_center)",
+            "converted_object_origin_from_aabb_center": geometry["converted_object_origin_from_aabb_center"],
+            "link_from_object_transforms": [
+                [list(row) for row in transform] for transform in link_from_object_transforms
+            ],
+            "generator_storage": "reusable_finite_tuple",
+            "grasp_count": len(link_from_object_poses),
+            "link_target_formula": (
+                "world_from_object*converted_object_origin_from_aabb_center*inverse(primitive_link_from_aabb_center)"
+            ),
+            "object_id": graspable_object,
+            "pitch_interval": "top",
+            "pose_convention": "link_from_object_parent_from_child_homogeneous_4x4",
+            "primitive": "cuboid",
+            "primitive_link_from_aabb_center_transforms": [
+                [list(row) for row in transform] for transform in primitive_transforms
+            ],
+            "profile": V1_GRASP_GEOMETRY_PROFILE,
+            "schema_version": 1,
+            "source": "schedulestream.applications.custream.grasp.primitive_grasp_generator",
+        },
+    )
 
 
 def _native_pose_matrix(pose: Any, field_name: str) -> Matrix4:

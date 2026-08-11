@@ -15,12 +15,11 @@ from isaac_autodata_core.autonomous.task_motion import (
     DetachIntentSegment,
     GripperCommandMode,
     GripperCommandSegment,
-    Matrix4,
     TaskMotionPlan,
     TaskMotionSegment,
     make_stable_id,
-    matrix4,
 )
+from isaac_autodata_core.transform import Matrix4, matrix4
 from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from isaac_autodata_interfaces.tasks.task_goal import GoalPredicate
 
 if TYPE_CHECKING:
-    from isaac_autodata_core.waypoint import Waypoint
+    from isaac_autodata_core.waypoint import WaypointTrajectory
     from isaac_autodata_interfaces.datastream.datastream import Datastream
 
 
@@ -46,15 +46,15 @@ class TaskPlannerBase(ABC):
         self.datastream = datastream
         self.env_id = env_id
 
-    def plan(self, goal: tuple[GoalPredicate, ...], *, seed: int) -> list[Waypoint]:
-        """Plan and lower one semantic goal into executable AutoData waypoints.
+    def plan(self, goal: tuple[GoalPredicate, ...], *, seed: int) -> WaypointTrajectory:
+        """Plan and lower one semantic goal into an AutoData waypoint trajectory.
 
         Args:
             goal: Planner-neutral terminal predicates resolved to live scene IDs.
             seed: Non-negative random seed for this planning attempt.
 
         Returns:
-            Ordered waypoints for the complete task.
+            Existing AutoData trajectory representation for the complete task.
 
         Raises:
             TaskPlanningNoSolutionError: If bounded search finds no feasible plan.
@@ -65,13 +65,13 @@ class TaskPlannerBase(ABC):
             raise ValueError("goal must contain GoalPredicate instances")
         if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
             raise ValueError("seed must be a non-negative integer")
-        waypoints = self._plan(goal, seed=seed)
-        if not waypoints:
-            raise TaskPlanningNoSolutionError("task planner returned no executable waypoints")
-        return waypoints
+        trajectory = self._plan(goal, seed=seed)
+        if not trajectory:
+            raise TaskPlanningNoSolutionError("task planner returned an empty waypoint trajectory")
+        return trajectory
 
     @abstractmethod
-    def _plan(self, goal: tuple[GoalPredicate, ...], *, seed: int) -> list[Waypoint]:
+    def _plan(self, goal: tuple[GoalPredicate, ...], *, seed: int) -> WaypointTrajectory:
         """Implement backend-specific task planning after common request validation."""
 
         raise NotImplementedError

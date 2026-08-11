@@ -5,6 +5,7 @@
 
 """Whole-task planner interfaces."""
 
+from isaac_autodata_interfaces.task_planners.grasp_candidate import GraspCandidateSet
 from isaac_autodata_interfaces.task_planners.task_planner_base import (
     TaskPlannerBase,
     TaskPlanningError,
@@ -12,6 +13,7 @@ from isaac_autodata_interfaces.task_planners.task_planner_base import (
 )
 
 __all__ = [
+    "GraspCandidateSet",
     "TaskPlannerBase",
     "TaskPlanningError",
     "TaskPlanningNoSolutionError",
