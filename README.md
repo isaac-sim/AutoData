@@ -164,6 +164,11 @@ For test-suite details and common commands, see
 
 Isaac AutoData is released under the [Apache License 2.0](LICENSE).
 
+Third-party open-source software notices are provided in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Additional component-specific licenses are stored in [`docs/licenses/`](docs/licenses/). NVIDIA cuRobo is governed
+by the [NVIDIA Isaac Lab Additional Software and Materials License](docs/licenses/curobo-license.txt).
+
 Isaac AutoData depends on Isaac Sim, which includes components distributed under proprietary licensing terms. See
 the [Isaac Sim license](https://docs.isaacsim.omniverse.nvidia.com/latest/common/NVIDIA_Omniverse_License_Agreement.html)
 for details.
