@@ -28,11 +28,9 @@ def register_environment_for_run(
         Gym constructor kwargs keyed by registered environment ID.
     """
 
-    from .isaac_lab import register_environments as register_isaac_lab_environments
     from .isaac_lab_arena import is_arena_environment
     from .isaac_lab_arena import register_environment_for_run as register_arena_environment
 
-    register_isaac_lab_environments()
     if not is_arena_environment(env_name):
         return {}
     return register_arena_environment(
@@ -54,10 +52,7 @@ def register_environments() -> list[str]:
         Command-line arguments not consumed by Arena environment registration.
     """
 
-    from .isaac_lab import register_environments as register_isaac_lab_environments
     from .isaac_lab_arena import is_arena_environment, register_environment_from_cli
-
-    register_isaac_lab_environments()
 
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--task", type=str)

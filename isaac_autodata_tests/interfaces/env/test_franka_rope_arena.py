@@ -11,7 +11,6 @@ from types import SimpleNamespace
 from isaaclab_arena.assets.registries import EnvironmentRegistry
 
 import isaac_autodata_examples.envs as env_registration
-import isaac_autodata_examples.envs.isaac_lab as isaac_lab_registration
 import isaac_autodata_examples.envs.isaac_lab_arena as arena_registration
 from isaac_autodata_examples.envs.isaac_lab_arena import registration
 from isaac_autodata_examples.envs.isaac_lab_arena.franka_rope import mdp
@@ -87,7 +86,6 @@ def test_regular_isaac_lab_run_does_not_build_arena(monkeypatch):
         arena_registration_called = True
         return {}
 
-    monkeypatch.setattr(isaac_lab_registration, "register_environments", lambda: [])
     monkeypatch.setattr(arena_registration, "register_environment_for_run", register_arena_environment)
 
     make_kwargs = env_registration.register_environment_for_run(
@@ -110,7 +108,6 @@ def test_external_callback_routes_arena_task(monkeypatch):
         callback_called = True
         return ["hydra.option=value"]
 
-    monkeypatch.setattr(isaac_lab_registration, "register_environments", lambda: [])
     monkeypatch.setattr(arena_registration, "register_environment_from_cli", register_arena_environment_from_cli)
     monkeypatch.setattr(sys, "argv", ["replay_demos.py", "--task", FRANKA_ROPE_ARENA_ENV_ID])
 
@@ -128,7 +125,6 @@ def test_external_callback_skips_arena_for_regular_lab_task(monkeypatch):
         callback_called = True
         return []
 
-    monkeypatch.setattr(isaac_lab_registration, "register_environments", lambda: [])
     monkeypatch.setattr(arena_registration, "register_environment_from_cli", register_arena_environment_from_cli)
     monkeypatch.setattr(sys, "argv", ["replay_demos.py", "--task", "Isaac-Regular-Lab-Env-v0"])
 

@@ -91,7 +91,6 @@ def test_from_yaml_round_trip(tmp_path):
     [
         ("franka_ik_rel.yaml", DeltaPoseIKSingleArmAdapter),
         ("franka_ik_rel_skillgen.yaml", DeltaPoseIKSingleArmAdapter),
-        ("franka_rope_ik_rel.yaml", DeltaPoseIKSingleArmAdapter),
         ("franka_rope_arena_ik_rel.yaml", DeltaPoseIKSingleArmAdapter),
         ("g1_ik_abs.yaml", AbsolutePoseWholeBodyBimanualAdapter),
         ("gr1_ik_abs.yaml", AbsolutePoseWholeBodyBimanualAdapter),
