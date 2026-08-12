@@ -60,7 +60,7 @@ def test_arena_registration_uses_run_configuration_and_preserves_make_kwargs(mon
         ),
     )
 
-    make_kwargs = registration.register_environment_for_run(
+    make_kwargs = registration.build_and_register_arena_environment(
         enable_cameras=True,
         num_envs=8,
         device="cuda:1",
@@ -86,7 +86,9 @@ def test_regular_isaac_lab_run_does_not_build_arena(monkeypatch):
         arena_registration_called = True
         return {}
 
-    monkeypatch.setattr(arena_registration, "register_environment_for_run", register_arena_environment)
+    monkeypatch.setattr(
+        arena_registration, "build_and_register_arena_environment", register_arena_environment
+    )
 
     make_kwargs = env_registration.register_environment_for_run(
         env_name="Isaac-Regular-Lab-Env-v0",

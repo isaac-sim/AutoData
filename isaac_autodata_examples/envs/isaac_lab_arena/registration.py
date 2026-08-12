@@ -38,14 +38,14 @@ def _bind_gym_make_kwargs(env_name: str, env_kwargs: dict[str, Any]) -> None:
     env_spec.entry_point = partial(entry_point, **env_kwargs)
 
 
-def register_environment_for_run(
+def build_and_register_arena_environment(
     *,
     enable_cameras: bool,
     num_envs: int,
     device: str,
     seed: int,
 ) -> dict[str, dict[str, Any]]:
-    """Build and register AutoData's typed Arena environments for the current run.
+    """Build and register AutoData's typed Arena environment for the current run.
 
     Args:
         enable_cameras: Whether to include environment camera sensors.

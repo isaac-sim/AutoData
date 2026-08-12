@@ -28,12 +28,11 @@ def register_environment_for_run(
         Gym constructor kwargs keyed by registered environment ID.
     """
 
-    from .isaac_lab_arena import is_arena_environment
-    from .isaac_lab_arena import register_environment_for_run as register_arena_environment
+    from .isaac_lab_arena import build_and_register_arena_environment, is_arena_environment
 
     if not is_arena_environment(env_name):
         return {}
-    return register_arena_environment(
+    return build_and_register_arena_environment(
         enable_cameras=enable_cameras,
         num_envs=num_envs,
         device=device,
