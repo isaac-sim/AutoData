@@ -120,7 +120,7 @@ from typing import Any  # noqa: E402
 
 from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
-from isaac_autodata_examples.envs import register_environments  # noqa: E402
+from isaac_autodata_examples.envs import register_environment_for_run  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from isaac_autodata_interfaces.env import (  # noqa: E402
@@ -132,8 +132,6 @@ from isaac_autodata_interfaces.env import (  # noqa: E402
 )
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 from isaac_autodata_utils.generation_result import write_generation_result  # noqa: E402
-
-register_environments(enable_cameras=args_cli.enable_cameras)
 
 
 async def run_data_generator(
@@ -290,6 +288,18 @@ def main() -> None:
     if args_cli.generation_num_trials is not None:
         generation_policy_params.num_trials = args_cli.generation_num_trials
 
+    random.seed(generation_policy_params.seed)
+    np.random.seed(generation_policy_params.seed)
+    torch.manual_seed(generation_policy_params.seed)
+
+    env_make_kwargs = register_environment_for_run(
+        env_name=env_name,
+        enable_cameras=args_cli.enable_cameras,
+        num_envs=args_cli.num_envs,
+        device=args_cli.device,
+        seed=generation_policy_params.seed,
+    )
+
     # The algorithm's start-signal expectation is a class attribute, so we resolve it before
     # instantiating (the Datastream needs it, and SkillGen can only be instantiated once the
     # planners exist, which in turn need the Datastream).
@@ -310,11 +320,7 @@ def main() -> None:
         env_profile=env_profile,
     )
 
-    env = gym.make(env_name, cfg=env_cfg).unwrapped
-
-    random.seed(generation_policy_params.seed)
-    np.random.seed(generation_policy_params.seed)
-    torch.manual_seed(generation_policy_params.seed)
+    env = gym.make(env_name, cfg=env_cfg, **env_make_kwargs.get(env_name, {})).unwrapped
 
     env.reset()
 

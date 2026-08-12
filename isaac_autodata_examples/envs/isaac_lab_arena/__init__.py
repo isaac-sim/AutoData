@@ -1,10 +1,8 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Isaac Lab Arena environments composed by Isaac AutoData."""
 
-from .franka_rope import register_environments
+from .registration import is_arena_environment, register_environment_for_run, register_environment_from_cli
 
-__all__ = ["register_environments"]
+__all__ = ["is_arena_environment", "register_environment_for_run", "register_environment_from_cli"]

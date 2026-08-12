@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Typed Arena composition for the AutoData Franka rope environment."""
@@ -11,6 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from isaaclab.devices import DevicesCfg, Se3KeyboardCfg, Se3SpaceMouseCfg
+from isaaclab_arena.assets.register import register_environment
 from isaaclab_arena.environments.arena_environment_factory import ArenaEnvironmentCfg, ArenaEnvironmentFactory
 from isaaclab_arena.utils.pose import Pose
 
@@ -56,6 +55,7 @@ def _configure_franka_rope_env(env_cfg: Any) -> Any:
     return env_cfg
 
 
+@register_environment
 class FrankaRopeArenaEnvironment(ArenaEnvironmentFactory[FrankaRopeArenaEnvironmentCfg]):
     """Compose the rope scene, Franka embodiment, and rope task through Arena."""
 
