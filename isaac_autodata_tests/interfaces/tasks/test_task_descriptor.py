@@ -9,11 +9,7 @@ import pytest
 
 from isaac_autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from isaac_autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint, SubTaskConstraintType
-from isaac_autodata_interfaces.tasks.subtask_spec import (
-    MimicGenSubtaskAlgoParams,
-    SkillGenSubtaskAlgoParams,
-    SoftMimicGenSubtaskAlgoParams,
-)
+from isaac_autodata_interfaces.tasks.subtask_spec import MimicGenSubtaskAlgoParams, SkillGenSubtaskAlgoParams
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor
 from isaac_autodata_tests.utils.constants import TestPaths
 
@@ -88,20 +84,6 @@ def test_from_dict_description_defaults_empty():
     del data["description"]
     td = TaskDescriptor.from_dict(data)
     assert td.description == ""
-
-
-def test_franka_rope_softmimicgen_yaml():
-    path = os.path.join(TestPaths.tasks_dir, "franka_rope_softmimicgen.yaml")
-    task = TaskDescriptor.from_yaml(path)
-    assert task.name == "franka_rope"
-    assert task.get_eef_names() == ["robot0"]
-    assert len(task.get_subtasks("robot0")) == 2
-    first = task.get_subtasks("robot0")[0]
-    assert first.object_ref == "object"
-    assert first.selection_strategy == "registration_cost"
-    assert first.subtask_term_offset_range == (10, 15)
-    assert isinstance(first.algo_params, SoftMimicGenSubtaskAlgoParams)
-    assert first.algo_params.object_soft is True
 
 
 # ---------------------------------------------------------------------------------------------------

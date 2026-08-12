@@ -344,6 +344,7 @@ class Datastream:
         hatch for callers that need the full dict (e.g. recorder ``initial_state``).
         """
 
+        # TODO: Remove this custom method once upstream Lab fixes the nodal position relative scene state bug.
         return get_scene_state(self.env.scene, is_relative=is_relative)
 
     # ------------------------------------------------------------------

@@ -1,7 +1,6 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""AutoData recorder terms for parallel scene-state capture."""
 
 from __future__ import annotations
 
@@ -11,6 +10,8 @@ from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManager
 from isaaclab.managers.recorder_manager import RecorderTerm
 
 from isaac_autodata_interfaces.env.scene_state import get_scene_state
+
+# TODO: Remove this custom recorder once upstream Lab fixes the nodal position relative scene state bug.
 
 
 class InitialStateRecorder(RecorderTerm):

@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 
+# TODO: Remove this custom method once upstream Lab fixes the nodal position relative scene state bug.
 def get_scene_state(scene: Any, is_relative: bool = True) -> dict:
     """Return scene state in world or per-environment coordinates.
 
