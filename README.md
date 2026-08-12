@@ -10,7 +10,7 @@
 [![Isaac Lab-Arena](https://img.shields.io/badge/Isaac%20Lab--Arena-0.2.x-silver.svg)](https://github.com/isaac-sim/IsaacLab-Arena)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue.svg)](https://docs.python.org/3/whatsnew/3.12.html)
 [![Linux](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://www.linux.org/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](LICENSE.md)
 
 [Documentation](https://isaac-sim.github.io/Isaac-AutoData/) · [Getting Started](https://isaac-sim.github.io/Isaac-AutoData/main/pages/quickstart/first_data_generation.html) · [Report a Bug](https://github.com/isaac-sim/Isaac-AutoData/issues) · [Discussions](https://github.com/isaac-sim/Isaac-AutoData/discussions)
 
@@ -162,7 +162,7 @@ For test-suite details and common commands, see
 
 ## License
 
-Isaac AutoData is released under the [Apache License 2.0](LICENSE).
+Isaac AutoData is released under the [Apache License 2.0](LICENSE.md).
 
 Third-party open-source software notices are provided in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
