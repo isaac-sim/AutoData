@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 name: franka_rope
@@ -25,7 +23,7 @@ generation_policy:
   interpolate_from_last_target_pose: true
 
 subtasks:
-  robot0:
+  franka:
     - object_ref: object
       description: Approach and grasp the deformable rope.
       subtask_term_signal: grasp

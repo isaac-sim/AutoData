@@ -1,7 +1,6 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Register AutoData-owned Arena environments for an AutoData run."""
 
 from __future__ import annotations
 
@@ -26,9 +25,7 @@ def _bind_gym_make_kwargs(env_name: str, env_kwargs: dict[str, Any]) -> None:
 
     Isaac Lab's external-callback API can register an environment but cannot return
     keyword arguments to the later ``gym.make`` call. Bind those arguments into the
-    registered entry point instead. Keeping them out of ``EnvSpec.kwargs`` is
-    intentional: Gym deep-copies that dictionary, but Arena's variation recorder must
-    retain object identity with the variations that notify it.
+    registered entry point instead.
     """
 
     env_spec = gym.spec(env_name)
