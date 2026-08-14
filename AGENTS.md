@@ -37,7 +37,7 @@ pre-commit run --all-files
 
 ## Guardrails (MUST FOLLOW, DO NOT DEVIATE FROM GUARDRAILS)
 
-- Don't change or modify anything in the submodules. Restrict git related operations to read only, don't commit nor push any code. Don't create new branches in the submodules on your own.
+- Do not change or modify anything in the submodules. All git-related operations in submodules are read-only: do not commit or push code or create branches in a submodule.
 - Don't mutate the `isaac_autodata` conda env. No `pip install/uninstall`, `conda install/remove`, or version upgrades. If a dependency is missing, surface the exact command and let the user run it.
 - Don't re-run, modify, or work around `conda_installer.sh`. No env recreate/rename/delete, no channel or conda config changes. Installer issues get reported, not patched in-flight.
 - Don't change any existing design docs or diagrams in /docs, that is only for human created files. If you need to add any new diagrams or designs, add them to the /agentic_design directory.

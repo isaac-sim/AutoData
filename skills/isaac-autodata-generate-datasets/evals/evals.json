@@ -1,0 +1,93 @@
+{
+  "skill": "isaac-autodata-generate-datasets",
+  "description": "Trigger and behavior evaluation dataset for the isaac-autodata-generate-datasets skill. Positive cases should activate the skill; negative cases should leave it silent.",
+  "cases": [
+    {
+      "id": "pos-mimicgen-franka",
+      "question": "Use Isaac AutoData to generate 10 Franka cube-stacking demonstrations from the annotated dataset and validate the output.",
+      "expected_skill": "isaac-autodata-generate-datasets",
+      "expected_script": "skills/isaac-autodata-generate-datasets/scripts/run_generation.sh",
+      "ground_truth": "Run generate_dataset.py with --alg mimicgen, --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0, --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml, --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml, --input_file the annotated Franka dataset, --generation_num_trials 10, then validate with validate_dataset.py --strict.",
+      "expected_behavior": [
+        "Identify a single-arm Franka task and select the mimicgen algorithm.",
+        "Use the default container (no cuRobo needed).",
+        "Use franka_cube_stack.yaml and franka_ik_rel.yaml as task descriptor and embodiment.",
+        "Set --generation_num_trials 10 and a reasonable --num_envs.",
+        "Run generate_dataset.py against the annotated Franka source dataset.",
+        "Validate the generated HDF5 with validate_dataset.py --strict."
+      ]
+    },
+    {
+      "id": "pos-dexmimicgen-gr1",
+      "question": "I need bimanual pick-and-place demonstrations for the Fourier GR-1 with Isaac AutoData. How do I generate them?",
+      "expected_skill": "isaac-autodata-generate-datasets",
+      "expected_script": null,
+      "ground_truth": "Bimanual coordinated arms require the dexmimicgen algorithm with the gr1 task/embodiment YAML (gr1_pick_place.yaml, gr1_ik_abs.yaml) in the default container.",
+      "expected_behavior": [
+        "Recognize the GR-1 as a bimanual embodiment and select dexmimicgen.",
+        "Use gr1_pick_place.yaml and gr1_ik_abs.yaml.",
+        "Use the default container (cuRobo not required).",
+        "Assemble a generate_dataset.py invocation with --alg dexmimicgen."
+      ]
+    },
+    {
+      "id": "pos-skillgen-container",
+      "question": "Make collision-aware Franka bin-stacking trajectories with SkillGen in Isaac AutoData.",
+      "expected_skill": "isaac-autodata-generate-datasets",
+      "expected_script": null,
+      "ground_truth": "SkillGen requires launching the cuRobo container (./docker/run_docker.sh -c) and using the skillgen task/embodiment YAML (franka_bin_stack_skillgen.yaml, franka_ik_rel_skillgen.yaml) with --alg skillgen.",
+      "expected_behavior": [
+        "Select the skillgen algorithm for collision-aware, motion-planned transitions.",
+        "State that the cuRobo container (./docker/run_docker.sh -c) is required.",
+        "Use franka_bin_stack_skillgen.yaml and franka_ik_rel_skillgen.yaml.",
+        "Assemble a generate_dataset.py invocation with --alg skillgen."
+      ]
+    },
+    {
+      "id": "pos-yaml-edit",
+      "question": "Add a subtask to my Isaac AutoData franka_cube_stack task descriptor that stacks the green cube on top of the red cube.",
+      "expected_skill": "isaac-autodata-generate-datasets",
+      "expected_script": null,
+      "ground_truth": "Inspect the task descriptor first. Add a well-formed green-on-red subtask only when it is absent; otherwise preserve the existing single final subtask. Any added block must include object_ref, description, nearest_neighbor_object selection_strategy with nn_k, subtask_term_offset_range, action_noise, and interpolation fields, and obey the final-subtask convention (no subtask_term_signal, [0, 0] offset).",
+      "expected_behavior": [
+        "Open the franka_cube_stack task descriptor / example asset and check whether the green-on-red final subtask already exists.",
+        "Add the green-on-red subtask only when it is absent; otherwise leave the existing final subtask unchanged.",
+        "Use a subtask_term_signal for non-final subtasks and preserve a single final subtask without one.",
+        "Keep selection_strategy, action_noise and interpolation fields consistent with siblings when adding the subtask."
+      ]
+    },
+    {
+      "id": "neg-rl-training",
+      "question": "Train a PPO policy in Isaac Lab on the cartpole task.",
+      "expected_skill": null,
+      "expected_script": null,
+      "ground_truth": "This is reinforcement-learning policy training in Isaac Lab, not Isaac AutoData demonstration generation. The skill should stay silent.",
+      "expected_behavior": [
+        "Do not activate the isaac-autodata-generate-datasets skill.",
+        "Recognize RL policy training is out of scope."
+      ]
+    },
+    {
+      "id": "neg-teleop-setup",
+      "question": "Set up Apple Vision Pro teleoperation for the Unitree G1.",
+      "expected_skill": null,
+      "expected_script": null,
+      "ground_truth": "Teleoperation hardware setup is out of scope for this data-generation skill. The skill should stay silent.",
+      "expected_behavior": [
+        "Do not activate the isaac-autodata-generate-datasets skill.",
+        "Recognize teleop hardware setup is out of scope."
+      ]
+    },
+    {
+      "id": "neg-generic-hdf5",
+      "question": "Convert a ROS bag into an HDF5 file.",
+      "expected_skill": null,
+      "expected_script": null,
+      "ground_truth": "This is a generic, non-Isaac data pipeline. The skill should stay silent.",
+      "expected_behavior": [
+        "Do not activate the isaac-autodata-generate-datasets skill.",
+        "Recognize a non-Isaac data pipeline is out of scope."
+      ]
+    }
+  ]
+}
