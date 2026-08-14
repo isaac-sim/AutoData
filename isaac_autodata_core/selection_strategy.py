@@ -200,8 +200,8 @@ class RegistrationCostStrategy(SelectionStrategy):
         assert object_nodal_positions is not None, "registration_cost requires current object nodal positions"
         assert nn_k >= 1, f"nn_k must be at least 1, got {nn_k}"
 
-        costs: list[float] = []
-        for datagen_info in src_subtask_datagen_infos:
+        valid_candidates: list[tuple[int, float]] = []
+        for demo_index, datagen_info in enumerate(src_subtask_datagen_infos):
             assert (
                 datagen_info.object_nodal_positions is not None
             ), "registration_cost requires source object nodal positions"
@@ -218,10 +218,13 @@ class RegistrationCostStrategy(SelectionStrategy):
                     rot_reg=rot_reg,
                 )
             except (AssertionError, np.linalg.LinAlgError, ValueError):
-                cost = float("inf")
-            costs.append(cost)
+                continue
+            if np.isfinite(cost):
+                valid_candidates.append((demo_index, cost))
 
-        costs_tensor = torch.tensor(costs, dtype=torch.float32)
-        nn_k = min(nn_k, len(costs))
+        assert valid_candidates, "registration_cost could not compute a finite TPS cost for any source demo"
+        costs_tensor = torch.tensor([cost for _, cost in valid_candidates], dtype=torch.float32)
+        nn_k = min(nn_k, len(valid_candidates))
         rand_k = torch.randint(0, nn_k, (1,)).item()
-        return torch.argsort(costs_tensor)[:nn_k][rand_k]
+        selected_candidate = torch.argsort(costs_tensor)[:nn_k][rand_k].item()
+        return valid_candidates[selected_candidate][0]
