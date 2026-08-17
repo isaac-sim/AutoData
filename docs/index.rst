@@ -130,6 +130,12 @@ Table of Contents
 
 .. toctree::
    :maxdepth: 1
+   :caption: Migration from Isaac Lab Mimic
+
+   pages/workflows/migrate_isaac_lab_mimic
+
+.. toctree::
+   :maxdepth: 1
    :caption: Advanced
 
    pages/advanced/motion_planners
