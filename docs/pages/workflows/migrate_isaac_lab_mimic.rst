@@ -187,7 +187,7 @@ First, the Isaac Lab Mimic ManagerBasedRLMimicEnv reads the Franka end-effector 
    eef_pos = self.obs_buf["policy"]["eef_pos"][env_ids]
    eef_quat = self.obs_buf["policy"]["eef_quat"][env_ids]
 
-The embodiment descriptor in AutoDatarecords those observation keys and uses the same ``franka`` EEF name
+The embodiment descriptor in AutoData records those observation keys and uses the same ``franka`` EEF name
 as the task descriptor:
 
 .. code-block:: yaml
@@ -198,7 +198,7 @@ as the task descriptor:
      pos: eef_pos
      quat: eef_quat
 
-Next, the Isaac Lab MimicManagerBasedRLMimicEnv action conversion methods show that the environment uses a relative
+Next, the Isaac Lab Mimic ManagerBasedRLMimicEnv action conversion methods show that the environment uses a relative
 pose action:
 
 .. code-block:: python
@@ -269,7 +269,7 @@ correct HDF5 format. Annotate the raw dataset directly with AutoData:
 Step 5: Run a small generation test
 -----------------------------------
 
-Run the migrated Franka cube stacking example in AutoData using the taska and embodiment descriptors we created in Steps 2 and 3:
+Run the migrated Franka cube stacking example in AutoData using the task and embodiment descriptors we created in Steps 2 and 3:
 
 .. code-block:: bash
 
@@ -281,7 +281,7 @@ Run the migrated Franka cube stacking example in AutoData using the taska and em
        --generation_num_trials 10 \
        --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
        --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
-       --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
+       --input_file ./datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_franka.hdf5
 
 This command exercises the normal Isaac Lab environment, AutoData task descriptor, and AutoData
