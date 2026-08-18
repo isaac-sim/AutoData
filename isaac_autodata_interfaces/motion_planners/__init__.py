@@ -36,17 +36,17 @@ __all__ = [
     "get_planner_backend",
 ]
 
-PLANNER_BACKENDS: tuple[str, ...] = ("curobo", "curobo_v2")
-"""Names of the selectable planner backends, in registration order.
-
-``"curobo"`` is the cuRobo v1 backend and the default; ``"curobo_v2"`` is the cuRobo v2 backend.
-"""
-
 # Backend name -> (subpackage, planner class name, config class name).
 _BACKEND_SPECS: dict[str, tuple[str, str, str]] = {
     "curobo": ("curobo", "CuroboPlanner", "CuroboPlannerCfg"),
     "curobo_v2": ("curobo_v2", "CuroboV2Planner", "CuroboV2PlannerCfg"),
 }
+
+PLANNER_BACKENDS: tuple[str, ...] = tuple(_BACKEND_SPECS)
+"""Names of the selectable planner backends, in registration order.
+
+``"curobo"`` is the cuRobo v1 backend and the default; ``"curobo_v2"`` is the cuRobo v2 backend.
+"""
 
 
 def get_planner_backend(name: str) -> tuple[type[MotionPlannerBase], type]:

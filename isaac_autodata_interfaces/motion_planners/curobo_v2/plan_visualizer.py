@@ -14,10 +14,10 @@ Rerun is an optional dependency. The planner imports this module only when
 from __future__ import annotations
 
 import atexit
+import contextlib
 import numpy as np
 import os
 import signal
-import subprocess
 import threading
 import time
 import torch
@@ -80,24 +80,38 @@ if TYPE_CHECKING:
 _GLOBAL_PLAN_VISUALIZERS: list[PlanVisualizer] = []
 
 
-def _cleanup_all_plan_visualizers() -> None:
-    """Kill any lingering Rerun viewer processes and close tracked visualizers on exit."""
-    if PSUTIL_AVAILABLE:
-        killed = 0
-        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-            if (proc.info["name"] and "rerun" in proc.info["name"].lower()) or (
-                proc.info["cmdline"] and any("rerun" in str(arg).lower() for arg in proc.info["cmdline"])
-            ):
-                proc.kill()
-                killed += 1
-        print(f"Killed {killed} Rerun viewer processes on script exit")
-    else:
-        subprocess.run(["pkill", "-f", "rerun"], stderr=subprocess.DEVNULL, check=False)
+def _kill_owned_rerun_processes() -> int:
+    """Kill Rerun viewer processes spawned by this process, and only those.
 
+    Matching on the process tree rather than on the name alone keeps viewers belonging to other
+    users or jobs on a shared host untouched.
+
+    Returns:
+        Number of processes killed.
+    """
+    if not PSUTIL_AVAILABLE:
+        return 0
+    killed = 0
+    with contextlib.suppress(psutil.Error):
+        for proc in psutil.Process(os.getpid()).children(recursive=True):
+            try:
+                name = proc.name().lower()
+                cmdline = " ".join(proc.cmdline()).lower()
+                if "rerun" in name or "rerun" in cmdline:
+                    proc.kill()
+                    killed += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+    return killed
+
+
+def _cleanup_all_plan_visualizers() -> None:
+    """Close tracked visualizers and kill this process's own Rerun viewers on exit."""
     for visualizer in _GLOBAL_PLAN_VISUALIZERS[:]:
         if not visualizer._closed:
             visualizer.close()
     _GLOBAL_PLAN_VISUALIZERS.clear()
+    _kill_owned_rerun_processes()
 
 
 atexit.register(_cleanup_all_plan_visualizers)
@@ -139,7 +153,6 @@ class PlanVisualizer:
         # cuRobo v2 MotionPlanner reference, set by the planner for sphere animation.
         self._motion_planner_ref: Any = None
 
-        global _GLOBAL_PLAN_VISUALIZERS
         _GLOBAL_PLAN_VISUALIZERS.append(self)
 
         rr.init(self.recording_id, spawn=False)
@@ -154,10 +167,11 @@ class PlanVisualizer:
         self._start_parent_process_monitoring()
 
         self._finalizer = weakref.finalize(
-            self, self._cleanup_class_resources, self.recording_id, self.save_path, debug
+            self, self._cleanup_class_resources, self.recording_id, self.save_path, debug, self._sink
         )
-        recording_id_local, save_path_local, debug_local = self.recording_id, self.save_path, debug
-        atexit.register(self._cleanup_class_resources, recording_id_local, save_path_local, debug_local)
+        self._atexit_callback = atexit.register(
+            self._cleanup_class_resources, self.recording_id, self.save_path, debug, self._sink
+        )
 
         self._original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_DFL)
         self._original_sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_DFL)
@@ -256,35 +270,20 @@ class PlanVisualizer:
 
     def _kill_rerun_processes(self) -> None:
         try:
-            if PSUTIL_AVAILABLE:
-                for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-                    try:
-                        is_rerun = bool(proc.info["name"] and "rerun" in proc.info["name"].lower()) or bool(
-                            proc.info["cmdline"] and any("rerun" in str(a).lower() for a in proc.info["cmdline"])
-                        )
-                        if is_rerun:
-                            proc.kill()
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                        pass
-            else:
-                subprocess.run(["pkill", "-f", "rerun"], stderr=subprocess.DEVNULL, check=False)
+            _kill_owned_rerun_processes()
         except Exception as exc:  # pragma: no cover
             if self.debug:
                 print(f"Error killing rerun processes: {exc}")
 
     @staticmethod
-    def _cleanup_class_resources(recording_id: str, save_path: str | None, debug: bool) -> None:
-        rr.disconnect()
-        if save_path is not None:
+    def _cleanup_class_resources(recording_id: str, save_path: str | None, debug: bool, sink: str = "") -> None:
+        # Save before disconnecting: data logged so far is not written to a file opened after
+        # the recording is closed. Skip when the sink already is that file, since re-opening it
+        # would truncate what was streamed to it.
+        if save_path is not None and sink != "file":
             rr.save(save_path)
-        if PSUTIL_AVAILABLE:
-            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-                if (proc.info["name"] and "rerun" in proc.info["name"].lower()) or (
-                    proc.info["cmdline"] and any("rerun" in str(a).lower() for a in proc.info["cmdline"])
-                ):
-                    proc.kill()
-        else:
-            subprocess.run(["pkill", "-f", "rerun"], stderr=subprocess.DEVNULL, check=False)
+        rr.disconnect()
+        _kill_owned_rerun_processes()
 
     def _cleanup_on_exit(self) -> None:
         if not self._closed:
@@ -299,9 +298,15 @@ class PlanVisualizer:
         self._monitor_active = False
         if self._monitor_thread and self._monitor_thread.is_alive():
             time.sleep(0.1)
-        rr.disconnect()
-        if self.save_path is not None:
+        # Save before disconnecting so the recording keeps the data logged so far; skip when the
+        # sink already is the file, since re-opening it would truncate it.
+        if self.save_path is not None and self._sink != "file":
             rr.save(self.save_path)
+        rr.disconnect()
+        # The instance is now fully released; the exit-time callback would only repeat this work
+        # on a closed recording.
+        atexit.unregister(self._cleanup_class_resources)
+        self._finalizer.detach()
         self._closed = True
         try:
             process = getattr(self, "_rerun_process", None)
@@ -314,7 +319,6 @@ class PlanVisualizer:
         except Exception:
             pass
         self._kill_rerun_processes()
-        global _GLOBAL_PLAN_VISUALIZERS
         if self in _GLOBAL_PLAN_VISUALIZERS:
             _GLOBAL_PLAN_VISUALIZERS.remove(self)
 
@@ -377,7 +381,6 @@ class PlanVisualizer:
             for entity in entities:
                 rr.log(f"world/{entity_type}/{entity}", rr.Clear(recursive=True))
             self._sphere_entities[entity_type] = []
-        self._current_frame = 0
 
     def clear_visualization(self) -> None:
         """Public wrapper around :meth:`_clear_visualization`."""

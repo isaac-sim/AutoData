@@ -114,6 +114,21 @@ class CuroboV2PlannerCfg:
     visualize_spheres: bool = False
     visualize_plan: bool = False
 
+    def __post_init__(self) -> None:
+        """Validate cross-field constraints that would otherwise fail deep inside cuRobo."""
+        assert self.obstacle_representation in (
+            "mesh",
+            "obb",
+        ), f"obstacle_representation must be 'mesh' or 'obb', got {self.obstacle_representation!r}"
+        # When the allocation comes from the robot config instead, its size is unknown here and
+        # is checked by cuRobo at attach time.
+        if self.attached_object_link_name in self.extra_collision_spheres:
+            allocated = self.extra_collision_spheres[self.attached_object_link_name]
+            assert self.attached_object_num_spheres <= allocated, (
+                f"attached_object_num_spheres ({self.attached_object_num_spheres}) exceeds the "
+                f"{self.attached_object_link_name!r} allocation in extra_collision_spheres ({allocated})"
+            )
+
     # ------------------------------------------------------------------
     # Factory methods
     # ------------------------------------------------------------------
@@ -152,9 +167,9 @@ class CuroboV2PlannerCfg:
         """Create a configuration for stacking cubes inside a sorting bin.
 
         The bin joins the table as fixed geometry. Clearances are tighter than on an open table,
-        so the collision margin is wider, the retreat longer, and the gripper closes further.
-        Obstacles keep their own triangles, letting the planner avoid the bin walls while the
-        gripper reaches inside.
+        so the collision margin is wider, the retreat longer, and the modeled closed-finger width
+        slightly larger for margin against the walls. Obstacles keep their own triangles, letting
+        the planner avoid the bin walls while the gripper reaches inside.
         """
         cfg = cls.franka_stack_cube_config()
         cfg.static_objects = ["blue_sorting_bin", "bin", "table"]

@@ -325,31 +325,30 @@ class CuroboV2Planner(MotionPlannerBase):
             current_state = self._get_current_joint_state(env_id=env_id)
 
             # Close the gripper before attaching: the gripper update rewrites the link spheres
-            # that the attachment is fitted into.
+            # that the attachment is fitted into. The release runs in the finally block — the
+            # spheres are fitted at this call's grasp pose, so surviving into the next call (even
+            # on an exception) would collision-check the object where it no longer is.
             self._set_gripper_state(is_closed=expected_attached_object is not None)
             self._update_attachment(expected_attached_object, current_state)
+            try:
+                goal_pose = self._pose_matrix_to_curobo(self._pose_env_to_base(target_pose))
+                tool_frame = self.motion_planner.tool_frames[0]
+                full_trajectory = self._plan_three_phase(
+                    current_state=current_state,
+                    goal_pose=goal_pose,
+                    tool_frame=tool_frame,
+                )
 
-            goal_pose = self._pose_matrix_to_curobo(self._pose_env_to_base(target_pose))
-            tool_frame = self.motion_planner.tool_frames[0]
-            full_trajectory = self._plan_three_phase(
-                current_state=current_state,
-                goal_pose=goal_pose,
-                tool_frame=tool_frame,
-            )
-
-            if full_trajectory is not None:
-                self._planned_joint_trajectory = full_trajectory
-                self._planned_eef_poses = self._joint_trajectory_to_eef_poses(full_trajectory)
-                if self.plan_visualizer is not None:
-                    try:
-                        self._visualize_plan(target_pose=target_pose, current_state=current_state)
-                    except Exception as exc:  # noqa: BLE001  (visualization must not break planning)
-                        self._logger.warning("Plan visualization failed: %s", exc)
-
-            # Release the object. Its spheres were fitted at the grasp pose of this call, so
-            # holding them into the next one would collision-check the object where it no longer
-            # is. Each plan re-fits from the object's current pose instead.
-            self._update_attachment(None, current_state)
+                if full_trajectory is not None:
+                    self._planned_joint_trajectory = full_trajectory
+                    self._planned_eef_poses = self._joint_trajectory_to_eef_poses(full_trajectory)
+                    if self.plan_visualizer is not None:
+                        try:
+                            self._visualize_plan(target_pose=target_pose, current_state=current_state)
+                        except Exception as exc:  # noqa: BLE001  (visualization must not break planning)
+                            self._logger.warning("Plan visualization failed: %s", exc)
+            finally:
+                self._update_attachment(None, current_state)
 
         if full_trajectory is None:
             if self.plan_visualizer is not None:
@@ -873,10 +872,17 @@ class CuroboV2Planner(MotionPlannerBase):
         mapping: dict[str, str] = {}
         for obj_name in scene_object_names:
             key = obj_name.lower().replace("_", "")
-            for path in world_obstacle_names:
-                if key in str(path).lower().replace("_", ""):
-                    mapping[obj_name] = path
-                    break
+            # A short name can be a substring of a longer one (cube_1 vs cube_10), so prefer a
+            # path with a segment equal to the key over a bare substring hit.
+            candidates = [p for p in world_obstacle_names if key in str(p).lower().replace("_", "")]
+            if not candidates:
+                continue
+            exact = [p for p in candidates if key in str(p).lower().replace("_", "").split("/")]
+            if len(candidates) > 1 and not exact:
+                self._logger.warning(
+                    "Object %r matches several obstacles %s; using %s.", obj_name, candidates, candidates[0]
+                )
+            mapping[obj_name] = exact[0] if exact else candidates[0]
         return mapping
 
     def _sync_obstacle_poses(self) -> None:
