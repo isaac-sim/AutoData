@@ -489,7 +489,7 @@ class CuroboV2Planner(MotionPlannerBase):
                 )
             return scene if len(scene.geometry) else None
         except Exception as exc:  # noqa: BLE001
-            self._LOGGER.debug("world scene build for visualization failed: %s", exc)
+            self._logger.debug("world scene build for visualization failed: %s", exc)
             return None
 
     @staticmethod
@@ -754,9 +754,11 @@ class CuroboV2Planner(MotionPlannerBase):
         return list(self._planned_eef_poses)
 
     def has_next_waypoint(self) -> bool:
+        """Return whether the stored plan has waypoints left to execute."""
         return self._waypoint_index < len(self._planned_eef_poses)
 
     def get_next_waypoint_ee_pose(self) -> torch.Tensor:
+        """Return the next waypoint's end-effector pose as a 4x4 matrix and advance the iterator."""
         assert self.has_next_waypoint(), "No more waypoints in the current plan."
         pose = self._planned_eef_poses[self._waypoint_index]
         self._waypoint_index += 1
@@ -994,9 +996,6 @@ class CuroboV2Planner(MotionPlannerBase):
             world_pose_offset = current_world_pose.multiply(obstacle_pose.inverse())
 
         try:
-            # The object is excluded from the world below rather than through cuRobo's own
-            # auto-disable, which cannot reach mesh obstacles. Without that it would be counted
-            # twice: once as attached spheres and once as an obstacle.
             self._attachment_manager().attach(
                 joint_states=current_state,
                 obstacles=[obstacle],
@@ -1007,13 +1006,18 @@ class CuroboV2Planner(MotionPlannerBase):
                 world_objects_pose_offset=world_pose_offset,
                 disable_obstacle_names=None,
             )
-            self._set_obstacle_enabled(curobo_name, False)
-            self._currently_attached = expected
-            self._attached_curobo_name = curobo_name
         except Exception as exc:  # noqa: BLE001  (a failed attach should not abort planning)
             self._logger.warning("Attaching %r failed: %s. Planning unattached.", expected, exc)
-            self._currently_attached = None
-            self._attached_curobo_name = None
+            return
+
+        # Record the attachment before any follow-up work: once attach() has written spheres to
+        # the attached link, the release branch above must run on the next call even if the
+        # obstacle-disable step below fails, or the spheres would be left welded to the hand.
+        self._currently_attached = expected
+        self._attached_curobo_name = curobo_name
+        # Exclude the object from the world so it is not counted twice, once as attached spheres
+        # and once as an obstacle. cuRobo's own auto-disable cannot reach mesh obstacles.
+        self._set_obstacle_enabled(curobo_name, False)
 
     def _object_world_pose(self, obj_name: str) -> Pose | None:
         """Return a scene object's current pose in the robot base frame, or None if unknown."""
@@ -1093,8 +1097,11 @@ class CuroboV2Planner(MotionPlannerBase):
 
         tool_frame = self.motion_planner.tool_frames[0]
         link_pose = kin_state.tool_poses.get_link_pose(tool_frame)
-        positions_w = link_pose.position  # [T, 3]
-        quaternions_wxyz = link_pose.quaternion  # [T, 4]
+        # Move results onto the env's device: cuRobo computes on its own CUDA device, while
+        # callers combine these poses with env tensors.
+        env_device = self.datastream.device
+        positions_w = link_pose.position.detach().to(env_device)  # [T, 3]
+        quaternions_wxyz = link_pose.quaternion.detach().to(env_device)  # [T, 4]
         quaternions_xyzw = torch.roll(quaternions_wxyz, shifts=-1, dims=-1)
         rotations = PoseUtils.matrix_from_quat(quaternions_xyzw)  # [T, 3, 3]
         return [

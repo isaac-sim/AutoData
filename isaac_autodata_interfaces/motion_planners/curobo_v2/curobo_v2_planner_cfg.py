@@ -12,6 +12,7 @@ This module imports neither cuRobo nor Isaac Lab, so it can be loaded without a 
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -197,6 +198,9 @@ class CuroboV2PlannerCfg:
             return cls.franka_stack_cube_bin_config()
         if "stack-cube" in lower:
             return cls.franka_stack_cube_config()
+        logging.getLogger(__name__).warning(
+            "No planner preset matches task %r; falling back to the Franka configuration.", task_name
+        )
         return cls.franka_config()
 
     def to_v2_kwargs(self) -> dict[str, Any]:
