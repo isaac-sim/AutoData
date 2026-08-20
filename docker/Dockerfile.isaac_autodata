@@ -11,6 +11,10 @@ ENV WORKDIR=${WORKDIR}
 WORKDIR "${WORKDIR}"
 
 ENV TERM=xterm
+# Tolerate transient package-index failures on shared CI runners. These settings
+# are inherited by every pip invocation, including those run by isaaclab.sh.
+ENV PIP_RETRIES=10 \
+    PIP_DEFAULT_TIMEOUT=120
 # Path to the (nested) Isaac Lab checkout inside the Arena submodule.
 ENV ISAACLAB_PATH=${WORKDIR}/submodules/IsaacLab-Arena/submodules/IsaacLab
 
