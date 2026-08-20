@@ -405,7 +405,6 @@ class PlanVisualizer:
             for entity in entities:
                 rr.log(f"world/{entity_type}/{entity}", rr.Clear(recursive=True))
             self._sphere_entities[entity_type] = []
-        self._current_frame = 0
 
     def clear_visualization(self) -> None:
         """Public method to clear the visualization."""

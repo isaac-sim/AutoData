@@ -246,6 +246,11 @@ When motion planning fails for a trial — no collision-free path to the skill s
 trial is abandoned and counted as a failure; with ``guarantee_success: true`` generation
 simply retries with a new scene configuration until the trial target is met.
 
+``--planner_backend`` selects which cuRobo version plans those motions: ``curobo`` (v1,
+the default) or ``curobo_v2``. Both accept every flag shown above; each needs its matching
+cuRobo version installed, so they live in separate environments. See
+:doc:`../../advanced/motion_planners`.
+
 For a full-scale run, raise ``--generation_num_trials`` (hundreds to thousands for policy
 training) and keep ``--viz none`` — rendering slows generation considerably. See
 `Performance and Scaling`_ before choosing ``--num_envs``.

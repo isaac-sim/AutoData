@@ -1,0 +1,581 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Rerun visualizer for the cuRobo v2 motion planner.
+
+Draws the planned end-effector trajectory, the goal, the world obstacles, and the collision
+spheres of both the robot and any object it holds. The planner supplies the two sphere lists
+already separated, all in the robot base frame, so nothing here needs to transform them.
+
+Rerun is an optional dependency. The planner imports this module only when
+:attr:`CuroboV2PlannerCfg.visualize_plan` is set, so other runs never require it.
+"""
+
+from __future__ import annotations
+
+import atexit
+import contextlib
+import numpy as np
+import os
+import signal
+import threading
+import time
+import torch
+import weakref
+from typing import TYPE_CHECKING, Any
+
+
+def _import_rerun_sdk():
+    """Import the Rerun SDK, working around another package that claims the same import name.
+
+    An unrelated ``rerun`` file-watcher package installs directly into ``site-packages/rerun``
+    while ``rerun-sdk`` ships under ``rerun_sdk/``, so the file-watcher can win the import and
+    yield a module with no ``init`` or ``log``. Putting the SDK's directory first on the search
+    path avoids that.
+    """
+    import importlib
+    import os
+    import sys
+
+    # This works because the planner imports this module lazily and nothing before it imports
+    # ``rerun``, so the search path still decides. An already-imported wrong module is not
+    # reloaded: the SDK is a native extension and re-importing it over the other package crashes
+    # the interpreter.
+    if "rerun" not in sys.modules:
+        for entry in list(sys.path):
+            candidate = os.path.join(entry, "rerun_sdk")
+            if os.path.isfile(os.path.join(candidate, "rerun", "__init__.py")):
+                sys.path.insert(0, candidate)
+                break
+
+    module = importlib.import_module("rerun")
+    if hasattr(module, "init"):
+        return module
+
+    raise ImportError(
+        "cuRobo v2 plan visualization needs the Rerun robotics SDK, but `import rerun` resolved to "
+        f"the deprecated 'rerun' file-watcher package ({getattr(module, '__file__', '?')}) — it was "
+        "imported before this module could prefer rerun-sdk. Fix the env with `pip uninstall rerun` "
+        "(this keeps rerun-sdk), or disable visualize_plan."
+    )
+
+
+rr = _import_rerun_sdk()
+
+_RR_HAS_TRANSFORM_AXES = hasattr(rr, "TransformAxes3D")
+
+try:
+    import psutil
+
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    print("Warning: psutil not available. Rerun process monitoring will be limited.")
+
+if TYPE_CHECKING:
+    import trimesh
+
+
+# Global registry to track all visualizer instances for cleanup.
+_GLOBAL_PLAN_VISUALIZERS: list[PlanVisualizer] = []
+
+
+def _kill_owned_rerun_processes() -> int:
+    """Kill Rerun viewer processes spawned by this process, and only those.
+
+    Matching on the process tree rather than on the name alone keeps viewers belonging to other
+    users or jobs on a shared host untouched.
+
+    Returns:
+        Number of processes killed.
+    """
+    if not PSUTIL_AVAILABLE:
+        return 0
+    killed = 0
+    with contextlib.suppress(psutil.Error):
+        for proc in psutil.Process(os.getpid()).children(recursive=True):
+            try:
+                name = proc.name().lower()
+                cmdline = " ".join(proc.cmdline()).lower()
+                if "rerun" in name or "rerun" in cmdline:
+                    proc.kill()
+                    killed += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+    return killed
+
+
+def _cleanup_all_plan_visualizers() -> None:
+    """Close tracked visualizers and kill this process's own Rerun viewers on exit."""
+    for visualizer in _GLOBAL_PLAN_VISUALIZERS[:]:
+        if not visualizer._closed:
+            visualizer.close()
+    _GLOBAL_PLAN_VISUALIZERS.clear()
+    _kill_owned_rerun_processes()
+
+
+atexit.register(_cleanup_all_plan_visualizers)
+
+
+class PlanVisualizer:
+    """Visualizes cuRobo v2 motion plans, collision spheres, and obstacles via Rerun.
+
+    Args:
+        robot_name: Robot identifier used in the recording id.
+        recording_id: Optional Rerun recording id; defaults to ``motion_plan_<robot_name>``.
+        debug: Whether to print debug information.
+        save_path: Optional path to save the Rerun recording on close.
+        base_translation: Optional translation added to every visualized entity. Defaults to zero
+            because the v2 planner works entirely in the robot-base frame.
+    """
+
+    def __init__(
+        self,
+        robot_name: str = "franka",
+        recording_id: str | None = None,
+        debug: bool = False,
+        save_path: str | None = None,
+        base_translation: np.ndarray | None = None,
+    ) -> None:
+        self.robot_name = robot_name
+        self.debug = debug
+        self.recording_id = recording_id or f"motion_plan_{robot_name}"
+        self.save_path = save_path
+        self._closed = False
+        self._base_translation = (
+            np.array(base_translation, dtype=float) if base_translation is not None else np.zeros(3)
+        )
+
+        self._parent_pid = os.getpid()
+        self._monitor_thread: threading.Thread | None = None
+        self._monitor_active = False
+
+        # cuRobo v2 MotionPlanner reference, set by the planner for sphere animation.
+        self._motion_planner_ref: Any = None
+
+        _GLOBAL_PLAN_VISUALIZERS.append(self)
+
+        rr.init(self.recording_id, spawn=False)
+        self._rerun_process = None
+        self._sink = self._connect_sink()
+
+        rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_UP)
+
+        self._current_frame = 0
+        self._sphere_entities: dict[str, list[str]] = {"robot": [], "attached": [], "target": []}
+
+        self._start_parent_process_monitoring()
+
+        self._finalizer = weakref.finalize(
+            self, self._cleanup_class_resources, self.recording_id, self.save_path, debug, self._sink
+        )
+        self._atexit_callback = atexit.register(
+            self._cleanup_class_resources, self.recording_id, self.save_path, debug, self._sink
+        )
+
+        self._original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_DFL)
+        self._original_sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_DFL)
+
+        def signal_handler(signum, frame):
+            if self.debug:
+                print(f"Received signal {signum}, closing Rerun viewer...")
+            self._cleanup_on_exit()
+            if signum == signal.SIGINT:
+                signal.signal(signal.SIGINT, self._original_sigint_handler)
+            elif signum == signal.SIGTERM:
+                signal.signal(signal.SIGTERM, self._original_sigterm_handler)
+            os.kill(os.getpid(), signum)
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        if self.debug:
+            print(f"Initialized cuRobo v2 Rerun visualization (recording id: {self.recording_id})")
+
+    # ------------------------------------------------------------------
+    # Process lifecycle
+    # ------------------------------------------------------------------
+
+    def _connect_sink(self) -> str:
+        """Attach a live viewer if one can be launched, otherwise record to an ``.rrd`` file.
+
+        Spawning a viewer needs the ``rerun`` executable, which may be missing from the path, so
+        the SDK's bundled binary is used when present. Which route was taken is always logged,
+        since a viewer that fails to start is otherwise invisible.
+
+        Returns:
+            ``"viewer"``, ``"file"``, or ``"none"``, describing where output went.
+        """
+        exe = self._bundled_viewer_path()
+        try:
+            if exe is not None:
+                rr.spawn(executable_path=exe)
+            else:
+                rr.spawn()
+            print(
+                f"[PlanVisualizer] live Rerun viewer launched (recording_id={self.recording_id!r}, "
+                f"viewer={exe or 'rerun on PATH'}).",
+                flush=True,
+            )
+            return "viewer"
+        except Exception as exc:  # noqa: BLE001
+            if self.save_path:
+                try:
+                    rr.save(self.save_path)
+                    print(
+                        f"[PlanVisualizer] no live viewer ({exc}); recording to {self.save_path!r}. "
+                        f"Open it with:  rerun {self.save_path}",
+                        flush=True,
+                    )
+                    return "file"
+                except Exception as save_exc:  # noqa: BLE001
+                    print(f"[PlanVisualizer] viewer spawn AND file save failed: {save_exc!r}", flush=True)
+            else:
+                print(f"[PlanVisualizer] could not launch a live viewer ({exc}); no save_path set.", flush=True)
+            return "none"
+
+    @staticmethod
+    def _bundled_viewer_path() -> str | None:
+        """Path to rerun-sdk's bundled viewer binary (``rerun_cli/rerun``), or ``None`` if absent."""
+        import os
+
+        try:
+            pkg_dir = os.path.dirname(rr.__file__)  # .../rerun_sdk/rerun
+            candidate = os.path.abspath(os.path.join(pkg_dir, os.pardir, "rerun_cli", "rerun"))
+            return candidate if os.path.isfile(candidate) else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _start_parent_process_monitoring(self) -> None:
+        if not PSUTIL_AVAILABLE:
+            return
+        self._monitor_active = True
+
+        def monitor_parent_process() -> None:
+            parent_process = psutil.Process(self._parent_pid)
+            while self._monitor_active:
+                try:
+                    if not parent_process.is_running():
+                        self._kill_rerun_processes()
+                        break
+                    time.sleep(2)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    self._kill_rerun_processes()
+                    break
+                except Exception:
+                    break
+
+        self._monitor_thread = threading.Thread(target=monitor_parent_process, daemon=True)
+        self._monitor_thread.start()
+
+    def _kill_rerun_processes(self) -> None:
+        try:
+            _kill_owned_rerun_processes()
+        except Exception as exc:  # pragma: no cover
+            if self.debug:
+                print(f"Error killing rerun processes: {exc}")
+
+    @staticmethod
+    def _cleanup_class_resources(recording_id: str, save_path: str | None, debug: bool, sink: str = "") -> None:
+        # Save before disconnecting: data logged so far is not written to a file opened after
+        # the recording is closed. Skip when the sink already is that file, since re-opening it
+        # would truncate what was streamed to it.
+        if save_path is not None and sink != "file":
+            rr.save(save_path)
+        rr.disconnect()
+        _kill_owned_rerun_processes()
+
+    def _cleanup_on_exit(self) -> None:
+        if not self._closed:
+            self._monitor_active = False
+            self.close()
+            self._kill_rerun_processes()
+
+    def close(self) -> None:
+        """Close the Rerun connection, terminate the viewer, and deregister."""
+        if self._closed:
+            return
+        self._monitor_active = False
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            time.sleep(0.1)
+        # Save before disconnecting so the recording keeps the data logged so far; skip when the
+        # sink already is the file, since re-opening it would truncate it.
+        if self.save_path is not None and self._sink != "file":
+            rr.save(self.save_path)
+        rr.disconnect()
+        # The instance is now fully released; the exit-time callback would only repeat this work
+        # on a closed recording.
+        atexit.unregister(self._cleanup_class_resources)
+        self._finalizer.detach()
+        self._closed = True
+        try:
+            process = getattr(self, "_rerun_process", None)
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except Exception:
+                    process.kill()
+        except Exception:
+            pass
+        self._kill_rerun_processes()
+        if self in _GLOBAL_PLAN_VISUALIZERS:
+            _GLOBAL_PLAN_VISUALIZERS.remove(self)
+
+    def set_motion_planner_reference(self, motion_planner: Any) -> None:
+        """Provide the cuRobo v2 ``MotionPlanner`` used to compute spheres during animation."""
+        self._motion_planner_ref = motion_planner
+
+    # ------------------------------------------------------------------
+    # Static plan visualization
+    # ------------------------------------------------------------------
+
+    def visualize_plan(
+        self,
+        plan: Any,
+        target_pose: torch.Tensor,
+        robot_spheres: list[Any] | None = None,
+        attached_spheres: list[Any] | None = None,
+        ee_positions: np.ndarray | None = None,
+        world_scene: trimesh.Scene | None = None,
+    ) -> None:
+        """Log one static snapshot of a plan: obstacles, target, EE trajectory, and spheres.
+
+        Args:
+            plan: Active-DoF joint trajectory (only ``plan.position`` is read, for the EE path
+                fallback). The planner normally supplies ``ee_positions`` directly.
+            target_pose: Target end-effector pose as a 4x4 matrix in the robot-base frame.
+            robot_spheres: Robot collision spheres (cuRobo ``Sphere`` objects).
+            attached_spheres: Attached-object collision spheres.
+            ee_positions: ``[T, 3]`` end-effector positions in the robot-base frame.
+            world_scene: Optional ``trimesh.Scene`` of the world obstacles.
+        """
+        rr.set_time("static_plan", sequence=self._current_frame)
+        self._current_frame += 1
+
+        self._clear_visualization()
+
+        if world_scene is not None:
+            self._visualize_world_scene(world_scene)
+        self._visualize_target_pose(target_pose)
+        self._visualize_trajectory(plan, ee_positions)
+
+        if robot_spheres:
+            self._log_spheres(robot_spheres, "robot", [0, 255, 100, 128])
+        if attached_spheres:
+            self._log_spheres(attached_spheres, "attached", [255, 0, 0, 128])
+        else:
+            self._clear_attached_spheres()
+
+        n_ee = 0 if ee_positions is None else len(ee_positions)
+        print(
+            f"[PlanVisualizer] logged plan -> sink={self._sink}: {n_ee} EE waypoints, "
+            f"{len(robot_spheres or [])} robot spheres, {len(attached_spheres or [])} attached spheres.",
+            flush=True,
+        )
+
+    def _clear_visualization(self) -> None:
+        for path in ("trajectory", "target", "anim"):
+            rr.log(f"world/{path}", rr.Clear(recursive=True))
+        for entity_type, entities in self._sphere_entities.items():
+            for entity in entities:
+                rr.log(f"world/{entity_type}/{entity}", rr.Clear(recursive=True))
+            self._sphere_entities[entity_type] = []
+
+    def clear_visualization(self) -> None:
+        """Public wrapper around :meth:`_clear_visualization`."""
+        self._clear_visualization()
+
+    def _visualize_target_pose(self, target_pose: torch.Tensor) -> None:
+        mat = target_pose.detach().cpu().numpy() if torch.is_tensor(target_pose) else np.asarray(target_pose)
+        mat = mat.reshape(4, 4)
+        pos = mat[:3, 3] + self._base_translation
+        rot = mat[:3, :3]
+        rr.log("world/target/position", rr.Points3D(positions=np.array([pos]), colors=[[255, 0, 0]], radii=[0.02]))
+        rr.log("world/target/frame", rr.Transform3D(translation=pos, mat3x3=rot))
+
+    def _visualize_trajectory(self, plan: Any, ee_positions: np.ndarray | None) -> None:
+        if ee_positions is None:
+            raw = plan.position.detach().cpu().numpy() if torch.is_tensor(plan.position) else np.array(plan.position)
+            if raw.ndim != 2 or raw.shape[1] < 3:
+                return  # nothing sensible to draw without explicit EE positions
+            positions = raw[:, :3]
+        else:
+            positions = np.asarray(ee_positions)
+        if positions.size == 0:
+            return
+        positions = positions + self._base_translation
+        rr.log("world/trajectory", rr.LineStrips3D([positions], colors=[[0, 100, 255]], radii=[0.005]), static=True)
+        for i, pos in enumerate(positions):
+            rr.log(
+                f"world/trajectory/keyframe_{i}",
+                rr.Points3D(positions=np.array([pos]), colors=[[0, 100, 255]], radii=[0.01]),
+                static=True,
+            )
+
+    def _log_spheres(self, spheres: list[Any], entity_type: str, color: list[int]) -> None:
+        for i, sphere in enumerate(spheres):
+            entity_id = f"sphere_{i}"
+            self._sphere_entities.setdefault(entity_type, []).append(entity_id)
+            pos = (
+                sphere.position.detach().cpu().numpy()
+                if torch.is_tensor(sphere.position)
+                else np.array(sphere.position)
+            ).reshape(-1)
+            pos = pos + self._base_translation
+            rr.log(
+                f"world/{entity_type}/{entity_id}",
+                rr.Points3D(positions=np.array([pos]), colors=[color], radii=[float(sphere.radius)]),
+            )
+
+    def _clear_attached_spheres(self) -> None:
+        for entity_id in self._sphere_entities.get("attached", []):
+            rr.log(f"world/attached/{entity_id}", rr.Clear(recursive=True))
+        self._sphere_entities["attached"] = []
+
+    def _visualize_world_scene(self, scene: trimesh.Scene) -> None:
+        import trimesh
+
+        if not hasattr(self, "_logged_geometry"):
+            self._logged_geometry: set[str] = set()
+
+        for node in scene.graph.nodes_geometry:
+            tform, geom_key = scene.graph.get(node)
+            mesh = scene.geometry.get(geom_key)
+            if mesh is None:
+                continue
+            rr_path = f"world/scene/{node.replace('/', '_')}"
+            if _RR_HAS_TRANSFORM_AXES:
+                rr.log(rr_path, rr.Transform3D(translation=tform[:3, 3], mat3x3=tform[:3, :3]), static=False)
+            else:
+                rr.log(
+                    rr_path,
+                    rr.Transform3D(translation=tform[:3, 3], mat3x3=tform[:3, :3], axis_length=0.0),
+                    static=False,
+                )
+            if rr_path not in self._logged_geometry:
+                if isinstance(mesh, trimesh.Trimesh):
+                    rr.log(
+                        rr_path,
+                        rr.Mesh3D(
+                            vertex_positions=mesh.vertices,
+                            triangle_indices=mesh.faces,
+                            vertex_normals=mesh.vertex_normals if mesh.vertex_normals is not None else None,
+                        ),
+                        static=True,
+                    )
+                    self._logged_geometry.add(rr_path)
+
+    # ------------------------------------------------------------------
+    # Animation
+    # ------------------------------------------------------------------
+
+    def animate_plan(self, ee_positions: np.ndarray, timeline: str = "plan", point_radius: float = 0.01) -> None:
+        """Play back the end-effector marker along ``ee_positions`` on ``timeline``."""
+        if ee_positions is None or len(ee_positions) == 0:
+            return
+        for idx, pos in enumerate(ee_positions):
+            rr.set_time(timeline, sequence=idx)
+            rr.log(
+                "world/anim/ee",
+                rr.Points3D(
+                    positions=np.array([pos + self._base_translation]), colors=[[0, 100, 255]], radii=[point_radius]
+                ),
+            )
+
+    def animate_spheres_along_path(
+        self,
+        plan: Any,
+        robot_sphere_count: int,
+        timeline: str = "sphere_animation",
+        interpolation_steps: int = 10,
+    ) -> None:
+        """Animate robot (green) and attached (orange) spheres along the planned trajectory.
+
+        Recomputes collision spheres at densely interpolated configurations via the v2
+        ``MotionPlanner.kinematics.get_robot_as_spheres``. ``plan`` must carry active-DoF
+        positions (``[T, active_dof]``); ``robot_sphere_count`` is the number of robot self
+        spheres (the remainder of each frame's active spheres are the attached object's).
+        """
+        motion_planner = self._motion_planner_ref
+        if motion_planner is None or plan is None or len(plan.position) == 0:
+            return
+        device = motion_planner.device_cfg.device
+
+        self._hide_static_spheres_for_animation()
+        interpolated = self._create_interpolated_trajectory(plan, interpolation_steps)
+
+        for frame_idx, joint_positions in enumerate(interpolated):
+            rr.set_time(timeline, sequence=frame_idx)
+            q = joint_positions if isinstance(joint_positions, torch.Tensor) else torch.tensor(joint_positions)
+            q = q.to(device=device, dtype=torch.float32)
+            if q.ndim == 1:
+                q = q.unsqueeze(0)  # [active_dof] -> [1, active_dof]
+            try:
+                with torch.inference_mode(False), torch.enable_grad():
+                    sphere_list = motion_planner.kinematics.get_robot_as_spheres(q)[0]
+            except Exception as exc:
+                if self.debug:
+                    print(f"Failed to compute spheres for frame {frame_idx}: {exc}")
+                continue
+
+            robot_pos, robot_rad, att_pos, att_rad = [], [], [], []
+            for i, sphere in enumerate(sphere_list):
+                pos = (
+                    sphere.position.detach().cpu().numpy()
+                    if torch.is_tensor(sphere.position)
+                    else np.array(sphere.position)
+                ).reshape(-1) + self._base_translation
+                if i < robot_sphere_count:
+                    robot_pos.append(pos)
+                    robot_rad.append(float(sphere.radius))
+                else:
+                    att_pos.append(pos)
+                    att_rad.append(float(sphere.radius))
+
+            if robot_pos:
+                rr.log(
+                    "world/robot_animation",
+                    rr.Points3D(
+                        positions=np.array(robot_pos), colors=[[0, 255, 100, 220]] * len(robot_pos), radii=robot_rad
+                    ),
+                )
+            if att_pos:
+                rr.log(
+                    "world/attached_animation",
+                    rr.Points3D(positions=np.array(att_pos), colors=[[255, 150, 0, 220]] * len(att_pos), radii=att_rad),
+                )
+            else:
+                rr.log("world/attached_animation", rr.Clear(recursive=True))
+
+    def _hide_static_spheres_for_animation(self) -> None:
+        for entity_id in self._sphere_entities.get("robot", []):
+            rr.log(f"world/robot/{entity_id}", rr.Clear(recursive=True))
+        for entity_id in self._sphere_entities.get("attached", []):
+            rr.log(f"world/attached/{entity_id}", rr.Clear(recursive=True))
+
+    @staticmethod
+    def _create_interpolated_trajectory(plan: Any, interpolation_steps: int) -> list[torch.Tensor]:
+        positions = plan.position
+        if len(positions) < 2:
+            p0 = positions[0]
+            return [p0 if isinstance(p0, torch.Tensor) else torch.tensor(p0)]
+        waypoints = [p if isinstance(p, torch.Tensor) else torch.tensor(p) for p in positions]
+        out: list[torch.Tensor] = []
+        for i in range(len(waypoints) - 1):
+            start, end = waypoints[i], waypoints[i + 1]
+            for step in range(interpolation_steps):
+                alpha = step / interpolation_steps
+                out.append(start * (1.0 - alpha) + end * alpha)
+        out.append(waypoints[-1])
+        return out
+
+    def mark_idle(self) -> None:
+        """Emit empty animation frames so stale spheres/markers don't linger between plans."""
+        empty = np.empty((0, 3), dtype=float)
+        rr.set_time("plan", sequence=self._current_frame)
+        self._current_frame += 1
+        rr.log("world/anim/ee", rr.Points3D(positions=empty))
+        rr.set_time("sphere_animation", sequence=self._current_frame)
+        rr.log("world/robot_animation", rr.Points3D(positions=empty))
+        rr.log("world/attached_animation", rr.Points3D(positions=empty))
