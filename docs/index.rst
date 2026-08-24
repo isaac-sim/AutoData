@@ -100,6 +100,7 @@ Table of Contents
    :maxdepth: 1
    :caption: Set Up
 
+   pages/quickstart/support_matrix
    pages/quickstart/installation
 
 .. toctree::

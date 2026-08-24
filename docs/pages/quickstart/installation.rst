@@ -9,6 +9,9 @@ so edits on the host are live inside it.
 An optional conda installation is also available for users who want direct control over their
 Python environment and installed packages. See `Optional Conda Installation`_ below.
 
+Before installing, review the :doc:`support_matrix` for the complete supported software stack,
+hardware requirements, optional cuRobo and XR dependencies, and resource guidance.
+
 
 Common Prerequisites
 --------------------
