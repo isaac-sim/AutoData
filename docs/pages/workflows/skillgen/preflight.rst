@@ -138,4 +138,3 @@ scene, and retries until it records the requested number of successful demonstra
    * - cuRobo import, CUDA kernel, or Nucleus download fails before planning begins.
      - No
      - Treat it as a preflight failure and use the corresponding troubleshooting section.
-

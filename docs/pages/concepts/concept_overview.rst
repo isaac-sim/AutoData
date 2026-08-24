@@ -29,11 +29,11 @@ Packages
    * - ``isaac_autodata_utils``
      - Small shared utilities (pose math, tensor helpers).
    * - ``isaac_autodata_examples``
-     - The ``generate_dataset.py`` entry point plus example task descriptors and embodiment
-       configs.
+     - Example task descriptors, embodiment configs, environment profiles, and project-owned
+       environment definitions.
    * - ``scripts``
-     - Dataset tools: annotation (``annotate_demos.py``) and validation
-       (``validate_dataset.py``).
+     - User-facing dataset entry points: generation (``generate_dataset.py``), annotation
+       (``annotate_demos.py``), and validation (``validate_dataset.py``).
 
 Key Abstractions
 ----------------
