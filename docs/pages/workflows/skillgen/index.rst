@@ -1,6 +1,11 @@
 SkillGen: Motion-Planned Data Generation
 ========================================
 
+.. toctree::
+   :hidden:
+
+   preflight
+
 **SkillGen** augments MimicGen-style generation with collision-aware, GPU-accelerated motion
 planning (`cuRobo <https://curobo.org/>`_). Instead of interpolating the end-effector between
 subtasks, SkillGen plans a collision-free *transit* motion to each skill segment's start, then
@@ -88,25 +93,12 @@ are identical:
    * - **4. Validate**
      - **Identical.** ``scripts/validate_dataset.py`` works on any generated dataset.
 
-Prerequisites
--------------
+Preflight
+---------
 
-SkillGen requires the cuRobo container image. cuRobo's CUDA kernels are compiled for your
-GPU architecture at image build time (auto-detected via ``nvidia-smi``; override with
-``TORCH_CUDA_ARCH_LIST``):
-
-:docker_run_curobo:
-
-.. warning::
-
-   cuRobo kernels are compiled for the GPU you build the image on. If you later run on a
-   different GPU generation, rebuild with ``./docker/run_docker.sh -c -r``.
-
-.. note::
-
-   SkillGen initialization needs network access: the planner downloads the Franka robot model
-   (URDF) from the Nucleus asset server. For download failures, see
-   :ref:`troubleshooting-nucleus`.
+Before annotating or generating, complete the :doc:`Franka SkillGen preflight <preflight>`. It
+consolidates the cuRobo image and GPU checks, source dataset and Nucleus dependencies, a
+one-demonstration smoke test, expected planning failures, and runtime and VRAM guidance.
 
 The Task Descriptor for SkillGen
 --------------------------------
@@ -246,11 +238,11 @@ Start small to verify the setup, using the pre-annotated source dataset:
 When motion planning fails for an attempt — no collision-free path to the skill start — the
 attempt is abandoned and counted as a failure; with ``guarantee_success: true``, generation
 simply retries with a new scene configuration until the demonstration target is met.
-If every attempt fails, follow :ref:`troubleshooting-planning` before tuning planner parameters.
+See :ref:`skillgen-preflight-failures` for normal failure behavior and the signs of a configuration
+problem.
 
 For a full-scale run, raise ``--generation_num_trials`` (hundreds to thousands for policy
-training) and keep ``--viz none`` — rendering slows generation considerably. See
-`Performance and Scaling`_ before choosing ``--num_envs``.
+training) and keep ``--viz none`` — rendering slows generation considerably.
 
 Validate the generated dataset the same way as any other:
 
@@ -349,44 +341,12 @@ dataset itself only stores the base env id.
 
    Adaptive tasks like bin stacking have lower success rates and longer generation times than
    the plain variant: the planning problems are harder (narrow bin clearances) and more
-   attempts are rejected. Budget accordingly — see the numbers below.
+   attempts are rejected.
 
 To adapt a task of your own, copy ``franka_bin_stack.yaml`` and adjust: pick the ``base_env``,
 add/override scene objects, swap the reset events, and point ``planner`` at a planner profile
 that treats your new objects as collision geometry (see
 :doc:`../../advanced/motion_planners` for defining one).
-
-Performance and Scaling
------------------------
-
-``--num_envs`` trades GPU memory for throughput: one cuRobo planner is created per
-environment. Indicative figures, measured with the equivalent SkillGen pipeline in Isaac Lab
-Mimic on an RTX 6000 Ada (48 GB), headless:
-
-.. list-table::
-   :widths: 40 60
-   :header-rows: 1
-
-   * - Metric
-     - Indicative value
-   * - VRAM, 1 env
-     - ~9.5 GB steady (briefly higher during initialization)
-   * - VRAM, 5 envs
-     - ~22 GB steady
-   * - 1000 demonstrations, cube stacking, 1 env
-     - ~90–120 minutes
-   * - 1000 demonstrations, bin stack, 1 env
-     - ~220 minutes
-   * - Generation success rate
-     - Typically 40–70% with a well-annotated dataset
-
-Practical guidance:
-
-* Start with ``--num_envs 1`` and increase gradually; around **5 envs** is a sweet spot
-  balancing planner memory against simulation throughput — gains beyond that are small.
-* Prefer a GPU with **≥24 GB** VRAM for 1–2 envs and **≥48 GB** for ~5 envs.
-* Generation time scales with the demonstration target *and* the success rate, which depends mostly on
-  annotation quality — verify a small batch before launching a long run.
 
 Visualizing and Debugging Plans
 -------------------------------
