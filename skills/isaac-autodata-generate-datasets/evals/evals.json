@@ -7,14 +7,14 @@
       "question": "Use Isaac AutoData to generate 10 Franka cube-stacking demonstrations from the annotated dataset and validate the output.",
       "expected_skill": "isaac-autodata-generate-datasets",
       "expected_script": "skills/isaac-autodata-generate-datasets/scripts/run_generation.sh",
-      "ground_truth": "Run generate_dataset.py with --alg mimicgen, --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0, --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml, --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml, --input_file the annotated Franka dataset, --generation_num_trials 10, then validate with validate_dataset.py --strict.",
+      "ground_truth": "Run generate_dataset.py with --alg mimicgen, --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0, --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml, --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml, --input_file the annotated Franka dataset, --generation_num_trials 10, then validate with validate_dataset.py.",
       "expected_behavior": [
         "Identify a single-arm Franka task and select the mimicgen algorithm.",
         "Use the default container (no cuRobo needed).",
         "Use franka_cube_stack.yaml and franka_ik_rel.yaml as task descriptor and embodiment.",
         "Set --generation_num_trials 10 and a reasonable --num_envs.",
         "Run generate_dataset.py against the annotated Franka source dataset.",
-        "Validate the generated HDF5 with validate_dataset.py --strict."
+        "Validate the generated HDF5 with validate_dataset.py."
       ]
     },
     {

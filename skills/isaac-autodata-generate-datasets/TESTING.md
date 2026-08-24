@@ -30,7 +30,7 @@ Executed inside the default `./docker/run_docker.sh` container on Linux with an 
 - Source: `datasets/annotated_datasets/dataset_franka_annotated.hdf5`
 - Parameters: 10 trials, 10 parallel environments, `--viz none`
 - Output: `datasets/generated_dataset_franka_base_env_smoke.hdf5`
-- Result: strict validation passed — 5 successful episodes; the expected base environment ID and simulation arguments were present.
+- Result: validation passed — 5 successful episodes; the expected base environment ID and simulation arguments were present.
 
 The validator was run with `HDF5_USE_FILE_LOCKING=FALSE`, which is required after Isaac Sim has held the HDF5 file open.
 
@@ -43,7 +43,7 @@ the agent's routing and its proposed commands/YAML against each case's `expected
 Suggested prompts (from `evals/evals.json`):
 
 - Positive: "Use Isaac AutoData to generate 10 Franka cube-stacking demonstrations ... and
-  validate the output." → expect mimicgen + franka YAML + validate_dataset.py --strict.
+  validate the output." → expect mimicgen + franka YAML + validate_dataset.py.
 - Positive: "bimanual pick-and-place demonstrations for the Fourier GR-1" → expect dexmimicgen.
 - Positive: "collision-aware Franka bin-stacking trajectories with SkillGen" → expect skillgen
   + cuRobo container.
@@ -68,7 +68,7 @@ To verify end-to-end generation:
        --trials 10 --num-envs 10 --viz none
    ```
 
-4. Confirm the output HDF5 passes `HDF5_USE_FILE_LOCKING=FALSE /isaac-sim/python.sh scripts/validate_dataset.py --strict <output>`.
+4. Confirm the output HDF5 passes `HDF5_USE_FILE_LOCKING=FALSE /isaac-sim/python.sh scripts/validate_dataset.py <output>`.
 5. Repeat with and without the skill to fill the `BENCHMARK.md` result table (task completion
    rate, algorithm/container correctness, token consumption, wall-clock time).
 

@@ -123,10 +123,12 @@ Start the dev container (see :doc:`../../quickstart/installation`):
 
 :docker_run_default:
 
-Recording humanoid demonstrations additionally requires an **Apple Vision Pro** and the CloudXR
-runtime. :doc:`step_1_record_demonstrations` covers the setup and links the Isaac Lab teleop
-guides. If you don't have an Apple Vision Pro, skip to :doc:`step_3_generate_dataset` and use the
-pre-annotated source dataset.
+.. attention::
+
+  Recording humanoid demonstrations requires an **Apple Vision Pro** and the CloudXR
+  runtime. :doc:`step_1_record_demonstrations` covers the setup and links the Isaac Lab teleop
+  guides. If you don't have an Apple Vision Pro, skip to :doc:`step_3_generate_dataset` and use the
+  pre-annotated source dataset.
 
 
 Workflow Steps

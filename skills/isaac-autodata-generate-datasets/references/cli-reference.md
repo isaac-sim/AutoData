@@ -56,8 +56,7 @@ followed by any issues.
 ```bash
 python scripts/validate_dataset.py <file.hdf5> [<file2.hdf5> ...]
 python scripts/validate_dataset.py directory/*.hdf5
-python scripts/validate_dataset.py --strict directory/*.hdf5   # non-zero exit on any invalid file
 ```
 
 Required demo fields checked: `actions` (dataset), `initial_state` (group), `obs` (group).
-Use `--strict` to gate agent workflows on a clean exit code.
+The command exits non-zero if any file is invalid, so workflows can gate on a clean exit code.

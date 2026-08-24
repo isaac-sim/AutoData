@@ -1,3 +1,9 @@
+.. attention::
+
+   Recording and annotating your own demonstrations requires an Apple Vision Pro and the CloudXR runtime.
+   If you do not have the required hardware, you may skip :doc:`step_1_record_demonstrations` and :doc:`step_2_annotate_demonstrations` by using the pre-annotated source dataset that ships with the
+   repository and jumping directly to :doc:`step_3_generate_dataset`.
+
 Step 1: Record Source Demonstrations
 ------------------------------------
 
@@ -10,21 +16,6 @@ dexterous, bimanual humanoids are teleoperated with an **Apple Vision Pro** thro
 `NVIDIA IsaacTeleop <https://github.com/NVIDIA/IsaacTeleop>`_ and the CloudXR runtime. The headset's
 wrist poses drive a differential IK controller per arm, and the finger joints are retargeted onto
 the robot's hands. The AutoData development container includes Isaac Teleop so the flow below works out of the box.
-
-.. note::
-
-   To skip recording (and annotation), use the pre-annotated source dataset that ships with the
-   repository and jump to :doc:`step_3_generate_dataset`:
-
-   .. tabs::
-
-      .. group-tab:: GR-1
-
-         ``datasets/annotated_datasets/dataset_gr1_annotated.hdf5``
-
-      .. group-tab:: G1
-
-         ``datasets/annotated_datasets/dataset_g1_annotated.hdf5``
 
 .. note::
 
