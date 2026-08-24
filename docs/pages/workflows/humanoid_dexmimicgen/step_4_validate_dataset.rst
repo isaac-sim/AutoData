@@ -29,7 +29,7 @@ Visual Validation
 ^^^^^^^^^^^^^^^^^
 
 Replay generated episodes to inspect them visually using Isaac Lab's replay
-tool. CPU simulation matches how the humanoid demos were recorded:
+tool. CPU simulation matches how the humanoid demonstrations were recorded:
 
 .. tabs::
 
@@ -81,5 +81,4 @@ the task descriptor).
    reproducible across an ``env.reset``, so replaying an episode's recorded actions from its saved
    initial state can diverge from the original. Some episodes may fail to reproduce success during
    replay even though **every** episode in the dataset was a successful demonstration at generation
-   time. All recorded episode data in the HDF5 are still valid successes following the
-   environment's success criterion.
+   time. Each episode satisfied the environment's success condition when it was generated.

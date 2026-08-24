@@ -2,7 +2,7 @@ Installation
 ============
 
 Docker is the recommended way to install Isaac AutoData. The dev container setup includes Isaac Sim,
-Isaac Lab, Isaac Lab Arena, and Isaac AutoData, providing a reproducible environment
+Isaac Lab, Isaac Lab-Arena, and Isaac AutoData, providing a reproducible environment
 without modifying the host Python installation. The repository is bind-mounted into the container,
 so edits on the host are live inside it.
 
@@ -26,7 +26,7 @@ On the host you need:
 Cloning the Repository
 ----------------------
 
-Isaac Lab and Isaac Lab Arena are nested git submodules, so clone recursively:
+Isaac Lab and Isaac Lab-Arena are nested git submodules, so clone recursively:
 
 :isaac_autodata_git_clone_code_block:
 
@@ -120,7 +120,7 @@ From the repository root, create the ``isaac_autodata`` environment with Python 
 
    ./conda_installer.sh -c
 
-Activate the environment and install Isaac Sim, CUDA-enabled PyTorch, Isaac Lab, Isaac Lab Arena,
+Activate the environment and install Isaac Sim, CUDA-enabled PyTorch, Isaac Lab, Isaac Lab-Arena,
 and Isaac AutoData:
 
 .. code-block:: bash

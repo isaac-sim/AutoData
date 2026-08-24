@@ -8,7 +8,7 @@ Support Matrix
 This matrix describes the supported Isaac AutoData v0.1.0 stack. Upstream projects may support
 additional platforms, but configurations outside this matrix are not validated by AutoData. Use
 the recursively pinned submodules from the AutoData repository instead of independently selecting
-Isaac Lab or Isaac Lab Arena revisions.
+Isaac Lab or Isaac Lab-Arena revisions.
 
 .. list-table:: Isaac AutoData platform and resource support
    :widths: 25 75
@@ -40,7 +40,7 @@ Isaac Lab or Isaac Lab Arena revisions.
      - 6.0.1 container image; 6.0.1.0 Python package
    * - Isaac Lab
      - 3.0.0 at commit ``ffff603eafc6b74264a5261cc0183d6a65390d78``
-   * - Isaac Lab Arena
+   * - Isaac Lab-Arena
      - 0.2.0 at commit ``8b82dca224f2b5af08f339f987613c59ce9cdbaa``
    * - Python and PyTorch
      - Python 3.12 and PyTorch 2.10.0 with CUDA 12.8

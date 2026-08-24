@@ -5,7 +5,7 @@ This page guides you through a quickstart to run data generation on a Franka rob
 starting from a source dataset of pre-annotated human demonstrations that ships with the repository.
 
 For the full pipeline — recording your own demonstrations, annotating them, and generating at
-scale — see the :doc:`Franka cube stack workflow <../workflows/franka_cube_stack_mimicgen/index>`.
+scale — see the :doc:`Franka cube-stacking workflow <../workflows/franka_cube_stack_mimicgen/index>`.
 
 
 Prerequisites
@@ -59,10 +59,10 @@ running tally after every attempt to generate a new demonstration:
    8/10 (80.0%) successful demos generated
    **************************************************
 
-The command was run with ``--viz kit`` which shows a live visualization of the generation process in an Isaac Sim window.
+The ``--viz kit`` option opens a Kit window showing the generation process.
 
-Wait for the script to complete after 10 successful demos are generated and recorded into an HDF5 dataset.
-The window will close automatically when the generation is complete.
+Wait for the script to complete after 10 successful demonstrations are recorded in an HDF5 dataset.
+The Kit window closes automatically when generation is complete.
 
 .. figure:: ../../images/franka_mimicgen_datagen.jpg
    :width: 100%
@@ -75,7 +75,7 @@ The window will close automatically when the generation is complete.
 What Just Happened?
 -------------------
 
-Each generation trial ran the following steps:
+Each generation attempt runs the following steps:
 
 1. **Reset & randomize** — the scene resets and object poses are randomized by the
    environment.
@@ -86,8 +86,8 @@ Each generation trial ran the following steps:
    object, is rigidly transformed to the object's *current* pose.
 4. **Execute** — the robot interpolates to the transformed segment's start, then replays it,
    with a small amount of action noise for diversity (:doc:`../concepts/algorithms`).
-5. **Record** — the trial is checked against the task's success condition.
-   Generation keeps attempting until 10 *successful* demos are recorded, and only those are
+5. **Record** — the attempt is checked against the task's success condition.
+   Generation keeps attempting until 10 *successful* demonstrations are recorded, and only those are
    exported.
 
 

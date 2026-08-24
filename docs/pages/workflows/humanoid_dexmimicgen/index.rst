@@ -1,5 +1,5 @@
-Humanoid Pick & Place with DexMimicGen
-======================================
+Humanoid Pick-and-Place with DexMimicGen
+========================================
 
 This example demonstrates the Isaac AutoData workflow using DexMimicGen to generate a
 synthetic pick-and-place dataset for a bimanual humanoid robot. It covers recording source
@@ -90,14 +90,14 @@ Why Multi-End-Effector Generation Differs
 -----------------------------------------
 
 Follow the :doc:`Franka cube-stacking workflow <../franka_cube_stack_mimicgen/index>` for an
-overview of the single arm (MimicGen) case. This section highlights what changes for the
+overview of the single-arm (MimicGen) case. This section highlights what changes for the
 humanoid (DexMimicGen) case.
 
 * **Per-arm subtask sequences.** Each end-effector declares its own subtask list in the task
   descriptor (``subtasks.right``, ``subtasks.left``), each with its own reference objects,
   boundary signals, and generation knobs. Segment selection and transformation happen
-  independently per arm; by default all arms reuse the demo picked by the first arm to choose
-  (``generation_policy.select_src_per_arm: false``), keeping the arms' motions mutually
+  independently per arm; by default all arms reuse the source demonstration selected by the
+  first arm (``generation_policy.select_src_per_arm: false``), keeping the arms' motions mutually
   consistent.
 * **Coordination constraints.** For tasks where the arms must interact (handovers, bimanual
   lifts) the task descriptor's ``constraints`` section synchronizes specific subtask pairs across
@@ -134,7 +134,7 @@ Start the dev container (see :doc:`../../quickstart/installation`):
 Workflow Steps
 ^^^^^^^^^^^^^^
 
-Follow the following steps to complete the workflow:
+Follow these steps to complete the workflow:
 
 - :doc:`step_1_record_demonstrations`
 - :doc:`step_2_annotate_demonstrations`

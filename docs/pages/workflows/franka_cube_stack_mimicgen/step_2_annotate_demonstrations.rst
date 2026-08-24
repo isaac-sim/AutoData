@@ -9,12 +9,12 @@ their termination signal names are declared by the task descriptor (see
 
 Isaac AutoData supports two annotation modes:
 
-* **Manual** — replay each episode in the simulator viewer and mark boundaries with the keyboard.
+* **Manual** — replay each episode in a Kit window and mark boundaries with the keyboard.
 * **Automatic** (``--auto``) — sample the environment's boolean subtask-term observations
-  during replay. each signal's first rising edge becomes the boundary. Runs headless. Requires
-  the environment to publish per-subtask boolean observation terms.
+  during replay. Each signal's first rising edge becomes the boundary. This mode runs headless
+  (``--viz none``) and requires the environment to publish per-subtask boolean observation terms.
 
-Automatic annotation is recommended for the Franka cube stacking task as the environment supports it.
+Automatic annotation is recommended for the Franka cube-stacking task because the environment supports it.
 
 
 Automatic Annotation (Recommended)
@@ -46,7 +46,7 @@ order, or violates the descriptor's ``subtask_term_offset_range`` spacing.
 Manual Annotation (Optional)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Annotations can also be performed manually by replaying each episode in the simulator viewer
+Annotations can also be performed manually by replaying each episode in a Kit window
 and marking boundaries with the keyboard.
 
 .. note::
@@ -70,7 +70,7 @@ and marking boundaries with the keyboard.
       --input_file ./datasets/dataset_franka.hdf5 \
       --output_file ./datasets/dataset_franka_annotated.hdf5
 
-Each episode replays in the viewer and is paused at the start. Control playback and mark boundaries
+Each episode replays in the Kit window and is paused at the start. Control playback and mark boundaries
 with the keyboard:
 
 .. list-table::

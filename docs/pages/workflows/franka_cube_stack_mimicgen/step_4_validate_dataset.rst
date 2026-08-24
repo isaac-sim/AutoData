@@ -46,4 +46,4 @@ that only just succeed (consider tightening ``subtask_term_offset_range`` or red
    across an ``env.reset``, so replaying an episode's recorded actions from its saved initial
    state can diverge from the original. Some episodes may fail to reproduce success during replay
    even though **every** episode in the dataset was a successful demonstration at generation time.
-   All recorded episode data in the HDF5 are still valid successes following the environment's success criterion.
+   Each episode satisfied the environment's success condition when it was generated.

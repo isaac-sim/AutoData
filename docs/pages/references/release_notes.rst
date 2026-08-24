@@ -17,7 +17,7 @@ Key features of this release include:
   define subtask signals, source-selection strategies, generation policies, observations, and
   task-space action mappings without requiring an Isaac Lab Mimic environment configuration.
 - **Isaac Lab and Arena interoperability:** A unified datastream and embodiment-adapter layer works
-  with standard Isaac Lab and Isaac Lab Arena environments. Environment profiles create scene,
+  with standard Isaac Lab and Isaac Lab-Arena environments. Environment profiles create scene,
   reset-randomization, and planner variants without registering duplicate environments.
 - **Dataset tooling:** Tools for manual and automatic demonstration annotation,
   parallel data generation, structural HDF5 validation, and replay using Isaac Lab-compatible
@@ -27,7 +27,7 @@ Key features of this release include:
   cube and bin stacking with SkillGen.
 - **Reproducible installation:** A Docker development environment for MimicGen and DexMimicGen, an
   opt-in cuRobo image for SkillGen, and an optional conda installation with pinned Isaac Sim,
-  Isaac Lab, and Isaac Lab Arena revisions.
+  Isaac Lab, and Isaac Lab-Arena revisions.
 - **Migration and developer documentation:** A migration guide for moving Isaac Lab Mimic tasks to
   AutoData, a published platform support matrix, and unit, end-to-end, and data-generation
   performance tests.

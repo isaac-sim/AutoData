@@ -56,7 +56,7 @@ Manual Annotation
             --input_file ./datasets/dataset_g1.hdf5 \
             --output_file ./datasets/dataset_g1_annotated.hdf5
 
-Each episode replays in the viewer and is paused at the start. The tool prints the arm currently
+Each episode replays in the Kit window and is paused at the start. The tool prints the arm currently
 being annotated and its expected signals. Control playback and mark boundaries with the keyboard:
 
 .. list-table::
