@@ -24,6 +24,8 @@ The validator prints one summary row per file (episode count, the env id recorde
 metadata, and the simulation args) followed by per-file issues. Every episode is checked for the
 required fields (``actions``, ``initial_state``, ``obs``).
 
+For unreadable, invalid, or truncated files, see :ref:`troubleshooting-hdf5`.
+
 
 Visual Validation
 ^^^^^^^^^^^^^^^^^

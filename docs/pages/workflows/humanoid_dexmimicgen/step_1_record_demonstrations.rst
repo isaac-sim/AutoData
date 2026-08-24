@@ -27,11 +27,14 @@ works out of the box.
    <https://nvidia.github.io/IsaacTeleop/main/references/requirements.html#teleoperation-with-isaac-sim-and-isaac-lab>`_
    before starting.
 
+.. _record_humanoid_cloudxr:
+
 .. important::
 
    A stable network connection meeting the `CloudXR network requirements
    <https://docs.nvidia.com/cloudxr-sdk/latest/requirement/network_setup.html#network-requirements>`_
-   is required before starting the steps below.
+   is required before starting the steps below. For connection and tracking failures, see
+   :ref:`troubleshooting-cloudxr`.
 
 Start the CloudXR Runtime
 ^^^^^^^^^^^^^^^^^^^^^^^^^^

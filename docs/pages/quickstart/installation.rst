@@ -43,6 +43,9 @@ Then pull the LFS-stored datasets:
    git lfs install
    git lfs pull
 
+If a dataset remains a small text pointer or cannot be opened as HDF5, see
+:ref:`troubleshooting-lfs`.
+
 
 Recommended Docker Installation
 -------------------------------
@@ -105,6 +108,8 @@ Useful flags of ``./docker/run_docker.sh``:
      - Verbose.
    * - ``-h``
      - Show all options.
+
+For a missing Kit window or an X11 error, see :ref:`troubleshooting-display`.
 
 
 Optional Conda Installation
@@ -181,6 +186,8 @@ Verify the installation:
 .. code-block:: bash
 
    python -c "import curobo; print('cuRobo installed successfully')"
+
+For missing modules, CUDA kernel errors, or a GPU change, see :ref:`troubleshooting-curobo`.
 
 .. tip::
 

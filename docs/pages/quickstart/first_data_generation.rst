@@ -60,6 +60,7 @@ running tally after every attempt to generate a new demonstration:
    **************************************************
 
 The ``--viz kit`` option opens a Kit window showing the generation process.
+If no window appears, follow :ref:`troubleshooting-display` or switch to ``--viz none``.
 
 Wait for the script to complete after 10 successful demonstrations are recorded in an HDF5 dataset.
 The Kit window closes automatically when generation is complete.

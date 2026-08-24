@@ -104,8 +104,9 @@ GPU architecture at image build time (auto-detected via ``nvidia-smi``; override
 
 .. note::
 
-   The first SkillGen run needs network access: the planner downloads the Franka robot model
-   (URDF) from the Nucleus asset server when it initializes.
+   SkillGen initialization needs network access: the planner downloads the Franka robot model
+   (URDF) from the Nucleus asset server. For download failures, see
+   :ref:`troubleshooting-nucleus`.
 
 The Task Descriptor for SkillGen
 --------------------------------
@@ -245,6 +246,7 @@ Start small to verify the setup, using the pre-annotated source dataset:
 When motion planning fails for an attempt — no collision-free path to the skill start — the
 attempt is abandoned and counted as a failure; with ``guarantee_success: true``, generation
 simply retries with a new scene configuration until the demonstration target is met.
+If every attempt fails, follow :ref:`troubleshooting-planning` before tuning planner parameters.
 
 For a full-scale run, raise ``--generation_num_trials`` (hundreds to thousands for policy
 training) and keep ``--viz none`` — rendering slows generation considerably. See
