@@ -68,7 +68,7 @@ For your own Isaac Lab environment, verify that it provides:
 * for automatic annotation, a non-concatenated ``subtask_terms`` observation group containing
   the signals named by the task descriptor.
 
-The Franka cube-stack environment already satisfies these requirements: its objects are
+The Franka cube-stacking environment already satisfies these requirements: its objects are
 ``cube_1``, ``cube_2``, and ``cube_3``; its EEF observations are ``eef_pos`` and ``eef_quat``; and
 its automatic annotation signals are ``grasp_1``, ``stack_1``, and ``grasp_2``.
 
@@ -269,7 +269,8 @@ correct HDF5 format. Annotate the raw dataset directly with AutoData:
 Step 5: Run a small generation test
 -----------------------------------
 
-Run the migrated Franka cube stacking example in AutoData using the task and embodiment descriptors we created in Steps 2 and 3:
+Run the migrated Franka cube stacking example in AutoData using the task and embodiment descriptors
+created in Steps 2 and 3:
 
 .. code-block:: bash
 

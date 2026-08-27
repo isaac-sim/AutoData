@@ -1,3 +1,10 @@
+.. attention::
+
+   Recording and annotating your own demonstrations requires an Apple Vision Pro and the CloudXR runtime.
+   If you do not have the required hardware, you may skip :doc:`step_1_record_demonstrations` and
+   :doc:`step_2_annotate_demonstrations` by using the pre-annotated source dataset that ships with
+   the repository and jumping directly to :doc:`step_3_generate_dataset`.
+
 Step 1: Record Source Demonstrations
 ------------------------------------
 
@@ -9,22 +16,8 @@ Unlike the single-arm Franka task — which can be teleoperated with a SpaceMous
 dexterous, bimanual humanoids are teleoperated with an **Apple Vision Pro** through
 `NVIDIA IsaacTeleop <https://github.com/NVIDIA/IsaacTeleop>`_ and the CloudXR runtime. The headset's
 wrist poses drive a differential IK controller per arm, and the finger joints are retargeted onto
-the robot's hands. The AutoData development container includes Isaac Teleop so the flow below works out of the box.
-
-.. note::
-
-   To skip recording (and annotation), use the pre-annotated source dataset that ships with the
-   repository and jump to :doc:`step_3_generate_dataset`:
-
-   .. tabs::
-
-      .. group-tab:: GR-1
-
-         ``datasets/annotated_datasets/dataset_gr1_annotated.hdf5``
-
-      .. group-tab:: G1
-
-         ``datasets/annotated_datasets/dataset_g1_annotated.hdf5``
+the robot's hands. The Isaac AutoData development container includes IsaacTeleop, so the flow below
+works out of the box.
 
 .. note::
 
@@ -34,11 +27,14 @@ the robot's hands. The AutoData development container includes Isaac Teleop so t
    <https://nvidia.github.io/IsaacTeleop/main/references/requirements.html#teleoperation-with-isaac-sim-and-isaac-lab>`_
    before starting.
 
+.. _record_humanoid_cloudxr:
+
 .. important::
 
    A stable network connection meeting the `CloudXR network requirements
    <https://docs.nvidia.com/cloudxr-sdk/latest/requirement/network_setup.html#network-requirements>`_
-   is required before starting the steps below.
+   is required before starting the steps below. For connection and tracking failures, see
+   :ref:`troubleshooting-cloudxr`.
 
 Start the CloudXR Runtime
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -149,7 +145,8 @@ Start Recording
                 --dataset_file ./datasets/dataset_g1.hdf5 \
                 --num_demos 5
 
-#. In the running application window, press the **Start XR** button under the **XR** tab on the right side of the screen.
+#. In the running application window, press the **Start XR** button under the **XR** tab on the
+   right side of the screen.
 
    .. figure:: ../../../images/xr_start_button.png
       :width: 75%
@@ -187,7 +184,7 @@ Performing the Demonstrations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The humanoid pick-and-place task is set up so the **left hand has a single subtask**
-(a pick up and transport) while the
+(pickup and transport) while the
 **right hand has two** (an idle phase, then the place). During the idle phase the right hand should
 stay still while the left hand brings the object to a position where the right hand will
 grasp it. This lets DexMimicGen interpolate the right hand's trajectory accurately from the

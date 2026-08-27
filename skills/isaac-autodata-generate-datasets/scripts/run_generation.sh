@@ -121,6 +121,6 @@ echo "+ ${cmd[*]}"
 "${cmd[@]}"
 
 if [[ "$VALIDATE" -eq 1 ]]; then
-  echo "+ HDF5_USE_FILE_LOCKING=FALSE ${python_cmd[*]} scripts/validate_dataset.py --strict $OUTPUT"
-  HDF5_USE_FILE_LOCKING=FALSE "${python_cmd[@]}" scripts/validate_dataset.py --strict "$OUTPUT"
+  echo "+ HDF5_USE_FILE_LOCKING=FALSE ${python_cmd[*]} scripts/validate_dataset.py $OUTPUT"
+  HDF5_USE_FILE_LOCKING=FALSE "${python_cmd[@]}" scripts/validate_dataset.py "$OUTPUT"
 fi

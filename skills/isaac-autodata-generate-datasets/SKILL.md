@@ -110,12 +110,12 @@ the completed output automatically (see its `--help`).
 Confirm the generated HDF5 is well-formed before using it for training:
 
 ```bash
-HDF5_USE_FILE_LOCKING=FALSE /isaac-sim/python.sh scripts/validate_dataset.py --strict ./datasets/generated_dataset_franka_quickstart.hdf5
+HDF5_USE_FILE_LOCKING=FALSE /isaac-sim/python.sh scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5
 ```
 
-`--strict` makes the script exit non-zero if any file is invalid, so an agent can gate on the
-result. `validate_dataset.py` accepts multiple files / globs and prints a per-file summary
-(episode count, env id, sim args) followed by any issues.
+The script exits non-zero if any file is invalid, so an agent can gate on the result.
+`validate_dataset.py` accepts multiple files / globs and prints a per-file summary (episode
+count, env id, sim args) followed by any issues.
 
 ### Step 5 — Replay (optional)
 
@@ -145,8 +145,7 @@ If no annotated source dataset exists yet:
   container will fail. See `references/algorithm-selection.md`.
 - **Bimanual task with `mimicgen`** — use `dexmimicgen` for coordinated multi-arm embodiments.
 - **Bimanual collision-aware planning** — not supported in the current release; do not select `skillgen`.
-- **Skipping validation** — always run `validate_dataset.py --strict` before treating a dataset
-  as ready.
+- **Skipping validation** — always run `validate_dataset.py` before treating a dataset as ready.
 - **Malformed final subtask** — the last subtask in a task descriptor has no `subtask_term_signal`
   and a `[0, 0]` term offset (it ends the trajectory). Preserve that convention when editing.
 

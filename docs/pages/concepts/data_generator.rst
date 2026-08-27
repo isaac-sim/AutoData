@@ -2,7 +2,7 @@ The Data Generator Interface
 ============================
 
 The ``DataGenerator`` is the engine that turns annotated source demonstrations into new ones.
-It runs the per-trial loop shared by every algorithm — randomize subtask boundaries, select a
+It runs the per-attempt loop shared by every algorithm — randomize subtask boundaries, select a
 source segment, transform it to the current scene, execute waypoints, record — and routes
 everything algorithm-specific through a small plug-in interface, ``GenerationAlgorithm``.
 New algorithms plug in without editing the generator.
@@ -29,10 +29,10 @@ directly. The constructor validates the setup and fails fast on mismatches:
   (there is no later boundary to offset against);
 * the algorithm gets a last look via ``validate_setup(datastream)`` and may raise.
 
-The Life of One Trial
----------------------
+The Life of One Generation Attempt
+----------------------------------
 
-``generate()`` is an async method producing one demonstration attempt for one environment:
+``generate()`` is an async method producing one generation attempt for one environment:
 
 .. code-block:: python
 
@@ -46,10 +46,10 @@ The Life of One Trial
 One call runs this sequence:
 
 1. **Reset and snapshot.** The env is reset through the reset queue (randomizing the scene),
-   and the resulting scene state is snapshot — it becomes the output episode's initial
+   and the resulting scene state is snapshotted — it becomes the output episode's initial
    state.
 2. **Randomize boundaries.** Each source episode's subtask boundaries are perturbed within
-   the descriptor's offset ranges, so generated demos don't all switch subtasks at
+   the descriptor's offset ranges, so generated demonstrations do not all switch subtasks at
    identical steps.
 3. **Plan the next stretch.** Whenever an end-effector has no waypoints left, the generator
    asks the algorithm (``plan_subtask_trajectory``) for its next executable trajectory.
@@ -61,14 +61,14 @@ One call runs this sequence:
    enforced here: an end-effector whose constraint is not yet satisfied holds its pose
    instead of advancing.
 5. **Latch success.** The task's success condition is evaluated after every step; once it
-   fires, the trial is marked successful (it does not need to stay true).
+   fires, the attempt is marked successful (it does not need to stay true).
 6. **Record.** When all end-effectors finish their subtasks, the episode's success flag is
-   set on the env's recorder and — for successful trials (and failed ones too, if
+   set on the env's recorder and — for successful attempts (and failed attempts too, if
    ``keep_failed`` is set) — the episode is exported.
 
 The returned ``GenerationResult`` carries ``success`` and the ``initial_state`` snapshot.
 A ``None`` from the algorithm (e.g. a SkillGen planning failure) aborts the attempt with
-``success=False``; whether that counts against the trial target or is retried is the
+``success=False``; whether that counts toward the configured target or is retried is the
 :doc:`generation policy's <task_descriptors>` call (``guarantee_success``).
 
 **The two-phase (transit + skill) flow.** An algorithm can answer step 3 with *transit*
@@ -110,11 +110,11 @@ over ``generate(env_id=...)``; a single synchronous ``env_loop`` steps the simul
              └────────────── env_reset_queue ────────┘
 
 The simulator steps in lockstep — one batched step once every env has produced its action —
-while each environment's trial logic (including retries after failures) runs independently.
+while each environment's attempt logic (including retries after failures) runs independently.
 The generator tasks tally outcomes into a shared ``stats`` dict; ``env_loop`` reads it to
 report progress and decide when to stop:
 
-* ``guarantee_success: true`` — run until ``num_trials`` **successful** demos are exported.
+* ``guarantee_success: true`` — run until ``num_trials`` **successful demonstrations** are exported.
 * ``guarantee_success: false`` — run until ``num_trials`` total **attempts**, whatever their
   outcome.
 
@@ -123,9 +123,9 @@ Results and Statistics
 
 Three layers report what happened:
 
-* **Per trial** — ``GenerationResult``: ``success`` and ``initial_state``.
+* **Per attempt** — ``GenerationResult``: ``success`` and ``initial_state``.
 * **Per run, in memory** — the ``stats`` counters: ``num_success``, ``num_failures``,
-  ``num_attempts`` (success + failures = attempts).
+  ``num_attempts`` (``num_success + num_failures = num_attempts``).
 * **Per run, on disk** — with ``--result_file``, a JSON sidecar is written atomically at the
   end of a completed run:
 
@@ -169,7 +169,7 @@ follow. Five class attributes declare how the algorithm differs from a vanilla M
      - The algorithm needs motion planners at construction (SkillGen takes
        ``motion_planners=``, one per env).
    * - ``uses_subtask_start_signals``
-     - Source demos must carry subtask *start* signals; the pool parses boundaries from them.
+     - Source demonstrations must carry subtask *start* signals; the pool parses boundaries from them.
    * - ``supports_coordination``
      - Cross-arm coordination constraints are honored during generation.
 

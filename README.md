@@ -26,9 +26,9 @@
 demonstrations, it uses parallel simulation environments to generate diverse datasets of successful robot
 demonstrations for robot learning.
 
-AutoData splits demonstrations into object-relative skill segments. During generation, it transforms those segments
-to new scene configurations, connects them into complete trajectories, executes them in simulation, and records the
-successful trials as HDF5 datasets.
+Isaac AutoData splits demonstrations into object-relative skill segments. During generation, it transforms those
+segments to new scene configurations, connects them into complete trajectories, executes them in simulation, and
+records successful demonstrations in HDF5 datasets.
 
 <p align="center">
   <img src="docs/images/autodata.gif" alt="Isaac AutoData generating robot demonstrations in parallel" width="100%">
@@ -123,7 +123,7 @@ for an explanation of each step and instructions for replaying the result.
 | Workflow | Description |
 |----------|-------------|
 | [Franka Cube Stacking](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/franka_cube_stack_mimicgen/) | Record, annotate, and expand single-arm demonstrations with MimicGen. |
-| [Humanoid Pick and Place](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/humanoid_dexmimicgen/) | Generate bimanual demonstrations for Fourier GR-1 and Unitree G1 with DexMimicGen. |
+| [Humanoid Pick-and-Place](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/humanoid_dexmimicgen/) | Generate bimanual demonstrations for Fourier GR-1 and Unitree G1 with DexMimicGen. |
 | [Motion-Planned Generation](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/skillgen/) | Use SkillGen and cuRobo to create collision-aware trajectories, including task variants built with environment profiles. |
 
 ## Project Structure

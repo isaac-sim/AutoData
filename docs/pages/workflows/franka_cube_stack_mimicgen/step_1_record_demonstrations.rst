@@ -17,7 +17,8 @@ teleoperated demonstrations of the cube-stacking task.
    and jump to :doc:`step_3_generate_dataset`.
 
 We recommend recording with a **SpaceMouse**: its smooth, off-axis 6-DoF input produces cleaner
-demonstrations than a keyboard. If a spacemouse is unavailable, a keyboard also works — see :ref:`franka-record-keyboard` below.
+demonstrations than a keyboard. If a SpaceMouse is unavailable, a keyboard also works — see
+:ref:`franka-record-keyboard` below.
 
 
 Recording with a SpaceMouse (Recommended)
@@ -95,8 +96,8 @@ Tips for demonstrations that generate (and train) well:
 * **Take a direct path.** Move straight toward the goal instead of following axes.
 * **Don't have extended pauses.** Smooth, continuous motion is easier to learn than unexplained stops.
 
-Collect 10 successful demonstrations of the cube stacking task. The recording script will
-automatically shutdown after all 10 are recorded.
+Collect 10 successful demonstrations of the cube-stacking task. The recording script shuts
+down automatically after all 10 are recorded.
 
 .. _franka-record-keyboard:
 
