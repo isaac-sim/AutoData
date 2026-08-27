@@ -24,16 +24,16 @@ Packages
      - The boundary to the simulator and to configuration: task descriptors, embodiment
        adapters, the Datastream, env setup helpers, and motion-planner backends.
    * - ``isaac_autodata_core``
-     - The generation machinery: the data generator, generation algorithms, the source-demo
+     - The generation machinery: the data generator, generation algorithms, the source demonstration
        pool, selection strategies, and waypoint execution.
    * - ``isaac_autodata_utils``
      - Small shared utilities (pose math, tensor helpers).
    * - ``isaac_autodata_examples``
-     - The ``generate_dataset.py`` entry point plus example task descriptors and embodiment
-       configs.
+     - Example task descriptors, embodiment configs, environment profiles, and project-owned
+       environment definitions.
    * - ``scripts``
-     - Dataset tools: annotation (``annotate_demos.py``) and validation
-       (``validate_dataset.py``).
+     - User-facing dataset entry points: generation (``generate_dataset.py``), annotation
+       (``annotate_demos.py``), and validation (``validate_dataset.py``).
 
 Key Abstractions
 ----------------
@@ -42,7 +42,7 @@ Datastream
 ^^^^^^^^^^
 
 The ``Datastream`` composes the live environment, the task descriptor, the embodiment
-adapter, and the source-demo pool into the **single read interface** the generator observes
+adapter, and the source demonstration pool into the **single read interface** the generator observes
 the world through:
 
 * World state: object poses (env-relative), end-effector poses, robot joint positions, the
@@ -71,7 +71,7 @@ producing broken generations later.
 Data Generator and Algorithms
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The ``DataGenerator`` runs the per-trial loop; the pluggable
+The ``DataGenerator`` runs the per-attempt loop; the pluggable
 :doc:`generation algorithm <algorithms>` decides how each subtask's trajectory is planned
 (interpolated transitions for MimicGen/DexMimicGen, motion-planned transit for SkillGen).
 Execution is waypoint-based: each step, every end-effector's next waypoint is assembled into
@@ -80,17 +80,17 @@ one action through the Datastream's action codec, and the env is stepped once.
 Generation is **asynchronous**: one generator task per environment produces actions into a
 queue, and a single synchronous ``env_loop`` drains one action per env, steps the simulator
 in batch, and services reset requests. This keeps the simulator stepping in lockstep while
-each environment's trial logic runs independently — including retries after failed trials.
+each environment's attempt logic runs independently — including retries after failed attempts.
 See :doc:`data_generator` for the generator's interface and the algorithm plug-in surface.
 
 Data Flow
 ---------
 
-One generation trial, end to end:
+One generation attempt, end to end:
 
-1. **Reset.** The environment resets and randomizes the scene; the initial state is snapshot
+1. **Reset.** The environment resets and randomizes the scene; the initial state is snapshotted
    for the output episode.
-2. **Select.** For the current subtask of each end-effector, a source demo segment is chosen
+2. **Select.** For the current subtask of each end-effector, a source demonstration segment is chosen
    by the subtask's selection strategy (random or nearest-neighbor — see
    :doc:`algorithms`), within the scope configured by
    ``generation_policy.select_src_per_subtask`` / ``select_src_per_arm``.
@@ -102,6 +102,6 @@ One generation trial, end to end:
    SkillGen.
 5. **Execute.** Waypoints are converted to actions and stepped, with per-subtask action
    noise; the task's success condition is evaluated every step and latched.
-6. **Record.** Successful trials are exported to the output HDF5 (failed ones too, into a
-   separate file, if ``keep_failed`` is set). Generation continues until the policy's trial
-   target is met.
+6. **Record.** Successful attempts are exported as demonstrations to the output HDF5 (failed
+   attempts are exported to a separate file if ``keep_failed`` is set). Generation continues
+   until the policy's target is met.

@@ -1,10 +1,10 @@
 Step 3: Generate the Dataset
 ----------------------------
 
-With annotated source demonstrations in hand, DexMimicGen can synthesize new ones. For each trial,
+With annotated source demonstrations in hand, DexMimicGen can synthesize new ones. For each attempt,
 the scene is randomized, a source segment is selected per arm for each subtask, and each arm's
 end-effector trajectory is transformed to the new object poses and replayed. By default both arms
-reuse the source demo chosen by the first arm, keeping their motions mutually consistent.
+reuse the source demonstration chosen by the first arm, keeping their motions mutually consistent.
 
 .. list-table::
    :widths: 50 50
@@ -31,7 +31,7 @@ Steps 1–2, point ``--input_file`` at your own ``dataset_gr1_annotated.hdf5`` /
 Small-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^^
 
-Start with a small run with the simulation viewer enabled to sanity-check the setup:
+Start with a small run in a Kit window (``--viz kit``) to sanity-check the setup:
 
 .. tabs::
 
@@ -87,7 +87,7 @@ The script shuts down automatically after 10 successful demonstrations are gener
 Full-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^
 
-For dataset-scale generation, run without the simulation viewer and with parallel environments:
+For dataset-scale generation, run headless (``--viz none``) with parallel environments:
 
 .. tabs::
 
@@ -123,14 +123,14 @@ For dataset-scale generation, run without the simulation viewer and with paralle
             --input_file ./datasets/annotated_datasets/dataset_g1_annotated.hdf5 \
             --output_file ./datasets/generated_dataset_dexmimicgen_g1.hdf5
 
-Progress is printed after every attempt (successes / attempts and the running success rate).
+Progress is printed after every attempt (successful demonstrations, attempts, and the running success rate).
 
 .. note::
 
   **Expected data generation success rate and time**
 
   * Data generation success rate: ~70%
-  * Data generation time: ~40 mins
+  * Data generation time: ~40 minutes
 
   *Numbers are based on using an RTX PRO 6000 Blackwell GPU with the provided command.*
 
@@ -154,10 +154,11 @@ Key Parameters
    * - ``--num_envs``
      - Number of parallel environments, each generating independently.
    * - ``--viz``
-     - Visualizer backend (``kit`` for an Isaac Sim window, ``none`` for headless).
+     - Visualization mode (``kit`` opens a Kit window; ``none`` runs headless).
 
 The descriptor's ``generation_policy.select_src_per_arm`` (``false`` by default) controls whether
-each arm may draw from a different source demo; keeping it ``false`` keeps the arms coordinated
-without subtask timing constraints. See :doc:`../../concepts/task_descriptors` for the full set of per-arm generation knobs.
+each arm may draw from a different source demonstration; keeping it ``false`` keeps the arms coordinated
+without subtask timing constraints. See :doc:`../../concepts/task_descriptors` for the full set of
+per-arm generation knobs.
 
 Continue to :doc:`step_4_validate_dataset`.

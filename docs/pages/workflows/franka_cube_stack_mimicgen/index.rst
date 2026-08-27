@@ -2,15 +2,16 @@ Franka Cube Stacking with MimicGen
 ==================================
 
 This example demonstrates the Isaac AutoData workflow using MimicGen to generate a synthetic dataset
-for a Franka robot performing a cube stacking task. The workflow will cover recording source demonstrations by teleoperation,
-annotating their subtask boundaries, generating a large dataset with MimicGen, and validating the result.
+for a Franka robot performing a cube-stacking task. The workflow covers recording source demonstrations
+by teleoperation, annotating their subtask boundaries, generating a large dataset with MimicGen, and
+validating the result.
 
 .. figure:: ../../../images/franka_mimic_imitation_learning.jpg
    :width: 100%
    :align: center
-   :alt: Franka robot performing the cube stacking task
+   :alt: Franka robot performing the cube-stacking task
 
-   The Franka cube stacking task.
+   The Franka cube-stacking task.
 
 Task Overview
 -------------
@@ -59,7 +60,7 @@ Start the dev container (see :doc:`../../quickstart/installation`):
 Workflow Steps
 ^^^^^^^^^^^^^^
 
-Follow the following steps to complete the workflow:
+Follow these steps to complete the workflow:
 
 - :doc:`step_1_record_demonstrations`
 - :doc:`step_2_annotate_demonstrations`

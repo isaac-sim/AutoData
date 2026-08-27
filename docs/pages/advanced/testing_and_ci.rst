@@ -21,7 +21,7 @@ organized in tiers of increasing cost:
        SkillGen), each in single- and multi-env variants. Marked ``with_subprocess``: they
        launch the generation CLI as an Isaac Sim child process. Minutes per test.
    * - ``datagen_perf/``
-     - Success-rate benchmarks (hundreds of trials per run) asserting generation quality
+     - Success-rate benchmarks (hundreds of attempts per run) asserting generation quality
        thresholds per task. Nightly-scale.
    * - ``test_data/``
      - Pre-annotated source datasets (Git LFS) used by the tests — and handy as quickstart
@@ -64,7 +64,7 @@ When a run dies silently or hangs, work down this list:
 
    .. code-block:: bash
 
-      python isaac_autodata_examples/generate_dataset.py ... \
+      python scripts/generate_dataset.py ... \
           --kit_args "--/log/file=/workspaces/isaac_autodata/kit.log --/log/level=verbose --/log/async=false"
 
    ``--/log/async=false`` is the important one for crashes: asynchronous logging loses the

@@ -300,7 +300,7 @@ and when generation stops. All fields use their defaults if omitted from the tas
        of the data generation script overrides this value.
    * - ``guarantee_success``
      - ``true``
-     - If ``true``, keep attempting generation until ``num_trials`` successes are recorded. If
+     - If ``true``, keep attempting generation until ``num_trials`` successful demonstrations are recorded. If
        ``false``, stop after ``num_trials`` attempts regardless of their outcomes.
    * - ``keep_failed``
      - ``false``
