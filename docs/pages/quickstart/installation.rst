@@ -2,12 +2,15 @@ Installation
 ============
 
 Docker is the recommended way to install Isaac AutoData. The dev container setup includes Isaac Sim,
-Isaac Lab, Isaac Lab Arena, and Isaac AutoData, providing a reproducible environment
+Isaac Lab, Isaac Lab-Arena, and Isaac AutoData, providing a reproducible environment
 without modifying the host Python installation. The repository is bind-mounted into the container,
 so edits on the host are live inside it.
 
 An optional conda installation is also available for users who want direct control over their
 Python environment and installed packages. See `Optional Conda Installation`_ below.
+
+Before installing, review the :doc:`support_matrix` for the complete supported software stack,
+hardware requirements, optional cuRobo and XR dependencies, and resource guidance.
 
 
 Common Prerequisites
@@ -23,7 +26,7 @@ On the host you need:
 Cloning the Repository
 ----------------------
 
-Isaac Lab and Isaac Lab Arena are nested git submodules, so clone recursively:
+Isaac Lab and Isaac Lab-Arena are nested git submodules, so clone recursively:
 
 :isaac_autodata_git_clone_code_block:
 
@@ -39,6 +42,9 @@ Then pull the LFS-stored datasets:
 
    git lfs install
    git lfs pull
+
+If a dataset remains a small text pointer or cannot be opened as HDF5, see
+:ref:`troubleshooting-lfs`.
 
 
 Recommended Docker Installation
@@ -103,6 +109,8 @@ Useful flags of ``./docker/run_docker.sh``:
    * - ``-h``
      - Show all options.
 
+For a missing Kit window or an X11 error, see :ref:`troubleshooting-display`.
+
 
 Optional Conda Installation
 ---------------------------
@@ -117,7 +125,7 @@ From the repository root, create the ``isaac_autodata`` environment with Python 
 
    ./conda_installer.sh -c
 
-Activate the environment and install Isaac Sim, CUDA-enabled PyTorch, Isaac Lab, Isaac Lab Arena,
+Activate the environment and install Isaac Sim, CUDA-enabled PyTorch, Isaac Lab, Isaac Lab-Arena,
 and Isaac AutoData:
 
 .. code-block:: bash
@@ -178,6 +186,8 @@ Verify the installation:
 .. code-block:: bash
 
    python -c "import curobo; print('cuRobo installed successfully')"
+
+For missing modules, CUDA kernel errors, or a GPU change, see :ref:`troubleshooting-curobo`.
 
 .. tip::
 

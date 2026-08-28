@@ -56,7 +56,7 @@ the generator's entire view of the robot:
   the passthrough channels into one action for ``env.step()``, optionally adding action
   noise.
 * ``action_to_target_eef_pose()`` — the *inverse* direction: recover the target poses encoded
-  in a recorded action. This is how the source demos' controller targets are extracted.
+  in a recorded action. This is how the source demonstrations' controller targets are extracted.
 * ``actions_to_passthrough_actions()`` — pull the non-pose channels (gripper or hand joints)
   out of recorded actions so the generator can replay them verbatim.
 
@@ -288,7 +288,7 @@ Field reference
      - no
      - ``{}``
      - Extra **non-EEF** passthrough channels, ``name: [start, end)`` each — e.g. a
-       mobile-base or locomotion command. Copied verbatim from the source demo like the
+       mobile-base or locomotion command. Copied verbatim from the source demonstration like the
        grippers. Slices must not overlap the pose + hand-joints region, and names must not
        collide with ``left`` / ``right``.
 
@@ -306,7 +306,7 @@ this is the first thing to check when transformed segments look shifted.
 
 Concrete example: the base Franka IK-Rel tasks report the inter-fingertip ``end_effector``
 frame, and the MimicGen source dataset is annotated in that same frame — offset zero. The
-SkillGen cube-stack dataset, however, is annotated in the ``panda_hand`` frame (cuRobo's
+SkillGen cube-stacking dataset, however, is annotated in the ``panda_hand`` frame (cuRobo's
 planning link), so its embodiment config (``franka_ik_rel_skillgen.yaml``) sets
 ``eef_offset: [0, 0, 0.1034]`` — the fingertip-to-hand distance.
 
