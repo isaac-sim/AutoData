@@ -16,6 +16,7 @@ from isaac_autodata_interfaces.embodiments.bimanual_embodiment_adapter import (
     BimanualEmbodimentAdapter,
 )
 from isaac_autodata_interfaces.embodiments.embodiment_types import PoseObsKeys
+from isaac_autodata_interfaces.embodiments.environment_embodiment_adapter import EnvironmentEmbodimentAdapter
 from isaac_autodata_interfaces.embodiments.factory import (
     EMBODIMENT_TYPE_REGISTRY,
     embodiment_adapter_from_dict,
@@ -32,6 +33,7 @@ __all__ = [
     "BimanualEmbodimentAdapter",
     "DeltaPoseIKSingleArmAdapter",
     "EMBODIMENT_TYPE_REGISTRY",
+    "EnvironmentEmbodimentAdapter",
     "PoseObsKeys",
     "SingleArmEmbodimentAdapter",
     "embodiment_adapter_from_dict",

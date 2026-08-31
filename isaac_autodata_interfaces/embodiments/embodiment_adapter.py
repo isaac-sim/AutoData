@@ -72,6 +72,16 @@ class EmbodimentAdapter(ABC):
         assert self.env is not None, "Call bind_env(env) before reading state."
         return list(self.env.scene[self.robot_asset_name].data.joint_names)
 
+    def get_object_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor] | None:
+        """Optionally return object poses in the controller frame.
+
+        Most adapters leave scene-object reads to :class:`Datastream`. Mobile embodiments whose
+        controller frame differs from the environment origin override this method so object and
+        end-effector transforms cannot silently use different frames.
+        """
+
+        del env_ids
+
     @abstractmethod
     def get_eef_names(self) -> tuple[str, ...]:
         """Return the ordered names of all end-effectors this embodiment exposes.

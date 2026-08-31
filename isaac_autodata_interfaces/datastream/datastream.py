@@ -245,6 +245,10 @@ class Datastream:
     def get_object_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
         """Get all rigid object poses from the environment."""
 
+        adapter_poses = self.embodiment_adapter.get_object_poses(env_ids=env_ids)
+        if adapter_poses is not None:
+            return adapter_poses
+
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
         scene = self.env.scene
         env_origins = scene.env_origins[index]

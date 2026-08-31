@@ -19,11 +19,13 @@ from typing import Any
 
 from isaac_autodata_interfaces.embodiments.bimanual_embodiment_adapter import AbsolutePoseWholeBodyBimanualAdapter
 from isaac_autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+from isaac_autodata_interfaces.embodiments.environment_embodiment_adapter import EnvironmentEmbodimentAdapter
 from isaac_autodata_interfaces.embodiments.single_arm_embodiment_adapter import DeltaPoseIKSingleArmAdapter
 
 EMBODIMENT_TYPE_REGISTRY: dict[str, type[EmbodimentAdapter]] = {
     "delta_pose_ik_single_arm": DeltaPoseIKSingleArmAdapter,
     "absolute_pose_whole_body_bimanual": AbsolutePoseWholeBodyBimanualAdapter,
+    "environment_mimic": EnvironmentEmbodimentAdapter,
 }
 """Maps the ``type:`` discriminator in an embodiment YAML to the corresponding
 concrete adapter class. New morphology + controller combinations register

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import os
 import torch
 from typing import Any
@@ -24,7 +25,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
 from isaaclab.managers import DatasetExportMode, EventTermCfg, SceneEntityCfg
-from isaaclab.managers.recorder_manager import RecorderManagerBaseCfg
+from isaaclab.managers.recorder_manager import RecorderManagerBaseCfg, RecorderTermCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.datasets import HDF5DatasetFileHandler
 from isaaclab.utils.string import string_to_callable
@@ -190,11 +191,20 @@ def setup_env_config(
     env_cfg.terminations = None
     env_cfg.observations.policy.concatenate_terms = False
 
-    # Setup recorders
+    # Setup recorders. Mimic environments may carry embodiment-specific action and camera terms
+    # that a generic ActionState recorder cannot reconstruct. Merge those terms into an explicit
+    # annotation recorder, or use them as the generation recorder base.
+    mimic_recorder_cfg = getattr(env_cfg, "mimic_recorder_config", None)
     if recorder_cfg is None:
-        env_cfg.recorders = ActionStateRecorderManagerCfg()
+        env_cfg.recorders = (
+            copy.deepcopy(mimic_recorder_cfg) if mimic_recorder_cfg is not None else ActionStateRecorderManagerCfg()
+        )
     else:
         env_cfg.recorders = recorder_cfg
+        if mimic_recorder_cfg is not None:
+            for term_name, term_cfg in vars(mimic_recorder_cfg).items():
+                if isinstance(term_cfg, RecorderTermCfg) and not hasattr(env_cfg.recorders, term_name):
+                    setattr(env_cfg.recorders, term_name, copy.deepcopy(term_cfg))
     env_cfg.recorders.dataset_export_dir_path = output_dir
     env_cfg.recorders.dataset_filename = output_file_name
 

@@ -44,6 +44,12 @@ parser.add_argument(
     help="Environment name. Overrides the env name recorded in the source dataset.",
 )
 parser.add_argument(
+    "--env_registration_callback",
+    type=str,
+    default=None,
+    help="Optional module.path:callable that lazily registers an externally owned environment.",
+)
+parser.add_argument(
     "--task_descriptor",
     type=str,
     required=True,
@@ -91,7 +97,9 @@ simulation_app = app_launcher.app
 import contextlib  # noqa: E402
 import gymnasium as gym  # noqa: E402
 import math  # noqa: E402
+import numpy as np  # noqa: E402
 import os  # noqa: E402
+import random  # noqa: E402
 import torch  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 
@@ -105,7 +113,12 @@ from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa:
 from isaac_autodata_core.pool import DataGenInfoPool  # noqa: E402
 from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
 from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
-from isaac_autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
+from isaac_autodata_interfaces.env import (  # noqa: E402
+    get_env_name_from_dataset,
+    register_external_environment,
+    setup_env_config,
+    setup_output_paths,
+)
 from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
 is_paused = False
@@ -241,6 +254,19 @@ def main() -> int:
 
     output_dir, output_file_name = setup_output_paths(args_cli.output_file)
 
+    random.seed(generation_policy.seed)
+    np.random.seed(generation_policy.seed)
+    torch.manual_seed(generation_policy.seed)
+    registration = register_external_environment(
+        args_cli.env_registration_callback,
+        env_name=env_name,
+        num_envs=1,
+        device=args_cli.device,
+        seed=generation_policy.seed,
+        enable_cameras=bool(args_cli.enable_cameras),
+    )
+    env_name = registration.env_name
+
     # Build the env config for replay+recording
     env_cfg, success_term = setup_env_config(
         env_name=env_name,
@@ -254,7 +280,7 @@ def main() -> int:
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
     env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY
 
-    env = gym.make(env_name, cfg=env_cfg).unwrapped
+    env = gym.make(env_name, cfg=env_cfg, **registration.env_kwargs).unwrapped
     try:
         # Create the Datastream
         embodiment_adapter = embodiment_adapter_from_yaml(args_cli.embodiment)

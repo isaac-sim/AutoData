@@ -47,6 +47,12 @@ parser.add_argument(
     help="Environment name. Overrides the env name recorded in the source dataset.",
 )
 parser.add_argument(
+    "--env_registration_callback",
+    type=str,
+    default=None,
+    help="Optional module.path:callable that lazily registers an externally owned environment.",
+)
+parser.add_argument(
     "--alg",
     type=str,
     choices=_ALG_CHOICES,
@@ -125,6 +131,7 @@ from isaac_autodata_interfaces.env import (  # noqa: E402
     EnvironmentProfile,
     env_loop,
     get_env_name_from_dataset,
+    register_external_environment,
     setup_env_config,
     setup_output_paths,
 )
@@ -296,6 +303,19 @@ def main() -> None:
     # names the motion-planner profile tuned for the resulting scene.
     env_profile = EnvironmentProfile.from_yaml(args_cli.env_profile) if args_cli.env_profile else None
 
+    random.seed(generation_policy_params.seed)
+    np.random.seed(generation_policy_params.seed)
+    torch.manual_seed(generation_policy_params.seed)
+    registration = register_external_environment(
+        args_cli.env_registration_callback,
+        env_name=env_name,
+        num_envs=args_cli.num_envs,
+        device=args_cli.device,
+        seed=generation_policy_params.seed,
+        enable_cameras=bool(args_cli.enable_cameras),
+    )
+    env_name = registration.env_name
+
     env_cfg, success_term = setup_env_config(
         env_name=env_name,
         output_dir=output_dir,
@@ -306,11 +326,7 @@ def main() -> None:
         env_profile=env_profile,
     )
 
-    env = gym.make(env_name, cfg=env_cfg).unwrapped
-
-    random.seed(generation_policy_params.seed)
-    np.random.seed(generation_policy_params.seed)
-    torch.manual_seed(generation_policy_params.seed)
+    env = gym.make(env_name, cfg=env_cfg, **registration.env_kwargs).unwrapped
 
     env.reset()
 

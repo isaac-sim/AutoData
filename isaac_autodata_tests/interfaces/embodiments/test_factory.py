@@ -11,6 +11,7 @@ from isaac_autodata_interfaces.embodiments import (
     EMBODIMENT_TYPE_REGISTRY,
     AbsolutePoseWholeBodyBimanualAdapter,
     DeltaPoseIKSingleArmAdapter,
+    EnvironmentEmbodimentAdapter,
     embodiment_adapter_from_dict,
     embodiment_adapter_from_yaml,
 )
@@ -30,6 +31,7 @@ def test_registry_contents():
     assert EMBODIMENT_TYPE_REGISTRY == {
         "delta_pose_ik_single_arm": DeltaPoseIKSingleArmAdapter,
         "absolute_pose_whole_body_bimanual": AbsolutePoseWholeBodyBimanualAdapter,
+        "environment_mimic": EnvironmentEmbodimentAdapter,
     }
 
 
