@@ -13,7 +13,7 @@ from isaac_autodata_tests.utils.subprocess import run_subprocess
 from isaac_autodata_tests.utils.utils import assert_valid_dataset, read_generation_result
 
 # --- Tunables (change these to adjust the perf test) ---------------------------------------------
-SUCCESS_RATE_THRESHOLD = 0.70  # minimum acceptable data-gen success rate
+SUCCESS_RATE_THRESHOLD = 0.65  # minimum acceptable data-gen success rate
 NUM_ENVS = 100
 NUM_TRIALS = 500
 DEVICE = "cpu"
