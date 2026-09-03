@@ -10,7 +10,7 @@ It composes four things behind one object:
 * the **embodiment adapter** (pose reads and pose ↔ action transforms),
 * the **source demonstration pool** (the annotated demonstrations to generate from).
 
-See :isaac_autodata_code_link:`<isaac_autodata_interfaces/datastream/datastream.py>` for the
+See :autodata_code_link:`<autodata_interfaces/datastream/datastream.py>` for the
 full API.
 
 Why a Read Facade?
@@ -28,9 +28,9 @@ This is how the generation entry point composes one (from ``scripts/generate_dat
 
 .. code-block:: python
 
-   from isaac_autodata_interfaces.datastream import Datastream
-   from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml
-   from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor
+   from autodata_interfaces.datastream import Datastream
+   from autodata_interfaces.embodiments import embodiment_adapter_from_yaml
+   from autodata_interfaces.tasks.task_descriptor import TaskDescriptor
 
    task_descriptor = TaskDescriptor.from_yaml("franka_cube_stack.yaml")
    embodiment_adapter = embodiment_adapter_from_yaml("franka_ik_rel.yaml")

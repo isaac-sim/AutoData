@@ -7,7 +7,7 @@ Troubleshooting
 
 Use the table to identify the likely cause, then follow the linked check or fix. Commands
 marked **host** run outside the development container. Commands marked **container** run from
-``/workspaces/isaac_autodata`` inside the container. Replace values in angle brackets with values
+``/workspaces/autodata`` inside the container. Replace values in angle brackets with values
 from your run. Issues are ordered by workflow area: runtime and teleoperation, dataset handling,
 then SkillGen.
 
@@ -251,7 +251,7 @@ network access before debugging cuRobo or planner settings.
 SkillGen Planning Failures
 --------------------------
 
-An occasional planning failure is expected: when ``guarantee_success: true``, AutoData resets the
+An occasional planning failure is expected: when ``guarantee_success: true``, Autodata resets the
 scene and retries. If every attempt fails, first rerun the same generation command with these
 diagnostic options:
 

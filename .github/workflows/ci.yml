@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-name: Isaac AutoData CI
+name: Autodata CI
 
 on:
   pull_request:
@@ -62,7 +62,7 @@ jobs:
     # trials each) are heavy and run in the nightly instead. No marker filter, so
     # both subprocess and unit tests run.
     env:
-      TEST_PATH: "isaac_autodata_tests/e2e/ isaac_autodata_tests/interfaces/ isaac_autodata_tests/core/"
+      TEST_PATH: "autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/"
 
     steps:
       - name: nvidia-smi
@@ -92,7 +92,7 @@ jobs:
         # stale credentials cannot override anonymous access to the public base image,
         # and this job cannot modify the runner's persistent Docker login.
         env:
-          DOCKER_CONFIG: ${{ runner.temp }}/isaac-autodata-docker
+          DOCKER_CONFIG: ${{ runner.temp }}/autodata-docker
         run: |
           mkdir -p "${DOCKER_CONFIG}"
           ./scripts/ci/run_tests.sh

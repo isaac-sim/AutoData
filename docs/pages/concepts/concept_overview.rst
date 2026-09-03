@@ -1,7 +1,7 @@
 Architecture Overview
 =====================
 
-Isaac AutoData is organized around one idea: **the generation machinery should not know the
+Autodata is organized around one idea: **the generation machinery should not know the
 simulator or the robot directly.** Everything the generator needs is reachable through small,
 explicit interfaces — a task-descriptor YAML for the task, an embodiment YAML for the robot,
 and a read interface (the Datastream) for the live environment. New tasks, robots, and
@@ -20,15 +20,15 @@ Packages
 
    * - Package
      - Responsibility
-   * - ``isaac_autodata_interfaces``
+   * - ``autodata_interfaces``
      - The boundary to the simulator and to configuration: task descriptors, embodiment
        adapters, the Datastream, env setup helpers, and motion-planner backends.
-   * - ``isaac_autodata_core``
+   * - ``autodata_core``
      - The generation machinery: the data generator, generation algorithms, the source demonstration
        pool, selection strategies, and waypoint execution.
-   * - ``isaac_autodata_utils``
+   * - ``autodata_utils``
      - Small shared utilities (pose math, tensor helpers).
-   * - ``isaac_autodata_examples``
+   * - ``autodata_examples``
      - Example task descriptors, embodiment configs, environment profiles, and project-owned
        environment definitions.
    * - ``scripts``

@@ -4,7 +4,7 @@
 
 set -e
 
-DOCKER_IMAGE_NAME='isaac_autodata'
+DOCKER_IMAGE_NAME='autodata'
 DOCKER_VERSION_TAG='sim-6.0.1'
 # Override with BASE_IMAGE when testing against a different compatible Isaac Sim release.
 BASE_IMAGE="${BASE_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.1}"
@@ -38,7 +38,7 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 REPO_ROOT=$(cd -- "${SCRIPT_DIR}/.." &>/dev/null && pwd)
 
 # Path the repo is mounted to inside the container (kept in sync with the Dockerfile's WORKDIR).
-WORKDIR="/workspaces/isaac_autodata"
+WORKDIR="/workspaces/autodata"
 ISAACLAB_PATH="${WORKDIR}/submodules/IsaacLab-Arena/submodules/IsaacLab"
 
 # Optional host datasets directory mounted at /datasets (in addition to the repo's own datasets/).
@@ -56,7 +56,7 @@ while getopts ":d:crRvh" OPTION; do
         v) set -x ;;
         h)
             script_name=$(basename "$0")
-            echo "Build and run the Isaac Auto Data dev container."
+            echo "Build and run the Autodata dev container."
             echo ""
             echo "Usage: $script_name [options] [command...]"
             echo ""
@@ -102,7 +102,7 @@ else
         --progress=plain \
         "${BUILD_ARGS[@]}" \
         -t "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" \
-        --file "${SCRIPT_DIR}/Dockerfile.isaac_autodata" \
+        --file "${SCRIPT_DIR}/Dockerfile.autodata" \
         "${REPO_ROOT}"
 fi
 
@@ -149,7 +149,7 @@ DOCKER_RUN_ARGS=(
     "--env" "ACCEPT_EULA=Y"
     "--env" "PRIVACY_CONSENT=Y"
     "--env" "ISAACLAB_PATH=${ISAACLAB_PATH}"
-    # Make AutoData's sitecustomize compatibility hook visible to direct upstream script entrypoints.
+    # Make Autodata's sitecustomize compatibility hook visible to direct upstream script entrypoints.
     "--env" "PYTHONPATH=${WORKDIR}"
     # Used by the entrypoint to recreate the host user inside the container.
     "--env" "DOCKER_RUN_USER_ID=$(id -u)"

@@ -4,7 +4,7 @@ Release Notes
 v0.1.0
 ------
 
-This initial release of Isaac AutoData provides a standalone framework for transforming a small
+This initial release of Autodata provides a standalone framework for transforming a small
 set of annotated demonstrations into larger robot-learning datasets. It brings data-generation
 algorithm parity with Isaac Lab Mimic without depending on the Isaac Lab Mimic package and covers
 the workflow from demonstration annotation through parallel generation, validation, and replay.
@@ -29,12 +29,12 @@ Key features of this release include:
   opt-in cuRobo image for SkillGen, and an optional conda installation with pinned Isaac Sim,
   Isaac Lab, and Isaac Lab-Arena revisions.
 - **Migration and developer documentation:** A migration guide for moving Isaac Lab Mimic tasks to
-  AutoData, a published platform support matrix, and unit, end-to-end, and data-generation
+  Autodata, a published platform support matrix, and unit, end-to-end, and data-generation
   performance tests.
 
 Known limitations:
 
-- **Platform support:** AutoData currently supports Linux x86_64 systems with an NVIDIA RTX GPU.
+- **Platform support:** Autodata currently supports Linux x86_64 systems with an NVIDIA RTX GPU.
   See the :doc:`support matrix <../quickstart/support_matrix>` for the complete hardware and
   software requirements.
 - **SkillGen:** SkillGen is currently single-arm only and requires the optional cuRobo

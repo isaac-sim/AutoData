@@ -36,7 +36,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
-# Add new algorithms here when registering them in isaac_autodata_core.algorithms.
+# Add new algorithms here when registering them in autodata_core.algorithms.
 _ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -117,19 +117,19 @@ import torch  # noqa: E402
 import traceback  # noqa: E402
 from typing import Any  # noqa: E402
 
-from isaac_autodata_core import DataGenerator, get_algorithm  # noqa: E402
-from isaac_autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
-from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
-from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
-from isaac_autodata_interfaces.env import (  # noqa: E402
+from autodata_core import DataGenerator, get_algorithm  # noqa: E402
+from autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
+from autodata_interfaces.datastream import Datastream  # noqa: E402
+from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
+from autodata_interfaces.env import (  # noqa: E402
     EnvironmentProfile,
     env_loop,
     get_env_name_from_dataset,
     setup_env_config,
     setup_output_paths,
 )
-from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
-from isaac_autodata_utils.generation_result import write_generation_result  # noqa: E402
+from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
+from autodata_utils.generation_result import write_generation_result  # noqa: E402
 
 
 async def run_data_generator(
@@ -239,8 +239,8 @@ def _build_motion_planners(
     given, else from task-name matching. Rerun plan visualization is opt-in via
     ``visualize_plan`` and limited to env 0.
     """
-    from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner
-    from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
+    from autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner
+    from autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
 
     planners: dict[int, CuroboPlanner] = {}
     for env_id in range(num_envs):
