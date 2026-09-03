@@ -77,7 +77,7 @@ html_theme_options = {
     "pygments_light_style": "tango",
     "pygments_dark_style": "monokai",
     "footer_links": {},
-    "github_url": "https://github.com/isaac-sim/Autodata",
+    "github_url": "https://github.com/isaac-sim/AutoData",
     "show_nav_level": 1,
 }
 
@@ -102,8 +102,8 @@ linkcheck_ignore: list[str] = []
 
 autodata_docs_config = {
     "released": released,
-    "internal_git_url": "git@github.com:isaac-sim/Autodata.git",
+    "internal_git_url": "git@github.com:isaac-sim/AutoData.git",
     "external_git_url": "UNDECIDED",
-    "internal_code_link_base_url": "https://github.com/isaac-sim/Autodata/blob/main",
+    "internal_code_link_base_url": "https://github.com/isaac-sim/AutoData/blob/main",
     "external_code_link_base_url": "UNDECIDED",
 }

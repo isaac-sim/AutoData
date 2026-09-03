@@ -90,7 +90,7 @@ License
 =======
 
 Autodata is licensed under the `Apache License 2.0
-<https://github.com/isaac-sim/Autodata/blob/main/LICENSE.md>`_.
+<https://github.com/isaac-sim/AutoData/blob/main/LICENSE.md>`_.
 
 
 Table of Contents

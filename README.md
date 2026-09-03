@@ -4,7 +4,7 @@
 
 ### Scalable Robot Demonstration Generation for Robot Learning
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/isaac-sim/Autodata)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/isaac-sim/AutoData)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-6.0.1-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
 [![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-3.0.0--beta2-silver.svg)](https://github.com/isaac-sim/IsaacLab)
 [![Isaac Lab-Arena](https://img.shields.io/badge/Isaac%20Lab--Arena-0.2.x-silver.svg)](https://github.com/isaac-sim/IsaacLab-Arena)
@@ -12,7 +12,7 @@
 [![Linux](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://www.linux.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](LICENSE.md)
 
-[Documentation](https://isaac-sim.github.io/Autodata/) · [Getting Started](https://isaac-sim.github.io/Autodata/main/pages/quickstart/first_data_generation.html) · [Report a Bug](https://github.com/isaac-sim/Autodata/issues) · [Discussions](https://github.com/isaac-sim/Autodata/discussions)
+[Documentation](https://isaac-sim.github.io/AutoData/) · [Getting Started](https://isaac-sim.github.io/AutoData/main/pages/quickstart/first_data_generation.html) · [Report a Bug](https://github.com/isaac-sim/AutoData/issues) · [Discussions](https://github.com/isaac-sim/AutoData/discussions)
 
 </div>
 
@@ -72,8 +72,8 @@ the amount of manual collection needed to produce datasets for policy training.
 Clone the repository with its nested Isaac Lab-Arena and Isaac Lab submodules, then pull the example datasets:
 
 ```bash
-git clone --recurse-submodules git@github.com:isaac-sim/Autodata.git
-cd Autodata
+git clone --recurse-submodules git@github.com:isaac-sim/AutoData.git
+cd AutoData
 git lfs install
 git lfs pull
 ```
@@ -90,7 +90,7 @@ The first launch builds the development image and opens a shell in the repositor
 for SkillGen workflows.
 
 Docker is the recommended setup. An optional conda installation and additional container options are described in
-the [installation guide](https://isaac-sim.github.io/Autodata/main/pages/quickstart/installation.html).
+the [installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html).
 
 ### Generate Your First Dataset
 
@@ -115,21 +115,21 @@ Validate the generated dataset:
 python scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5
 ```
 
-See [Your First Data Generation](https://isaac-sim.github.io/Autodata/main/pages/quickstart/first_data_generation.html)
+See [Your First Data Generation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/first_data_generation.html)
 for an explanation of each step and instructions for replaying the result.
 
 ## Example Workflows
 
 | Workflow | Description |
 |----------|-------------|
-| [Franka Cube Stacking](https://isaac-sim.github.io/Autodata/main/pages/workflows/franka_cube_stack_mimicgen/) | Record, annotate, and expand single-arm demonstrations with MimicGen. |
-| [Humanoid Pick-and-Place](https://isaac-sim.github.io/Autodata/main/pages/workflows/humanoid_dexmimicgen/) | Generate bimanual demonstrations for Fourier GR-1 and Unitree G1 with DexMimicGen. |
-| [Motion-Planned Generation](https://isaac-sim.github.io/Autodata/main/pages/workflows/skillgen/) | Use SkillGen and cuRobo to create collision-aware trajectories, including task variants built with environment profiles. |
+| [Franka Cube Stacking](https://isaac-sim.github.io/AutoData/main/pages/workflows/franka_cube_stack_mimicgen/) | Record, annotate, and expand single-arm demonstrations with MimicGen. |
+| [Humanoid Pick-and-Place](https://isaac-sim.github.io/AutoData/main/pages/workflows/humanoid_dexmimicgen/) | Generate bimanual demonstrations for Fourier GR-1 and Unitree G1 with DexMimicGen. |
+| [Motion-Planned Generation](https://isaac-sim.github.io/AutoData/main/pages/workflows/skillgen/) | Use SkillGen and cuRobo to create collision-aware trajectories, including task variants built with environment profiles. |
 
 ## Project Structure
 
 ```text
-Autodata/
+AutoData/
 ├── autodata_core/              # Data generation algorithms and execution
 ├── autodata_interfaces/        # Task, embodiment, datastream, and planner interfaces
 ├── autodata_utils/             # Shared utilities
@@ -152,12 +152,12 @@ pre-commit run --all-files
 ```
 
 For test-suite details and common commands, see
-[Testing and CI](https://isaac-sim.github.io/Autodata/main/pages/advanced/testing_and_ci.html).
+[Testing and CI](https://isaac-sim.github.io/AutoData/main/pages/advanced/testing_and_ci.html).
 
 ## Support
 
-- **Questions and ideas** — [GitHub Discussions](https://github.com/isaac-sim/Autodata/discussions)
-- **Bug reports** — [GitHub Issues](https://github.com/isaac-sim/Autodata/issues)
+- **Questions and ideas** — [GitHub Discussions](https://github.com/isaac-sim/AutoData/discussions)
+- **Bug reports** — [GitHub Issues](https://github.com/isaac-sim/AutoData/issues)
 - **Isaac Sim questions** — [NVIDIA Developer Forums](https://forums.developer.nvidia.com/c/agx-autonomous-machines/isaac/67)
 
 ## License
@@ -182,7 +182,7 @@ If you use Autodata in your research, please cite:
     title  = {Autodata: Scalable Robot Demonstration Generation for Robot Learning},
     author = {{NVIDIA Autodata Contributors}},
     year   = {2026},
-    url    = {https://github.com/isaac-sim/Autodata}
+    url    = {https://github.com/isaac-sim/AutoData}
 }
 ```
 
@@ -204,6 +204,6 @@ foundational work.
 
 <div align="center">
 
-**Autodata** · [Documentation](https://isaac-sim.github.io/Autodata/) · [GitHub](https://github.com/isaac-sim/Autodata)
+**Autodata** · [Documentation](https://isaac-sim.github.io/AutoData/) · [GitHub](https://github.com/isaac-sim/AutoData)
 
 </div>
