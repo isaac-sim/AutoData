@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Structurally validate Isaac AutoData HDF5 datasets.
+"""Structurally validate Autodata HDF5 datasets.
 
 Prints a summary table (episode count, env id, sim args) per file followed by any issues.
 
@@ -161,7 +161,7 @@ def print_results(results: list[ValidationResult]) -> None:
 def main(argv: list[str] | None = None) -> int:
     """Validate the requested files and return nonzero if any are invalid."""
 
-    parser = argparse.ArgumentParser(description="Validate Isaac AutoData demonstration HDF5 datasets.")
+    parser = argparse.ArgumentParser(description="Validate Autodata demonstration HDF5 datasets.")
     parser.add_argument("files", nargs="+", help="HDF5 dataset file(s) to validate.")
     args = parser.parse_args(argv)
 

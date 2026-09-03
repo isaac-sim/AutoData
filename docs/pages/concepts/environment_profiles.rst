@@ -8,7 +8,7 @@ with ``--env_profile`` and overlaid onto the parsed env config just before the e
 created.
 
 The shipped example,
-:isaac_autodata_code_link:`<isaac_autodata_examples/env_profiles/franka_bin_stack.yaml>`,
+:autodata_code_link:`<autodata_examples/env_profiles/franka_bin_stack.yaml>`,
 turns plain Franka cube stacking into stacking inside a narrow bin; the
 :doc:`SkillGen workflow <../workflows/skillgen/index>` shows it in action.
 

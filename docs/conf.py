@@ -12,12 +12,12 @@
 import os
 import sys
 
-# TODO: Get this programmatically from setup.py (ISAAC_AUTO_DATA_VERSION_NUMBER).
-ISAAC_AUTODATA_VERSION_NUMBER = "0.1"
+# TODO: Get this programmatically from setup.py (AUTODATA_VERSION_NUMBER).
+AUTODATA_VERSION_NUMBER = "0.1"
 
 # -- Project information -----------------------------------------------------
 
-project = "isaac_autodata"
+project = "Autodata"
 copyright = "2026, NVIDIA"
 author = "NVIDIA"
 released = False  # Indicates if this is a public or internal version of the repo.
@@ -40,7 +40,7 @@ extensions = [
     "sphinx_design",
     "sphinx_copybutton",
     "sphinx_multiversion",
-    "isaac_autodata_doc_tools",
+    "autodata_doc_tools",
 ]
 
 # Render `.. todo::` directives in the built docs. The doc templates use them as
@@ -70,14 +70,14 @@ nitpick_ignore: list[str] = []  # can exclude known bad refs
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 html_theme = "nvidia_sphinx_theme"
-html_title = f"isaac_autodata {ISAAC_AUTODATA_VERSION_NUMBER}"
+html_title = f"Autodata {AUTODATA_VERSION_NUMBER}"
 html_show_sphinx = False
 html_theme_options = {
     "copyright_override": {"start": 2026},
     "pygments_light_style": "tango",
     "pygments_dark_style": "monokai",
     "footer_links": {},
-    "github_url": "https://github.com/isaac-sim/Isaac-AutoData",
+    "github_url": "https://github.com/isaac-sim/Autodata",
     "show_nav_level": 1,
 }
 
@@ -100,10 +100,10 @@ linkcheck_ignore: list[str] = []
 #  Macros dependent on release state
 #####################################
 
-isaac_autodata_docs_config = {
+autodata_docs_config = {
     "released": released,
-    "internal_git_url": "git@github.com:isaac-sim/Isaac-AutoData.git",
+    "internal_git_url": "git@github.com:isaac-sim/Autodata.git",
     "external_git_url": "UNDECIDED",
-    "internal_code_link_base_url": "https://github.com/isaac-sim/Isaac-AutoData/blob/main",
+    "internal_code_link_base_url": "https://github.com/isaac-sim/Autodata/blob/main",
     "external_code_link_base_url": "UNDECIDED",
 }

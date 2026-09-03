@@ -26,13 +26,13 @@ Start the Dev Container
 :docker_run_default:
 
 It will take a few minutes to build the container the first time you run it.
-Once built, the script will automatically drop you into a shell at ``/workspaces/isaac_autodata``
+Once built, the script will automatically drop you into a shell at ``/workspaces/autodata``
 inside the container. All following commands are run from there.
 
 Generate a Dataset
 ------------------
 
-From ``/workspaces/isaac_autodata`` inside the container, run:
+From ``/workspaces/autodata`` inside the container, run:
 
 .. code-block:: bash
 
@@ -42,8 +42,8 @@ From ``/workspaces/isaac_autodata`` inside the container, run:
        --alg mimicgen \
        --generation_num_trials 10 \
        --num_envs 10 \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
        --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_franka_quickstart.hdf5
 

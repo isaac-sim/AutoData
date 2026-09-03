@@ -1,4 +1,4 @@
-# Isaac AutoData Documentation — Developer Guide
+# Autodata Documentation — Developer Guide
 
 The docs are built on the **host machine** (not inside Docker) using a dedicated Python 3.12 venv.
 
@@ -43,9 +43,9 @@ xdg-open _build/index.html
   section's own `index.rst`) or the build will warn about orphaned documents.
 - Unfinished sections are marked with `.. todo::` directives. These render in the built HTML
   (see `todo_include_todos` in `conf.py`), so placeholders are visible while the docs are drafted.
-- Macros available in any page (defined in `_ext/isaac_autodata_doc_tools.py`):
+- Macros available in any page (defined in `_ext/autodata_doc_tools.py`):
   - `:docker_run_default:` — inserts the base dev-container command.
   - `:docker_run_curobo:` — inserts the cuRobo/SkillGen container command.
-  - `` :isaac_autodata_code_link:`<path/to/file.py>` `` — links to a file on GitHub.
-  - `:isaac_autodata_git_clone_code_block:` — inserts the clone command.
+  - `` :autodata_code_link:`<path/to/file.py>` `` — links to a file on GitHub.
+  - `:autodata_git_clone_code_block:` — inserts the clone command.
 - Images go in `images/` and are referenced with relative paths (see the Arena docs for examples).

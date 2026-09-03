@@ -52,15 +52,15 @@ known_third_party = [
 
 # Imports from this repository
 known_first_party = [
-    "isaac_autodata_core",
-    "isaac_autodata_interfaces",
-    "isaac_autodata_utils",
-    "isaac_autodata_examples",
+    "autodata_core",
+    "autodata_interfaces",
+    "autodata_utils",
+    "autodata_examples",
 ]
 
 [tool.pyright]
 
-include = ["isaac_autodata_core", "isaac_autodata_interfaces", "isaac_autodata_utils", "isaac_autodata_examples"]
+include = ["autodata_core", "autodata_interfaces", "autodata_utils", "autodata_examples"]
 exclude = [
     "**/__pycache__",
     "**/_isaac_sim",
@@ -87,8 +87,8 @@ quiet-level = 0
 ignore-words-list = 'reacher'
 
 [tool.pytest.ini_options]
-# Scope default collection to the AutoData test suite (keeps pytest out of submodules).
-testpaths = ["isaac_autodata_tests"]
+# Scope default collection to the Autodata test suite (keeps pytest out of submodules).
+testpaths = ["autodata_tests"]
 markers = [
     "with_subprocess: test launches the data-generation CLI as an Isaac Sim child process",
 ]

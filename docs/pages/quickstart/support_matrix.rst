@@ -5,12 +5,12 @@
 Support Matrix
 ==============
 
-This matrix describes the supported Isaac AutoData v0.1.0 stack. Upstream projects may support
-additional platforms, but configurations outside this matrix are not validated by AutoData. Use
-the recursively pinned submodules from the AutoData repository instead of independently selecting
+This matrix describes the supported Autodata v0.1.0 stack. Upstream projects may support
+additional platforms, but configurations outside this matrix are not validated by Autodata. Use
+the recursively pinned submodules from the Autodata repository instead of independently selecting
 Isaac Lab or Isaac Lab-Arena revisions.
 
-.. list-table:: Isaac AutoData platform and resource support
+.. list-table:: Autodata platform and resource support
    :widths: 25 75
    :header-rows: 1
 
@@ -33,7 +33,7 @@ Isaac Lab or Isaac Lab-Arena revisions.
    * - Disk
      - Minimum: 100 GB SSD. Recommended: 500 GB SSD
    * - Docker installation
-     - Docker Engine with the NVIDIA Container Toolkit; recommended AutoData installation
+     - Docker Engine with the NVIDIA Container Toolkit; recommended Autodata installation
    * - Conda installation
      - Optional Linux installation using conda, ``uv``, and Python 3.12
    * - Isaac Sim

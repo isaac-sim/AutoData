@@ -46,8 +46,8 @@ Start with a small run in a Kit window (``--viz kit``) to sanity-check the setup
             --num_envs 5 \
             --alg dexmimicgen \
             --generation_num_trials 10 \
-            --task_descriptor isaac_autodata_examples/tasks/gr1_pick_place.yaml \
-            --embodiment isaac_autodata_examples/embodiments/gr1_ik_abs.yaml \
+            --task_descriptor autodata_examples/tasks/gr1_pick_place.yaml \
+            --embodiment autodata_examples/embodiments/gr1_ik_abs.yaml \
             --input_file ./datasets/annotated_datasets/dataset_gr1_annotated.hdf5 \
             --output_file ./datasets/generated_dataset_dexmimicgen_gr1_small.hdf5
 
@@ -62,8 +62,8 @@ Start with a small run in a Kit window (``--viz kit``) to sanity-check the setup
             --num_envs 5 \
             --alg dexmimicgen \
             --generation_num_trials 10 \
-            --task_descriptor isaac_autodata_examples/tasks/g1_pick_place.yaml \
-            --embodiment isaac_autodata_examples/embodiments/g1_ik_abs.yaml \
+            --task_descriptor autodata_examples/tasks/g1_pick_place.yaml \
+            --embodiment autodata_examples/embodiments/g1_ik_abs.yaml \
             --input_file ./datasets/annotated_datasets/dataset_g1_annotated.hdf5 \
             --output_file ./datasets/generated_dataset_dexmimicgen_g1_small.hdf5
 
@@ -102,8 +102,8 @@ For dataset-scale generation, run headless (``--viz none``) with parallel enviro
             --num_envs 50 \
             --alg dexmimicgen \
             --generation_num_trials 1000 \
-            --task_descriptor isaac_autodata_examples/tasks/gr1_pick_place.yaml \
-            --embodiment isaac_autodata_examples/embodiments/gr1_ik_abs.yaml \
+            --task_descriptor autodata_examples/tasks/gr1_pick_place.yaml \
+            --embodiment autodata_examples/embodiments/gr1_ik_abs.yaml \
             --input_file ./datasets/annotated_datasets/dataset_gr1_annotated.hdf5 \
             --output_file ./datasets/generated_dataset_dexmimicgen_gr1.hdf5
 
@@ -118,8 +118,8 @@ For dataset-scale generation, run headless (``--viz none``) with parallel enviro
             --num_envs 50 \
             --alg dexmimicgen \
             --generation_num_trials 1000 \
-            --task_descriptor isaac_autodata_examples/tasks/g1_pick_place.yaml \
-            --embodiment isaac_autodata_examples/embodiments/g1_ik_abs.yaml \
+            --task_descriptor autodata_examples/tasks/g1_pick_place.yaml \
+            --embodiment autodata_examples/embodiments/g1_ik_abs.yaml \
             --input_file ./datasets/annotated_datasets/dataset_g1_annotated.hdf5 \
             --output_file ./datasets/generated_dataset_dexmimicgen_g1.hdf5
 
