@@ -103,7 +103,7 @@ one-demonstration smoke test, expected planning failures, and runtime and VRAM g
 The Task Descriptor for SkillGen
 --------------------------------
 
-Compare :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml>`
+Compare :autodata_code_link:`<autodata_examples/tasks/franka_cube_stack_skillgen.yaml>`
 with the MimicGen version of the same task. The differences are characteristic:
 
 * ``algo: skillgen`` and ``generation_policy.use_skillgen: true``.
@@ -130,8 +130,8 @@ the keyboard.
    python scripts/annotate_demos.py \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --viz kit \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
        --input_file ./datasets/dataset_franka.hdf5 \
        --output_file ./datasets/dataset_franka_skillgen_annotated.hdf5
 
@@ -210,9 +210,9 @@ dedicated task.
      - Franka, relative IK task-space actions (7-D: delta pose (xyz, rpy) + binary gripper
        open/close)
    * - **Task descriptor**
-     - :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml>`
+     - :autodata_code_link:`<autodata_examples/tasks/franka_cube_stack_skillgen.yaml>`
    * - **Embodiment config**
-     - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml>`
+     - :autodata_code_link:`<autodata_examples/embodiments/franka_ik_rel_skillgen.yaml>`
    * - **Subtasks**
      - Grasp red cube (``grasp_1``) → stack red on blue (``stack_1``) → grasp green cube
        (``grasp_2``) → stack green on red (``stack_2``); each subtask also carries a start
@@ -227,8 +227,8 @@ Start small to verify the setup, using the pre-annotated source dataset:
    python scripts/generate_dataset.py \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --alg skillgen \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
        --input_file ./datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_skillgen_franka.hdf5 \
        --generation_num_trials 10 \
@@ -282,7 +282,7 @@ A profile can:
 * **name the motion-planner profile** (``planner``) tuned for the modified scene.
 
 Abridged from
-:isaac_autodata_code_link:`<isaac_autodata_examples/env_profiles/franka_bin_stack.yaml>`:
+:autodata_code_link:`<autodata_examples/env_profiles/franka_bin_stack.yaml>`:
 
 .. code-block:: yaml
 
@@ -310,7 +310,7 @@ Abridged from
          ...
 
 The bin task also gets its own task descriptor
-(:isaac_autodata_code_link:`<isaac_autodata_examples/tasks/franka_bin_stack_skillgen.yaml>`):
+(:autodata_code_link:`<autodata_examples/tasks/franka_bin_stack_skillgen.yaml>`):
 same subtasks as cube stacking, but ``action_noise: 0.0`` — the bin walls leave little
 clearance for perturbed skill segments.
 
@@ -325,9 +325,9 @@ change:
    python scripts/generate_dataset.py \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --alg skillgen \
-       --task_descriptor isaac_autodata_examples/tasks/franka_bin_stack_skillgen.yaml \
-       --env_profile isaac_autodata_examples/env_profiles/franka_bin_stack.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
+       --task_descriptor autodata_examples/tasks/franka_bin_stack_skillgen.yaml \
+       --env_profile autodata_examples/env_profiles/franka_bin_stack.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
        --input_file ./datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_skillgen_franka_bin.hdf5 \
        --generation_num_trials 10 \

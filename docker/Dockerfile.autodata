@@ -1,0 +1,105 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+ARG BASE_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.1
+FROM ${BASE_IMAGE}
+
+USER root
+
+ARG WORKDIR=/workspaces/autodata
+ENV WORKDIR=${WORKDIR}
+WORKDIR "${WORKDIR}"
+
+ENV TERM=xterm
+# Tolerate transient package-index failures on shared CI runners. These settings
+# are inherited by every pip invocation, including those run by isaaclab.sh.
+ENV PIP_RETRIES=10 \
+    PIP_DEFAULT_TIMEOUT=120
+# Path to the (nested) Isaac Lab checkout inside the Arena submodule.
+ENV ISAACLAB_PATH=${WORKDIR}/submodules/IsaacLab-Arena/submodules/IsaacLab
+
+# Hide conflicting Vulkan files, if needed.
+RUN if [ -e "/usr/share/vulkan" ] && [ -e "/etc/vulkan" ]; then \
+      mv /usr/share/vulkan /usr/share/vulkan_hidden; \
+    fi
+
+# Install apt packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git \
+      git-lfs \
+      cmake \
+      build-essential \
+      sudo \
+      jq \
+      ffmpeg \
+      python3-pip \
+  && rm -rf /var/lib/apt/lists/*
+
+#######################################
+# Install IsaacLab & IsaacLab - Arena
+#######################################
+# Copy the Arena submodule once as it carries the nested IsaacLab checkout.
+# The .dockerignore drops Arena's other nested submodules (e.g. Isaac-GR00T)
+# which Autodata does not use.
+COPY submodules/IsaacLab-Arena ${WORKDIR}/submodules/IsaacLab-Arena
+
+# --- IsaacLab ---
+# Symlink Isaac Sim to IsaacLab.
+RUN ln -s /isaac-sim/ ${ISAACLAB_PATH}/_isaac_sim
+# Install IsaacLab dependencies.
+RUN for DIR in ${ISAACLAB_PATH}/source/isaaclab*/; do /isaac-sim/python.sh -m pip install --no-deps -e "$DIR"; done
+# The non-root runtime user (created by the entrypoint) needs to write Kit logs/caches under /isaac-sim.
+RUN chmod 777 -R /isaac-sim/kit/ && chmod a+x /isaac-sim
+# Ensure the visualizer extension is present so "--viz kit" works.
+RUN /isaac-sim/python.sh -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_visualizers
+RUN ${ISAACLAB_PATH}/isaaclab.sh -i
+# Pin daqp for Pink IK (matches conda_installer.sh).
+RUN /isaac-sim/python.sh -m pip install --force-reinstall daqp==0.8.5
+
+# --- IsaacLab - Arena ---
+RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
+
+##################
+# Autodata
+##################
+# Copy the package sources + packaging metadata (exclude submodules installed above).
+COPY setup.py pyproject.toml README.md sitecustomize.py ${WORKDIR}/
+COPY autodata_core ${WORKDIR}/autodata_core
+COPY autodata_interfaces ${WORKDIR}/autodata_interfaces
+COPY autodata_utils ${WORKDIR}/autodata_utils
+COPY autodata_examples ${WORKDIR}/autodata_examples
+COPY autodata_tests ${WORKDIR}/autodata_tests
+RUN /isaac-sim/python.sh -m pip install -e "${WORKDIR}[dev]"
+RUN /isaac-sim/python.sh -m pip install pre-commit
+
+#####################
+# cuRobo (optional)
+#####################
+ARG INSTALL_CUROBO=false
+# Default arch list, run_docker.sh overrides it with the detected compute capability.
+ARG TORCH_CUDA_ARCH_LIST=8.0+PTX
+
+ENV CUDA_HOME=/usr/local/cuda-12.8
+ENV PATH=/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}
+ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
+COPY docker/setup/install_curobo.sh /tmp/install_curobo.sh
+RUN if [ "$INSTALL_CUROBO" = "true" ]; then \
+      /tmp/install_curobo.sh; \
+    else \
+      echo "Skipping cuRobo install (INSTALL_CUROBO=false. Use run_docker.sh -c to include it)"; \
+    fi && rm -f /tmp/install_curobo.sh
+
+# Set aliases for the shell
+RUN echo 'export PATH="/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}"' >> /etc/bash.bashrc \
+ && echo "alias python='/isaac-sim/python.sh'" >> /etc/bash.bashrc \
+ && echo "alias pip3='/isaac-sim/python.sh -m pip'" >> /etc/bash.bashrc \
+ && echo "alias pytest='/isaac-sim/python.sh -m pytest'" >> /etc/bash.bashrc \
+ && echo "alias pre-commit='/isaac-sim/python.sh -m pre_commit'" >> /etc/bash.bashrc \
+ && echo "alias ll='ls -alF --color=auto'" >> /etc/bash.bashrc \
+ && echo "PS1='[Autodata] \[\e[0;32m\]\u \[\e[0;34m\]\w\[\e[0m\] \$ '" >> /etc/bash.bashrc \
+ && cp /etc/bash.bashrc /root/.bashrc
+
+# Set the entrypoint
+COPY docker/setup/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

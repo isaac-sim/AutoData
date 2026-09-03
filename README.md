@@ -1,10 +1,10 @@
 <div align="center">
 
-# Isaac AutoData
+# Autodata
 
 ### Scalable Robot Demonstration Generation for Robot Learning
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/isaac-sim/Isaac-AutoData)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/isaac-sim/AutoData)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-6.0.1-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
 [![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-3.0.0--beta2-silver.svg)](https://github.com/isaac-sim/IsaacLab)
 [![Isaac Lab-Arena](https://img.shields.io/badge/Isaac%20Lab--Arena-0.2.x-silver.svg)](https://github.com/isaac-sim/IsaacLab-Arena)
@@ -12,7 +12,7 @@
 [![Linux](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://www.linux.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](LICENSE.md)
 
-[Documentation](https://isaac-sim.github.io/Isaac-AutoData/) · [Getting Started](https://isaac-sim.github.io/Isaac-AutoData/main/pages/quickstart/first_data_generation.html) · [Report a Bug](https://github.com/isaac-sim/Isaac-AutoData/issues) · [Discussions](https://github.com/isaac-sim/Isaac-AutoData/discussions)
+[Documentation](https://isaac-sim.github.io/AutoData/) · [Getting Started](https://isaac-sim.github.io/AutoData/main/pages/quickstart/first_data_generation.html) · [Report a Bug](https://github.com/isaac-sim/AutoData/issues) · [Discussions](https://github.com/isaac-sim/AutoData/discussions)
 
 </div>
 
@@ -20,27 +20,27 @@
 
 ## Overview
 
-**Isaac AutoData** is a trajectory data-generation framework built on
+**Autodata** is a trajectory data-generation framework built on
 [NVIDIA Isaac Lab](https://github.com/isaac-sim/IsaacLab) and
 [Isaac Lab-Arena](https://github.com/isaac-sim/IsaacLab-Arena). Given a small set of annotated human
 demonstrations, it uses parallel simulation environments to generate diverse datasets of successful robot
 demonstrations for robot learning.
 
-Isaac AutoData splits demonstrations into object-relative skill segments. During generation, it transforms those
+Autodata splits demonstrations into object-relative skill segments. During generation, it transforms those
 segments to new scene configurations, connects them into complete trajectories, executes them in simulation, and
 records successful demonstrations in HDF5 datasets.
 
 <p align="center">
-  <img src="docs/images/autodata.gif" alt="Isaac AutoData generating robot demonstrations in parallel" width="100%">
+  <img src="docs/images/autodata.gif" alt="Autodata generating robot demonstrations in parallel" width="100%">
 </p>
 
-## Why Isaac AutoData?
+## Why Autodata?
 
 Robot-learning policies require large and diverse collections of successful demonstrations. Gathering all of
 that data through human teleoperation is slow and expensive, even though a small set of demonstrations often already
 contains the task's essential skills.
 
-Isaac AutoData scales those demonstrations across randomized object placements and scene configurations, reducing
+Autodata scales those demonstrations across randomized object placements and scene configurations, reducing
 the amount of manual collection needed to produce datasets for policy training.
 
 ## Key Features
@@ -72,8 +72,8 @@ the amount of manual collection needed to produce datasets for policy training.
 Clone the repository with its nested Isaac Lab-Arena and Isaac Lab submodules, then pull the example datasets:
 
 ```bash
-git clone --recurse-submodules git@github.com:isaac-sim/Isaac-AutoData.git
-cd Isaac-AutoData
+git clone --recurse-submodules git@github.com:isaac-sim/AutoData.git
+cd AutoData
 git lfs install
 git lfs pull
 ```
@@ -86,11 +86,11 @@ docker login nvcr.io
 ```
 
 The first launch builds the development image and opens a shell in the repository at
-`/workspaces/isaac_autodata`. Subsequent launches reuse the image. Use `./docker/run_docker.sh -c` to include cuRobo
+`/workspaces/autodata`. Subsequent launches reuse the image. Use `./docker/run_docker.sh -c` to include cuRobo
 for SkillGen workflows.
 
 Docker is the recommended setup. An optional conda installation and additional container options are described in
-the [installation guide](https://isaac-sim.github.io/Isaac-AutoData/main/pages/quickstart/installation.html).
+the [installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html).
 
 ### Generate Your First Dataset
 
@@ -103,8 +103,8 @@ python scripts/generate_dataset.py \
     --alg mimicgen \
     --generation_num_trials 10 \
     --num_envs 10 \
-    --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-    --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+    --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+    --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
     --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
     --output_file ./datasets/generated_dataset_franka_quickstart.hdf5
 ```
@@ -115,26 +115,26 @@ Validate the generated dataset:
 python scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5
 ```
 
-See [Your First Data Generation](https://isaac-sim.github.io/Isaac-AutoData/main/pages/quickstart/first_data_generation.html)
+See [Your First Data Generation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/first_data_generation.html)
 for an explanation of each step and instructions for replaying the result.
 
 ## Example Workflows
 
 | Workflow | Description |
 |----------|-------------|
-| [Franka Cube Stacking](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/franka_cube_stack_mimicgen/) | Record, annotate, and expand single-arm demonstrations with MimicGen. |
-| [Humanoid Pick-and-Place](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/humanoid_dexmimicgen/) | Generate bimanual demonstrations for Fourier GR-1 and Unitree G1 with DexMimicGen. |
-| [Motion-Planned Generation](https://isaac-sim.github.io/Isaac-AutoData/main/pages/workflows/skillgen/) | Use SkillGen and cuRobo to create collision-aware trajectories, including task variants built with environment profiles. |
+| [Franka Cube Stacking](https://isaac-sim.github.io/AutoData/main/pages/workflows/franka_cube_stack_mimicgen/) | Record, annotate, and expand single-arm demonstrations with MimicGen. |
+| [Humanoid Pick-and-Place](https://isaac-sim.github.io/AutoData/main/pages/workflows/humanoid_dexmimicgen/) | Generate bimanual demonstrations for Fourier GR-1 and Unitree G1 with DexMimicGen. |
+| [Motion-Planned Generation](https://isaac-sim.github.io/AutoData/main/pages/workflows/skillgen/) | Use SkillGen and cuRobo to create collision-aware trajectories, including task variants built with environment profiles. |
 
 ## Project Structure
 
 ```text
-Isaac-AutoData/
-├── isaac_autodata_core/        # Data generation algorithms and execution
-├── isaac_autodata_interfaces/  # Task, embodiment, datastream, and planner interfaces
-├── isaac_autodata_utils/       # Shared utilities
-├── isaac_autodata_examples/    # Example task, embodiment, and environment-profile configs
-├── isaac_autodata_tests/       # Unit, end-to-end, and performance tests
+AutoData/
+├── autodata_core/              # Data generation algorithms and execution
+├── autodata_interfaces/        # Task, embodiment, datastream, and planner interfaces
+├── autodata_utils/             # Shared utilities
+├── autodata_examples/          # Example task, embodiment, and environment-profile configs
+├── autodata_tests/             # Unit, end-to-end, and performance tests
 ├── scripts/                    # Dataset generation, annotation, and validation tools
 ├── datasets/                   # Example and test datasets stored with Git LFS
 ├── docker/                     # Reproducible development containers
@@ -152,37 +152,37 @@ pre-commit run --all-files
 ```
 
 For test-suite details and common commands, see
-[Testing and CI](https://isaac-sim.github.io/Isaac-AutoData/main/pages/advanced/testing_and_ci.html).
+[Testing and CI](https://isaac-sim.github.io/AutoData/main/pages/advanced/testing_and_ci.html).
 
 ## Support
 
-- **Questions and ideas** — [GitHub Discussions](https://github.com/isaac-sim/Isaac-AutoData/discussions)
-- **Bug reports** — [GitHub Issues](https://github.com/isaac-sim/Isaac-AutoData/issues)
+- **Questions and ideas** — [GitHub Discussions](https://github.com/isaac-sim/AutoData/discussions)
+- **Bug reports** — [GitHub Issues](https://github.com/isaac-sim/AutoData/issues)
 - **Isaac Sim questions** — [NVIDIA Developer Forums](https://forums.developer.nvidia.com/c/agx-autonomous-machines/isaac/67)
 
 ## License
 
-Isaac AutoData is released under the [Apache License 2.0](LICENSE.md).
+Autodata is released under the [Apache License 2.0](LICENSE.md).
 
 Third-party open-source software notices are provided in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Additional component-specific licenses are stored in [`docs/licenses/`](docs/licenses/). NVIDIA cuRobo is governed
 by the [NVIDIA Isaac Lab Additional Software and Materials License](docs/licenses/curobo-license.txt).
 
-Isaac AutoData depends on Isaac Sim, which includes components distributed under proprietary licensing terms. See
+Autodata depends on Isaac Sim, which includes components distributed under proprietary licensing terms. See
 the [Isaac Sim license](https://docs.isaacsim.omniverse.nvidia.com/latest/common/NVIDIA_Omniverse_License_Agreement.html)
 for details.
 
 ## Citation
 
-If you use Isaac AutoData in your research, please cite:
+If you use Autodata in your research, please cite:
 
 ```bibtex
-@misc{isaacautodata2026,
-    title  = {Isaac AutoData: Scalable Robot Demonstration Generation for Robot Learning},
-    author = {{NVIDIA Isaac AutoData Contributors}},
+@misc{autodata2026,
+    title  = {Autodata: Scalable Robot Demonstration Generation for Robot Learning},
+    author = {{NVIDIA Autodata Contributors}},
     year   = {2026},
-    url    = {https://github.com/isaac-sim/Isaac-AutoData}
+    url    = {https://github.com/isaac-sim/AutoData}
 }
 ```
 
@@ -193,7 +193,7 @@ Depending on the generation algorithm used, please also cite the original
 
 ## Acknowledgements
 
-Isaac AutoData builds on NVIDIA Isaac Sim, Isaac Lab, and Isaac Lab-Arena. Its data-generation workflows incorporate
+Autodata builds on NVIDIA Isaac Sim, Isaac Lab, and Isaac Lab-Arena. Its data-generation workflows incorporate
 ideas from MimicGen, DexMimicGen, and SkillMimicGen, with cuRobo providing GPU-accelerated motion planning for
 SkillGen workflows.
 
@@ -204,6 +204,6 @@ foundational work.
 
 <div align="center">
 
-**Isaac AutoData** · [Documentation](https://isaac-sim.github.io/Isaac-AutoData/) · [GitHub](https://github.com/isaac-sim/Isaac-AutoData)
+**Autodata** · [Documentation](https://isaac-sim.github.io/AutoData/) · [GitHub](https://github.com/isaac-sim/AutoData)
 
 </div>

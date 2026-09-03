@@ -1,11 +1,11 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Installation script for the 'isaac_auto_data' python packages."""
+"""Installation script for the Autodata Python packages."""
 
 from setuptools import find_packages, setup
 
-ISAAC_AUTO_DATA_VERSION_NUMBER = "0.1.0"
+AUTODATA_VERSION_NUMBER = "0.1.0"
 
 RUNTIME_DEPS = [
     "typing_extensions",
@@ -18,16 +18,16 @@ DEV_DEPS = [
 ]
 
 setup(
-    name="isaac_auto_data",
-    version=ISAAC_AUTO_DATA_VERSION_NUMBER,
-    description="Isaac Auto Data.",
+    name="autodata",
+    version=AUTODATA_VERSION_NUMBER,
+    description="Scalable robot demonstration generation for robot learning.",
     py_modules=["sitecustomize"],
     packages=find_packages(
         include=[
-            "isaac_autodata_core*",
-            "isaac_autodata_interfaces*",
-            "isaac_autodata_utils*",
-            "isaac_autodata_examples*",
+            "autodata_core*",
+            "autodata_interfaces*",
+            "autodata_utils*",
+            "autodata_examples*",
         ]
     ),
     python_requires=">=3.12",

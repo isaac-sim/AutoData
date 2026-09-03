@@ -3,7 +3,7 @@ Motion Planners
 
 SkillGen plans collision-free transit motions with a pluggable motion-planner backend. The
 shipped backend is `cuRobo <https://curobo.org/>`_ — GPU-accelerated, collision-aware
-trajectory optimization. Planners live in ``isaac_autodata_interfaces/motion_planners/``.
+trajectory optimization. Planners live in ``autodata_interfaces/motion_planners/``.
 
 The Planner Interface
 ---------------------
@@ -41,7 +41,7 @@ the task id:
 
 .. code-block:: python
 
-   from isaac_autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
+   from autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
 
    config = CuroboPlannerCfg.from_task_name("Isaac-Stack-Cube-Franka-IK-Rel-v0")
 

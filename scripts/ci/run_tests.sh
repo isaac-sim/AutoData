@@ -2,7 +2,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Run the Isaac AutoData test suite inside the repo's GPU Docker image.
+# Run the Autodata test suite inside the repo's GPU Docker image.
 # This is the single entry point shared by local runs and CI: it wraps
 # ./docker/run_docker.sh so a developer reproduces a CI failure with one command:
 #
@@ -19,7 +19,7 @@ set -euo pipefail
 # Test path(s) collected by pytest, relative to the repo root. May be a single
 # path or several space-separated paths. Premerge scopes this to the correctness
 # suites; the nightly leaves it at the default (the whole test tree).
-TEST_PATH="${TEST_PATH:-isaac_autodata_tests/}"
+TEST_PATH="${TEST_PATH:-autodata_tests/}"
 # Optional pytest marker expression. Empty (the default) applies no marker
 # filter and runs everything collected under TEST_PATH. Note: use `-` (not `:-`)
 # so an explicitly empty value from a caller is honored rather than defaulted.
@@ -29,17 +29,17 @@ FORCE_REBUILD="${FORCE_REBUILD:-false}"
 # Per-subprocess wall-clock timeout (seconds) for the data-generation child.
 # run_docker.sh gives the container a fresh environment, so this is forwarded
 # explicitly on the in-container command line rather than exported on the host.
-SUBPROCESS_TIMEOUT="${ISAAC_AUTODATA_SUBPROCESS_TIMEOUT:-1200}"
+SUBPROCESS_TIMEOUT="${AUTODATA_SUBPROCESS_TIMEOUT:-1200}"
 # Container-local cache directory. run_docker.sh bind-mounts the host's
 # $HOME/.cache into the container; on the CI runner that path is root-owned (or
 # auto-created as root), so the recreated non-root container user cannot write
 # it -- warp fails to create ~/.cache/warp with a PermissionError. Pointing the
 # cache env vars at a writable, container-local /tmp path sidesteps the mounted
 # host cache entirely. The tools create these dirs themselves (makedirs).
-CONTAINER_CACHE_DIR="${CONTAINER_CACHE_DIR:-/tmp/isaac_autodata_ci_cache}"
+CONTAINER_CACHE_DIR="${CONTAINER_CACHE_DIR:-/tmp/autodata_ci_cache}"
 # Optional JUnit report dir (repo-relative). The repo is bind-mounted, so a report
 # written here lands on the host for CI to collect.
-RESULTS_DIR="${ISAAC_AUTODATA_RESULTS_DIR-}"
+RESULTS_DIR="${AUTODATA_RESULTS_DIR-}"
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
@@ -60,7 +60,7 @@ fi
 # caches away from the mounted host $HOME/.cache (see CONTAINER_CACHE_DIR above).
 PYTEST_ARGS=(
     env
-    "ISAAC_AUTODATA_SUBPROCESS_TIMEOUT=${SUBPROCESS_TIMEOUT}"
+    "AUTODATA_SUBPROCESS_TIMEOUT=${SUBPROCESS_TIMEOUT}"
     "XDG_CACHE_HOME=${CONTAINER_CACHE_DIR}"
     "WARP_CACHE_PATH=${CONTAINER_CACHE_DIR}/warp"
     /isaac-sim/python.sh -m pytest -sv --durations=0

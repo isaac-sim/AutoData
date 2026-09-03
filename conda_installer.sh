@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-ENV_NAME="isaac_autodata"
+ENV_NAME="autodata"
 PYTHON_VERSION="3.12"
 ISAAC_SIM_VERSION="6.0.1.0"
 TORCH_VERSION="2.10.0"
@@ -17,7 +17,7 @@ usage() {
 Usage: $(basename "$0") [-c] [-i] [-h]
 
   -c    Create conda env "${ENV_NAME}" with Python ${PYTHON_VERSION}
-  -i    Install Isaac Sim, PyTorch, Isaac Lab, Arena, and Isaac Auto Data
+  -i    Install Isaac Sim, PyTorch, Isaac Lab, Arena, and Autodata
         into the "${ENV_NAME}" env (env must already exist; run with -c first)
   -h    Show this help
 
@@ -110,7 +110,7 @@ install_all() {
     echo ">>> Installing Isaac Lab - Arena"
     uv pip install --editable "${arena_root}"
 
-    echo ">>> Installing Isaac Auto Data"
+    echo ">>> Installing Autodata"
     uv pip install --editable "${REPO_ROOT}"
 
     echo ">>> Installation complete."
