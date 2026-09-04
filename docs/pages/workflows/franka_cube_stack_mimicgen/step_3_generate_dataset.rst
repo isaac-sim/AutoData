@@ -1,16 +1,16 @@
 Step 3: Generate the Dataset
 ----------------------------
 
-With annotated source demonstrations in hand, MimicGen can synthesize new ones. For each trial,
+With annotated source demonstrations in hand, MimicGen can synthesize new ones. For each attempt,
 the scene is randomized, a source segment is selected per subtask, and its end-effector
 trajectory is rigidly transformed to the new object poses and replayed.
 
 .. figure:: ../../../images/franka_mimicgen_datagen.jpg
    :width: 90%
    :align: center
-   :alt: Parallel data generation for the Franka cube stacking task
+   :alt: Parallel data generation for the Franka cube-stacking task
 
-   Parallel data generation for the Franka cube stacking task.
+   Parallel data generation for the Franka cube-stacking task.
 
 The commands below use the pre-annotated source dataset that ships with the repository. If you ran
 Steps 1–2, point ``--input_file`` at your own ``dataset_franka_annotated.hdf5`` instead.
@@ -19,7 +19,7 @@ Steps 1–2, point ``--input_file`` at your own ``dataset_franka_annotated.hdf5`
 Small-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^^
 
-Start with a small scale run with simulation viewer enabled to sanity-check the setup:
+Start with a small-scale run in a Kit window (``--viz kit``) to sanity-check the setup:
 
 .. code-block:: bash
 
@@ -29,8 +29,8 @@ Start with a small scale run with simulation viewer enabled to sanity-check the 
        --num_envs 20 \
        --alg mimicgen \
        --generation_num_trials 10 \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
        --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_mimicgen_franka_small.hdf5
 
@@ -48,14 +48,13 @@ running tally after every attempt to generate a new demonstration:
    5/10 (50.0%) successful demos generated
    **************************************************
 
-The script will automatically shutdown after 10
-successful demonstrations are generated.
+The script shuts down automatically after 10 successful demonstrations are generated.
 
 
 Full-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^
 
-For dataset-scale generation, run without the simulation viewer and with parallel environments:
+For dataset-scale generation, run headless (``--viz none``) with parallel environments:
 
 .. code-block:: bash
 
@@ -65,19 +64,19 @@ For dataset-scale generation, run without the simulation viewer and with paralle
        --num_envs 500 \
        --alg mimicgen \
        --generation_num_trials 1000 \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
        --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_mimicgen_franka.hdf5
 
-Progress is printed after every attempt (successes / attempts and the running success rate).
+Progress is printed after every attempt (successful demonstrations, attempts, and the running success rate).
 
 .. note::
 
   **Expected data generation success rate and time**
 
   * Data generation success rate: ~40%
-  * Data generation time: ~15 mins
+  * Data generation time: ~15 minutes
 
   *Numbers are based on using an RTX PRO 6000 Blackwell GPU with the provided command.*
 
@@ -100,6 +99,6 @@ Key Parameters
    * - ``--num_envs``
      - Number of parallel environments, each generating independently.
    * - ``--viz``
-     - Visualizer backend (``kit`` for an Isaac Sim window, ``none`` for headless).
+     - Visualization mode (``kit`` opens a Kit window; ``none`` runs headless).
 
 Continue to :doc:`step_4_validate_dataset`.

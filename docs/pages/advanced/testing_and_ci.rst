@@ -4,7 +4,7 @@ Testing and CI
 Test Suite
 ----------
 
-The test suite lives in ``isaac_autodata_tests/`` and runs inside the dev container. It is
+The test suite lives in ``autodata_tests/`` and runs inside the dev container. It is
 organized in tiers of increasing cost:
 
 .. list-table::
@@ -21,7 +21,7 @@ organized in tiers of increasing cost:
        SkillGen), each in single- and multi-env variants. Marked ``with_subprocess``: they
        launch the generation CLI as an Isaac Sim child process. Minutes per test.
    * - ``datagen_perf/``
-     - Success-rate benchmarks (hundreds of trials per run) asserting generation quality
+     - Success-rate benchmarks (hundreds of attempts per run) asserting generation quality
        thresholds per task. Nightly-scale.
    * - ``test_data/``
      - Pre-annotated source datasets (Git LFS) used by the tests — and handy as quickstart
@@ -32,13 +32,13 @@ Common invocations:
 .. code-block:: bash
 
    # Fast unit tests only (seconds)
-   pytest isaac_autodata_tests -m "not with_subprocess"
+   pytest autodata_tests -m "not with_subprocess"
 
    # One end-to-end generation test, streaming Isaac Sim output live
-   pytest -s isaac_autodata_tests/e2e/test_mimicgen_data_generation.py::test_franka_cube_stack_mimicgen_data_generation_single_env_cuda
+   pytest -s autodata_tests/e2e/test_mimicgen_data_generation.py::test_franka_cube_stack_mimicgen_data_generation_single_env_cuda
 
    # Everything that launches Isaac Sim (long)
-   pytest isaac_autodata_tests -m with_subprocess
+   pytest autodata_tests -m with_subprocess
 
 .. note::
 
@@ -49,7 +49,7 @@ Debugging Isaac Sim Runs
 ------------------------
 
 The end-to-end tests launch the generation CLI as a child process with a wall-clock timeout —
-env var ``ISAAC_AUTODATA_SUBPROCESS_TIMEOUT``, default 1200 seconds. On expiry the child's
+env var ``AUTODATA_SUBPROCESS_TIMEOUT``, default 1200 seconds. On expiry the child's
 process group is killed and the test fails with ``TimeoutExpired``.
 
 When a run dies silently or hangs, work down this list:
@@ -64,8 +64,8 @@ When a run dies silently or hangs, work down this list:
 
    .. code-block:: bash
 
-      python isaac_autodata_examples/generate_dataset.py ... \
-          --kit_args "--/log/file=/workspaces/isaac_autodata/kit.log --/log/level=verbose --/log/async=false"
+      python scripts/generate_dataset.py ... \
+          --kit_args "--/log/file=/workspaces/autodata/kit.log --/log/level=verbose --/log/async=false"
 
    ``--/log/async=false`` is the important one for crashes: asynchronous logging loses the
    final messages when the process dies.

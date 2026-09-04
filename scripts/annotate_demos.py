@@ -34,7 +34,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(
-    description="Manually annotate AutoData source demonstrations with subtask signals.",
+    description="Manually annotate Autodata source demonstrations with subtask signals.",
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
 parser.add_argument(
@@ -104,12 +104,12 @@ from isaaclab.managers import DatasetExportMode, RecorderTerm, RecorderTermCfg, 
 from isaaclab.utils import configclass  # noqa: E402
 from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa: E402
 
-from isaac_autodata_core.pool import DataGenInfoPool  # noqa: E402
-from isaac_autodata_examples.envs import register_environment_for_run  # noqa: E402
-from isaac_autodata_interfaces.datastream import Datastream  # noqa: E402
-from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
-from isaac_autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
-from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
+from autodata_core.pool import DataGenInfoPool  # noqa: E402
+from autodata_examples.envs import register_environment_for_run  # noqa: E402
+from autodata_interfaces.datastream import Datastream  # noqa: E402
+from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
+from autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
+from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
 is_paused = False
 current_action_index = 0

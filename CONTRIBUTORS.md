@@ -1,6 +1,6 @@
-# Isaac AutoData Developers and Contributors
+# Autodata Developers and Contributors
 
-This is the official list of Isaac AutoData Project developers and contributors.
+This is the official list of Autodata project developers and contributors.
 
 Guidelines for modifications:
 

@@ -56,7 +56,7 @@ the generator's entire view of the robot:
   the passthrough channels into one action for ``env.step()``, optionally adding action
   noise.
 * ``action_to_target_eef_pose()`` — the *inverse* direction: recover the target poses encoded
-  in a recorded action. This is how the source demos' controller targets are extracted.
+  in a recorded action. This is how the source demonstrations' controller targets are extracted.
 * ``actions_to_passthrough_actions()`` — pull the non-pose channels (gripper or hand joints)
   out of recorded actions so the generator can replay them verbatim.
 
@@ -76,7 +76,7 @@ The action vector is ``[delta_position (3), delta_rotation (3), gripper (gripper
 the target; the rotation delta uses the compact axis-angle form (unit axis × angle in
 radians).
 
-From :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/franka_ik_rel.yaml>`:
+From :autodata_code_link:`<autodata_examples/embodiments/franka_ik_rel.yaml>`:
 
 .. code-block:: yaml
 
@@ -198,8 +198,8 @@ Poses are absolute targets tracked by a whole-body IK controller. The hand-joint
 interleaves both hands' joints in URDF order; ``gripper_action_indices`` records which
 positions belong to which arm.
 
-From :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/gr1_ik_abs.yaml>` (the
-GR1T2 humanoid; :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/g1_ik_abs.yaml>`
+From :autodata_code_link:`<autodata_examples/embodiments/gr1_ik_abs.yaml>` (the
+GR1T2 humanoid; :autodata_code_link:`<autodata_examples/embodiments/g1_ik_abs.yaml>`
 has the same shape for the G1):
 
 .. code-block:: yaml
@@ -288,7 +288,7 @@ Field reference
      - no
      - ``{}``
      - Extra **non-EEF** passthrough channels, ``name: [start, end)`` each — e.g. a
-       mobile-base or locomotion command. Copied verbatim from the source demo like the
+       mobile-base or locomotion command. Copied verbatim from the source demonstration like the
        grippers. Slices must not overlap the pose + hand-joints region, and names must not
        collide with ``left`` / ``right``.
 
@@ -306,7 +306,7 @@ this is the first thing to check when transformed segments look shifted.
 
 Concrete example: the base Franka IK-Rel tasks report the inter-fingertip ``end_effector``
 frame, and the MimicGen source dataset is annotated in that same frame — offset zero. The
-SkillGen cube-stack dataset, however, is annotated in the ``panda_hand`` frame (cuRobo's
+SkillGen cube-stacking dataset, however, is annotated in the ``panda_hand`` frame (cuRobo's
 planning link), so its embodiment config (``franka_ik_rel_skillgen.yaml``) sets
 ``eef_offset: [0, 0, 0.1034]`` — the fingertip-to-hand distance.
 
@@ -332,8 +332,8 @@ through these steps:
 
       import torch
 
-      from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml
-      from isaac_autodata_tests.interfaces.mocks import MockEnv
+      from autodata_interfaces.embodiments import embodiment_adapter_from_yaml
+      from autodata_tests.interfaces.mocks import MockEnv
 
 
       def test_my_embodiment_round_trip():
@@ -358,9 +358,9 @@ through these steps:
 
           assert torch.allclose(action_out, action_in[0], atol=1e-5)
 
-   The shipped tests in ``isaac_autodata_tests/interfaces/embodiments/`` show the full
+   The shipped tests in ``autodata_tests/interfaces/embodiments/`` show the full
    pattern (disable clipping for large test deltas, batch shapes, per-arm variants). Run
-   them with ``pytest isaac_autodata_tests/interfaces/embodiments/``.
+   them with ``pytest autodata_tests/interfaces/embodiments/``.
 5. **Verify against real data.** Replay a recorded demonstration through
    ``action_to_target_eef_pose`` and check the recovered targets track the recorded EEF
    poses.

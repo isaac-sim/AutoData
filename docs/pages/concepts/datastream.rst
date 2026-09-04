@@ -8,9 +8,9 @@ It composes four things behind one object:
 * the live **environment**,
 * the **task descriptor** (subtasks, signals, constraints, generation policy),
 * the **embodiment adapter** (pose reads and pose ↔ action transforms),
-* the **source-demo pool** (the annotated demonstrations to generate from).
+* the **source demonstration pool** (the annotated demonstrations to generate from).
 
-See :isaac_autodata_code_link:`<isaac_autodata_interfaces/datastream/datastream.py>` for the
+See :autodata_code_link:`<autodata_interfaces/datastream/datastream.py>` for the
 full API.
 
 Why a Read Facade?
@@ -28,9 +28,9 @@ This is how the generation entry point composes one (from ``scripts/generate_dat
 
 .. code-block:: python
 
-   from isaac_autodata_interfaces.datastream import Datastream
-   from isaac_autodata_interfaces.embodiments import embodiment_adapter_from_yaml
-   from isaac_autodata_interfaces.tasks.task_descriptor import TaskDescriptor
+   from autodata_interfaces.datastream import Datastream
+   from autodata_interfaces.embodiments import embodiment_adapter_from_yaml
+   from autodata_interfaces.tasks.task_descriptor import TaskDescriptor
 
    task_descriptor = TaskDescriptor.from_yaml("franka_cube_stack.yaml")
    embodiment_adapter = embodiment_adapter_from_yaml("franka_ik_rel.yaml")
@@ -100,12 +100,12 @@ What It Exposes
      - ``get_usd_stage``, ``get_env_prim_path``, ``get_robot_prim_path``. Motion planners
        build their collision world from these instead of reaching into ``env.scene``, and
        pose-sync obstacles through ``get_object_poses``.
-   * - Source-demo pool
+   * - Source demonstration pool
      - ``source_pool``, ``datagen_infos``, ``subtask_boundaries``, ``num_source_demos``,
        ``add_episode``.
 
-The Source-Demo Pool
---------------------
+The Source Demonstration Pool
+-----------------------------
 
 The pool (``DataGenInfoPool``) holds the annotated source demonstrations in the form the
 generator consumes. For each episode it keeps one **per-step record** with these fields:
@@ -173,7 +173,7 @@ For Algorithm and Planner Authors
 If you are writing a generation algorithm or a motion-planner backend, treat the Datastream
 as your only window into the world:
 
-* **Read through the facade.** Task structure, robot state, object poses, and source demos
+* **Read through the facade.** Task structure, robot state, object poses, and source demonstrations
   are all available through the query groups above — an algorithm that sticks to them runs
   unchanged if the simulator wiring changes.
 * **``get_env()`` is an escape hatch, not a convenience.** Its legitimate uses are

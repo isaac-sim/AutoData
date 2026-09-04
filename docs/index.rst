@@ -1,19 +1,19 @@
-Welcome to Isaac AutoData!
-==========================
+Welcome to Autodata!
+====================
 
-``Isaac AutoData`` is a trajectory data-generation framework built on top of
+``Autodata`` is a trajectory data-generation framework built on top of
 `Isaac Lab <https://isaac-sim.github.io/IsaacLab/main/index.html>`_ and
-`Isaac Lab Arena <https://github.com/isaac-sim/IsaacLab-Arena>`_.
+`Isaac Lab-Arena <https://github.com/isaac-sim/IsaacLab-Arena>`_.
 Given a handful of annotated human demonstrations, it uses parallel simulation environments to
-synthesizes large datasets of new demonstrations by transforming and recombining the human
+synthesize large datasets of new demonstrations by transforming and recombining the human
 demonstration segments.
 
 .. figure:: images/autodata.gif
    :width: 100%
    :align: center
-   :alt: isaac_autodata
+   :alt: Autodata
 
-   Isaac AutoData
+   Autodata
 
 
 The Problem
@@ -21,23 +21,23 @@ The Problem
 
 Imitation-learning policies are data hungry. They need large, diverse datasets of successful
 demonstrations, and collecting those by human teleoperation is slow and expensive. Yet most of
-what a policy needs to learn from a thousand demonstrations is already contained in ten. The
-same skill, repeated under different object placements.
+what a policy needs to learn from a thousand demonstrations is already contained in ten: the
+same skill repeated under different object placements.
 
-Isaac AutoData exploits that redundancy. A human demonstration is split into **subtasks** (each
+Autodata exploits that redundancy. A human demonstration is split into **subtasks** (each
 a contiguous segment in which the robot's end-effector motion is driven by a single reference
 object). Because each segment is object-relative, it can be *transformed* to a new scene
 configuration and replayed. Stitching transformed segments together turns a
 handful of demonstrations into an arbitrarily large dataset.
 
 
-Isaac AutoData
-==============
+Autodata
+========
 
 Four pieces cooperate to generate data:
 
 * **Task descriptor** (YAML) — declares the task's subtasks per end-effector, the boundary
-  signals that separate them, cross-arm constraints, and the generation policy (trial counts,
+  signals that separate them, cross-arm constraints, and the generation policy (generation targets,
   seeding, export behavior). See :doc:`pages/concepts/task_descriptors`.
 * **Embodiment** (YAML + adapter) — describes the robot from the generator's point of view:
   where to read end-effector poses and how to convert between target poses and the
@@ -45,7 +45,7 @@ Four pieces cooperate to generate data:
 * **Datastream** — the single read interface the generator uses to observe the world: object
   poses, end-effector poses, subtask signals, and the pool of annotated source demonstrations.
   See :doc:`pages/concepts/datastream`.
-* **Generation algorithms** — MimicGen (single arm), DexMimicGen (multi-arms), and SkillGen (motion-planned transit).
+* **Generation algorithms** — MimicGen (single-arm), DexMimicGen (multi-arm), and SkillGen (motion-planned transit).
   See :doc:`pages/concepts/algorithms`.
   All three plug into one data generator — see :doc:`pages/concepts/data_generator`.
 
@@ -53,9 +53,9 @@ Four pieces cooperate to generate data:
    :width: 100%
    :align: center
    :target: _images/System_Architecture.svg
-   :alt: Isaac AutoData system architecture — contracts, typed data flow, modular generation and execution
+   :alt: Autodata system architecture — contracts, typed data flow, modular generation and execution
 
-   The Isaac AutoData architecture: declarative contracts feed the Datastream read interface,
+   The Autodata architecture: declarative contracts feed the Datastream read interface,
    which the data generator and its algorithm plug-ins consume to produce waypoints, actions,
    and finally recorded HDF5 episodes.
 
@@ -75,8 +75,8 @@ Generating a dataset from annotated source demonstrations is a single command:
        --viz kit \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --alg mimicgen \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
        --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset.hdf5 \
        --generation_num_trials 100 \
@@ -89,8 +89,8 @@ first generation with :doc:`pages/quickstart/first_data_generation`.
 License
 =======
 
-Isaac AutoData is licensed under the `Apache License 2.0
-<https://github.com/isaac-sim/Isaac-AutoData/blob/main/LICENSE>`_.
+Autodata is licensed under the `Apache License 2.0
+<https://github.com/isaac-sim/AutoData/blob/main/LICENSE.md>`_.
 
 
 Table of Contents
@@ -100,6 +100,7 @@ Table of Contents
    :maxdepth: 1
    :caption: Set Up
 
+   pages/quickstart/support_matrix
    pages/quickstart/installation
 
 .. toctree::
@@ -145,4 +146,5 @@ Table of Contents
    :maxdepth: 1
    :caption: References
 
+   pages/references/troubleshooting
    pages/references/release_notes

@@ -1,16 +1,17 @@
 Franka Cube Stacking with MimicGen
 ==================================
 
-This example demonstrates the Isaac AutoData workflow using MimicGen to generate a synthetic dataset
-for a Franka robot performing a cube stacking task. The workflow will cover recording source demonstrations by teleoperation,
-annotating their subtask boundaries, generating a large dataset with MimicGen, and validating the result.
+This example demonstrates the Autodata workflow using MimicGen to generate a synthetic dataset
+for a Franka robot performing a cube-stacking task. The workflow covers recording source demonstrations
+by teleoperation, annotating their subtask boundaries, generating a large dataset with MimicGen, and
+validating the result.
 
 .. figure:: ../../../images/franka_mimic_imitation_learning.jpg
    :width: 100%
    :align: center
-   :alt: Franka robot performing the cube stacking task
+   :alt: Franka robot performing the cube-stacking task
 
-   The Franka cube stacking task.
+   The Franka cube-stacking task.
 
 Task Overview
 -------------
@@ -33,9 +34,9 @@ on red.
    * - **Embodiment**
      - Franka, relative IK task-space actions (7-D: delta pose (xyz, rpy) + binary gripper open/close)
    * - **Task descriptor**
-     - :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/franka_cube_stack.yaml>`
+     - :autodata_code_link:`<autodata_examples/tasks/franka_cube_stack.yaml>`
    * - **Embodiment config**
-     - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/franka_ik_rel.yaml>`
+     - :autodata_code_link:`<autodata_examples/embodiments/franka_ik_rel.yaml>`
    * - **Subtasks**
      - Grasp red cube (``grasp_1``) → stack red on blue (``stack_1``) → grasp green cube
        (``grasp_2``) → place green on red (``end of trajectory``)
@@ -59,7 +60,7 @@ Start the dev container (see :doc:`../../quickstart/installation`):
 Workflow Steps
 ^^^^^^^^^^^^^^
 
-Follow the following steps to complete the workflow:
+Follow these steps to complete the workflow:
 
 - :doc:`step_1_record_demonstrations`
 - :doc:`step_2_annotate_demonstrations`

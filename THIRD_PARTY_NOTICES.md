@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Third-Party Software Notices
 
-Isaac AutoData includes or directly depends on the following open-source software. Each entry reproduces the
+Autodata includes or directly depends on the following open-source software. Each entry reproduces the
 component's copyright and license notice and links to the canonical license text.
 
 ## IsaacLab-Arena

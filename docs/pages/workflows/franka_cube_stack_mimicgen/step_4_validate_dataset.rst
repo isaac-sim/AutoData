@@ -14,6 +14,8 @@ The validator prints one summary row per file (episode count, the env id recorde
 file's metadata, and the simulation args) followed by per-file issues. Every episode is
 checked for the required fields (``actions``, ``initial_state``, ``obs``):
 
+For unreadable, invalid, or truncated files, see :ref:`troubleshooting-hdf5`.
+
 
 Visual Validation
 ^^^^^^^^^^^^^^^^^
@@ -46,4 +48,4 @@ that only just succeed (consider tightening ``subtask_term_offset_range`` or red
    across an ``env.reset``, so replaying an episode's recorded actions from its saved initial
    state can diverge from the original. Some episodes may fail to reproduce success during replay
    even though **every** episode in the dataset was a successful demonstration at generation time.
-   All recorded episode data in the HDF5 are still valid successes following the environment's success criterion.
+   Each episode satisfied the environment's success condition when it was generated.

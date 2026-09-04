@@ -8,7 +8,7 @@ with ``--env_profile`` and overlaid onto the parsed env config just before the e
 created.
 
 The shipped example,
-:isaac_autodata_code_link:`<isaac_autodata_examples/env_profiles/franka_bin_stack.yaml>`,
+:autodata_code_link:`<autodata_examples/env_profiles/franka_bin_stack.yaml>`,
 turns plain Franka cube stacking into stacking inside a narrow bin; the
 :doc:`SkillGen workflow <../workflows/skillgen/index>` shows it in action.
 
@@ -22,7 +22,7 @@ delta:
 
 * **One YAML per variant** — no new Python env config, no new registration.
 * **Datasets keep working** — the base env id stays the same, so recorded and annotated
-  source datasets can be reused across variants (SkillGen generates both cube-stack tasks
+  source datasets can be reused across variants (SkillGen generates both cube-stacking tasks
   from one annotated dataset).
 * **Reproducibility** — the generation-result JSON (``--result_file``) records the applied
   profile's name, path, and planner, since the output dataset itself only stores the base
@@ -135,5 +135,5 @@ Writing a New Profile
    the new layout; keep pinned objects' spawn poses in sync with their reset events.
 4. **Pick or define a planner profile** if the variant is used with SkillGen, so the new
    objects become collision geometry (see :doc:`../advanced/motion_planners`).
-5. **Verify with a short run** — generate a handful of trials with ``--env_profile`` and
-   ``--result_file``, and check the scene visually (``--viz kit``) before scaling up.
+5. **Verify with a short run** — generate a handful of attempts with ``--env_profile`` and
+   ``--result_file``, and inspect the scene in a Kit window (``--viz kit``) before scaling up.

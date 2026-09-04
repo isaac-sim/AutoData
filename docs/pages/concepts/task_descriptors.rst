@@ -1,17 +1,17 @@
 Task Descriptors
 ================
 
-A **task descriptor** is a YAML file that declares everything Isaac AutoData needs to know
+A **task descriptor** is a YAML file that declares everything Autodata needs to know
 about a task: its subtasks per end-effector, the signals that mark subtask boundaries,
 cross-arm constraints, and the data generation policy for the task. It is the single source of truth shared by
 the annotation tool and the data generator. Both load it, so annotations and generation can
 never disagree about what the subtasks are.
 
 Example descriptors live in
-:isaac_autodata_code_link:`<isaac_autodata_examples/tasks/franka_cube_stack.yaml>` (MimicGen),
-:isaac_autodata_code_link:`<isaac_autodata_examples/tasks/gr1_pick_place.yaml>`
+:autodata_code_link:`<autodata_examples/tasks/franka_cube_stack.yaml>` (MimicGen),
+:autodata_code_link:`<autodata_examples/tasks/gr1_pick_place.yaml>`
 (DexMimicGen, two arms), and
-:isaac_autodata_code_link:`<isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml>`
+:autodata_code_link:`<autodata_examples/tasks/franka_cube_stack_skillgen.yaml>`
 (SkillGen).
 
 YAML Schema
@@ -74,7 +74,7 @@ Subtasks
 A **subtask** is a contiguous segment of a demonstration in which an end-effector's motion is
 dictated by a single object, such as reaching for a cube or placing it on another cube. A subtask
 ends and the next one begins when the object dictating the motion changes. During
-generation, AutoData selects a recorded subtask segment, transforms it into the current scene, connects the
+generation, Autodata selects a recorded subtask segment, transforms it into the current scene, connects the
 robot's current trajectory to the segment, and replays it.
 
 The ``subtasks`` section of the YAML schema groups subtasks by ``<eef_name>``. The eef name key must exactly match
@@ -300,7 +300,7 @@ and when generation stops. All fields use their defaults if omitted from the tas
        of the data generation script overrides this value.
    * - ``guarantee_success``
      - ``true``
-     - If ``true``, keep attempting generation until ``num_trials`` successes are recorded. If
+     - If ``true``, keep attempting generation until ``num_trials`` successful demonstrations are recorded. If
        ``false``, stop after ``num_trials`` attempts regardless of their outcomes.
    * - ``keep_failed``
      - ``false``

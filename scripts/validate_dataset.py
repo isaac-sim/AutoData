@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Validate Isaac AutoData HDF5 datasets.
+"""Structurally validate Autodata HDF5 datasets.
 
 Prints a summary table (episode count, env id, sim args) per file followed by any issues.
 
@@ -9,7 +9,8 @@ Usage::
 
     python scripts/validate_dataset.py <file.hdf5> [<file2.hdf5> ...]
     python scripts/validate_dataset.py directory/*.hdf5
-    python scripts/validate_dataset.py --strict directory/*.hdf5   # non-zero exit on any invalid file
+
+The command exits nonzero if any supplied file is invalid.
 """
 
 from __future__ import annotations
@@ -157,18 +158,12 @@ def print_results(results: list[ValidationResult]) -> None:
                 print(f"  - {issue}")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate Isaac AutoData demonstration HDF5 datasets.")
+def main(argv: list[str] | None = None) -> int:
+    """Validate the requested files and return nonzero if any are invalid."""
+
+    parser = argparse.ArgumentParser(description="Validate Autodata demonstration HDF5 datasets.")
     parser.add_argument("files", nargs="+", help="HDF5 dataset file(s) to validate.")
-    parser.add_argument(
-        "--strict",
-        action="store_true",
-        help=(
-            "Exit with a non-zero status if any file is invalid (useful for CI). By default the tool "
-            "exits 0 whenever it runs successfully; validity is reported in the output either way."
-        ),
-    )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     results = [validate_file(path) for path in args.files]
     print_results(results)
@@ -178,7 +173,7 @@ def main() -> int:
     print()
     print(f"All {total} file(s) valid." if num_invalid == 0 else f"{num_invalid} of {total} file(s) invalid.")
 
-    return 1 if (args.strict and num_invalid) else 0
+    return 1 if num_invalid else 0
 
 
 if __name__ == "__main__":

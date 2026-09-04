@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 980" font-family="'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif">
-  <title>Isaac AutoData system architecture: contracts, typed data flow, modular generation and direct execution</title>
+  <title>Autodata system architecture: contracts, typed data flow, modular generation and direct execution</title>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a6b85"/>
@@ -23,7 +23,7 @@
   <circle cx="60" cy="38" r="4.5" fill="#76b900"/>
   <circle cx="46" cy="48" r="4.5" fill="#76b900"/>
   <circle cx="54" cy="58" r="4.5" fill="#76b900"/>
-  <text x="102" y="48" font-size="28" font-weight="700" fill="#ffffff">AutoData — System Architecture</text>
+  <text x="102" y="48" font-size="28" font-weight="700" fill="#ffffff">Autodata — System Architecture</text>
   <text x="102" y="74" font-size="15" fill="#b8cddd">Contracts, typed data flow, modular generation and direct execution</text>
 
   <!-- ═══ 01 · contracts and sources ═══ -->

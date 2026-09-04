@@ -1,6 +1,6 @@
-## Isaac AutoData Contribution Rules
+## Autodata Contribution Rules
 
-This document describes the rules for contributing to Isaac AutoData
+This document describes the rules for contributing to Autodata
 
 
 #### Signing Your Work
