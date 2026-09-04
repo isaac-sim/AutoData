@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Replay a generated Franka dataset in Isaac Sim.
-# Run this script from inside the Autodata container.
+# Run this script from inside the AutoData container.
 
 set -euo pipefail
 

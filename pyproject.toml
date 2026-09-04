@@ -87,7 +87,7 @@ quiet-level = 0
 ignore-words-list = 'reacher'
 
 [tool.pytest.ini_options]
-# Scope default collection to the Autodata test suite (keeps pytest out of submodules).
+# Scope default collection to the AutoData test suite (keeps pytest out of submodules).
 testpaths = ["autodata_tests"]
 markers = [
     "with_subprocess: test launches the data-generation CLI as an Isaac Sim child process",

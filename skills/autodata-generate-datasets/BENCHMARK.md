@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # BENCHMARK: autodata-generate-datasets
 
-Measures whether the skill improves an agent's ability to drive Autodata correctly,
+Measures whether the skill improves an agent's ability to drive AutoData correctly,
 compared to the same agent without the skill.
 
 ## Agents Used

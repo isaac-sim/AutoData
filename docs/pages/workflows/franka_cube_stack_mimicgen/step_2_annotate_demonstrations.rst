@@ -1,13 +1,13 @@
 Step 2: Annotate Demonstrations
 -------------------------------
 
-Before Autodata generation, each source demonstration must be annotated with **subtask termination
+Before AutoData generation, each source demonstration must be annotated with **subtask termination
 signals**: the action indices where one subtask ends and the next begins. The subtasks and
 their termination signal names are declared by the task descriptor (see
 :doc:`../../concepts/task_descriptors`). For this task, the subtasks are ``grasp_1``, ``stack_1``, and
 ``grasp_2`` (the final subtask ends with the trajectory and needs no explicit signal).
 
-Autodata supports two annotation modes:
+AutoData supports two annotation modes:
 
 * **Manual** — replay each episode in a Kit window and mark boundaries with the keyboard.
 * **Automatic** (``--auto``) — sample the environment's boolean subtask-term observations

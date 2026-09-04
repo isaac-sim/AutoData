@@ -4,7 +4,7 @@
   "cases": [
     {
       "id": "pos-mimicgen-franka",
-      "question": "Use Autodata to generate 10 Franka cube-stacking demonstrations from the annotated dataset and validate the output.",
+      "question": "Use AutoData to generate 10 Franka cube-stacking demonstrations from the annotated dataset and validate the output.",
       "expected_skill": "autodata-generate-datasets",
       "expected_script": "skills/autodata-generate-datasets/scripts/run_generation.sh",
       "ground_truth": "Run generate_dataset.py with --alg mimicgen, --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0, --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml, --embodiment autodata_examples/embodiments/franka_ik_rel.yaml, --input_file the annotated Franka dataset, --generation_num_trials 10, then validate with validate_dataset.py.",
@@ -19,7 +19,7 @@
     },
     {
       "id": "pos-dexmimicgen-gr1",
-      "question": "I need bimanual pick-and-place demonstrations for the Fourier GR-1 with Autodata. How do I generate them?",
+      "question": "I need bimanual pick-and-place demonstrations for the Fourier GR-1 with AutoData. How do I generate them?",
       "expected_skill": "autodata-generate-datasets",
       "expected_script": null,
       "ground_truth": "Bimanual coordinated arms require the dexmimicgen algorithm with the gr1 task/embodiment YAML (gr1_pick_place.yaml, gr1_ik_abs.yaml) in the default container.",
@@ -32,7 +32,7 @@
     },
     {
       "id": "pos-skillgen-container",
-      "question": "Make collision-aware Franka bin-stacking trajectories with SkillGen in Autodata.",
+      "question": "Make collision-aware Franka bin-stacking trajectories with SkillGen in AutoData.",
       "expected_skill": "autodata-generate-datasets",
       "expected_script": null,
       "ground_truth": "SkillGen requires launching the cuRobo container (./docker/run_docker.sh -c) and using the skillgen task/embodiment YAML (franka_bin_stack_skillgen.yaml, franka_ik_rel_skillgen.yaml) with --alg skillgen.",
@@ -45,7 +45,7 @@
     },
     {
       "id": "pos-yaml-edit",
-      "question": "Add a subtask to my Autodata franka_cube_stack task descriptor that stacks the green cube on top of the red cube.",
+      "question": "Add a subtask to my AutoData franka_cube_stack task descriptor that stacks the green cube on top of the red cube.",
       "expected_skill": "autodata-generate-datasets",
       "expected_script": null,
       "ground_truth": "Inspect the task descriptor first. Add a well-formed green-on-red subtask only when it is absent; otherwise preserve the existing single final subtask. Any added block must include object_ref, description, nearest_neighbor_object selection_strategy with nn_k, subtask_term_offset_range, action_noise, and interpolation fields, and obey the final-subtask convention (no subtask_term_signal, [0, 0] offset).",
@@ -61,7 +61,7 @@
       "question": "Train a PPO policy in Isaac Lab on the cartpole task.",
       "expected_skill": null,
       "expected_script": null,
-      "ground_truth": "This is reinforcement-learning policy training in Isaac Lab, not Autodata demonstration generation. The skill should stay silent.",
+      "ground_truth": "This is reinforcement-learning policy training in Isaac Lab, not AutoData demonstration generation. The skill should stay silent.",
       "expected_behavior": [
         "Do not activate the autodata-generate-datasets skill.",
         "Recognize RL policy training is out of scope."

@@ -1,7 +1,7 @@
-Welcome to Autodata!
+Welcome to AutoData!
 ====================
 
-``Autodata`` is a trajectory data-generation framework built on top of
+``AutoData`` is a trajectory data-generation framework built on top of
 `Isaac Lab <https://isaac-sim.github.io/IsaacLab/main/index.html>`_ and
 `Isaac Lab-Arena <https://github.com/isaac-sim/IsaacLab-Arena>`_.
 Given a handful of annotated human demonstrations, it uses parallel simulation environments to
@@ -11,9 +11,9 @@ demonstration segments.
 .. figure:: images/autodata.gif
    :width: 100%
    :align: center
-   :alt: Autodata
+   :alt: AutoData
 
-   Autodata
+   AutoData
 
 
 The Problem
@@ -24,14 +24,14 @@ demonstrations, and collecting those by human teleoperation is slow and expensiv
 what a policy needs to learn from a thousand demonstrations is already contained in ten: the
 same skill repeated under different object placements.
 
-Autodata exploits that redundancy. A human demonstration is split into **subtasks** (each
+AutoData exploits that redundancy. A human demonstration is split into **subtasks** (each
 a contiguous segment in which the robot's end-effector motion is driven by a single reference
 object). Because each segment is object-relative, it can be *transformed* to a new scene
 configuration and replayed. Stitching transformed segments together turns a
 handful of demonstrations into an arbitrarily large dataset.
 
 
-Autodata
+AutoData
 ========
 
 Four pieces cooperate to generate data:
@@ -53,9 +53,9 @@ Four pieces cooperate to generate data:
    :width: 100%
    :align: center
    :target: _images/System_Architecture.svg
-   :alt: Autodata system architecture — contracts, typed data flow, modular generation and execution
+   :alt: AutoData system architecture — contracts, typed data flow, modular generation and execution
 
-   The Autodata architecture: declarative contracts feed the Datastream read interface,
+   The AutoData architecture: declarative contracts feed the Datastream read interface,
    which the data generator and its algorithm plug-ins consume to produce waypoints, actions,
    and finally recorded HDF5 episodes.
 
@@ -89,7 +89,7 @@ first generation with :doc:`pages/quickstart/first_data_generation`.
 License
 =======
 
-Autodata is licensed under the `Apache License 2.0
+AutoData is licensed under the `Apache License 2.0
 <https://github.com/isaac-sim/AutoData/blob/main/LICENSE.md>`_.
 
 
