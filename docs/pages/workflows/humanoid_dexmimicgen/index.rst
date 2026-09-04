@@ -1,7 +1,7 @@
 Humanoid Pick-and-Place with DexMimicGen
 ========================================
 
-This example demonstrates the Autodata workflow using DexMimicGen to generate a
+This example demonstrates the AutoData workflow using DexMimicGen to generate a
 synthetic pick-and-place dataset for a bimanual humanoid robot. It covers recording source
 demonstrations by Apple Vision Pro teleoperation, annotating their per-arm subtask boundaries,
 generating a large dataset with DexMimicGen, and validating the result.

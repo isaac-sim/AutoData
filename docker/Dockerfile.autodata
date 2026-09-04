@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #######################################
 # Copy the Arena submodule once as it carries the nested IsaacLab checkout.
 # The .dockerignore drops Arena's other nested submodules (e.g. Isaac-GR00T)
-# which Autodata does not use.
+# which AutoData does not use.
 COPY submodules/IsaacLab-Arena ${WORKDIR}/submodules/IsaacLab-Arena
 
 # --- IsaacLab ---
@@ -60,7 +60,7 @@ RUN /isaac-sim/python.sh -m pip install --force-reinstall daqp==0.8.5
 RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
 
 ##################
-# Autodata
+# AutoData
 ##################
 # Copy the package sources + packaging metadata (exclude submodules installed above).
 COPY setup.py pyproject.toml README.md sitecustomize.py ${WORKDIR}/
@@ -96,7 +96,7 @@ RUN echo 'export PATH="/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}"' >> /
  && echo "alias pytest='/isaac-sim/python.sh -m pytest'" >> /etc/bash.bashrc \
  && echo "alias pre-commit='/isaac-sim/python.sh -m pre_commit'" >> /etc/bash.bashrc \
  && echo "alias ll='ls -alF --color=auto'" >> /etc/bash.bashrc \
- && echo "PS1='[Autodata] \[\e[0;32m\]\u \[\e[0;34m\]\w\[\e[0m\] \$ '" >> /etc/bash.bashrc \
+ && echo "PS1='[AutoData] \[\e[0;32m\]\u \[\e[0;34m\]\w\[\e[0m\] \$ '" >> /etc/bash.bashrc \
  && cp /etc/bash.bashrc /root/.bashrc
 
 # Set the entrypoint

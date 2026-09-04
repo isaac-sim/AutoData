@@ -251,7 +251,7 @@ network access before debugging cuRobo or planner settings.
 SkillGen Planning Failures
 --------------------------
 
-An occasional planning failure is expected: when ``guarantee_success: true``, Autodata resets the
+An occasional planning failure is expected: when ``guarantee_success: true``, AutoData resets the
 scene and retries. If every attempt fails, first rerun the same generation command with these
 diagnostic options:
 

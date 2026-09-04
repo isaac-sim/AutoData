@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-name: Autodata Nightly
+name: AutoData Nightly
 
 # 03:30 UTC is off-peak and offset from other repos' nightlies to reduce GPU-runner contention.
 on:

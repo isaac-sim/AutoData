@@ -1,6 +1,6 @@
-## Autodata Contribution Rules
+## AutoData Contribution Rules
 
-This document describes the rules for contributing to Autodata
+This document describes the rules for contributing to AutoData
 
 
 #### Signing Your Work

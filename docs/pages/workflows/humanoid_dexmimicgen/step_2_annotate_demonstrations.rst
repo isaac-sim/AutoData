@@ -1,7 +1,7 @@
 Step 2: Annotate Demonstrations
 -------------------------------
 
-Before Autodata generation, each source demonstration must be annotated with **subtask
+Before AutoData generation, each source demonstration must be annotated with **subtask
 termination signals**: the action indices where one subtask ends and the next begins. The subtasks
 and their termination signal names are declared **per end-effector** by the task descriptor (see
 :doc:`../../concepts/task_descriptors`).
