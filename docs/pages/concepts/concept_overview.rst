@@ -1,7 +1,7 @@
 Architecture Overview
 =====================
 
-Autodata is organized around one idea: **the generation machinery should not know the
+AutoData is organized around one idea: **the generation machinery should not know the
 simulator or the robot directly.** Everything the generator needs is reachable through small,
 explicit interfaces — a task-descriptor YAML for the task, an embodiment YAML for the robot,
 and a read interface (the Datastream) for the live environment. New tasks, robots, and

@@ -1,4 +1,4 @@
-# Autodata Documentation — Developer Guide
+# AutoData Documentation — Developer Guide
 
 The docs are built on the **host machine** (not inside Docker) using a dedicated Python 3.12 venv.
 

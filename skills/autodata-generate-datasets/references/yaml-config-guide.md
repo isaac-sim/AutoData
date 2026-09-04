@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # YAML Configuration Guide
 
-Autodata runs are driven by declarative YAML. Start from the shipped examples in
+AutoData runs are driven by declarative YAML. Start from the shipped examples in
 `autodata_examples/` (`tasks/`, `embodiments/`, `env_profiles/`) and adapt them.
 
 ## Task descriptor

@@ -10,7 +10,7 @@ with-skill/without-skill benchmark remains unmeasured; `BENCHMARK.md` intentiona
 
 ## Required environment
 
-Autodata needs real hardware and infrastructure:
+AutoData needs real hardware and infrastructure:
 
 - **Linux host** with an **NVIDIA GPU** and a driver meeting the Isaac Sim requirements.
 - **Docker** + the **NVIDIA Container Toolkit**.
@@ -42,7 +42,7 @@ the agent's routing and its proposed commands/YAML against each case's `expected
 
 Suggested prompts (from `evals/evals.json`):
 
-- Positive: "Use Autodata to generate 10 Franka cube-stacking demonstrations ... and
+- Positive: "Use AutoData to generate 10 Franka cube-stacking demonstrations ... and
   validate the output." → expect mimicgen + franka YAML + validate_dataset.py.
 - Positive: "bimanual pick-and-place demonstrations for the Fourier GR-1" → expect dexmimicgen.
 - Positive: "collision-aware Franka bin-stacking trajectories with SkillGen" → expect skillgen
@@ -53,7 +53,7 @@ Suggested prompts (from `evals/evals.json`):
 
 To verify end-to-end generation:
 
-1. Provision a Linux + NVIDIA GPU host and clone Autodata with submodules + LFS.
+1. Provision a Linux + NVIDIA GPU host and clone AutoData with submodules + LFS.
 2. Start the container: `./docker/run_docker.sh` (or `-c` for SkillGen).
 3. Run the full helper invocation for the `pos-mimicgen-franka` case:
 

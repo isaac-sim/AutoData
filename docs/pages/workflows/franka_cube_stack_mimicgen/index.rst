@@ -1,7 +1,7 @@
 Franka Cube Stacking with MimicGen
 ==================================
 
-This example demonstrates the Autodata workflow using MimicGen to generate a synthetic dataset
+This example demonstrates the AutoData workflow using MimicGen to generate a synthetic dataset
 for a Franka robot performing a cube-stacking task. The workflow covers recording source demonstrations
 by teleoperation, annotating their subtask boundaries, generating a large dataset with MimicGen, and
 validating the result.

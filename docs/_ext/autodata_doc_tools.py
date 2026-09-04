@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Small source-read macros for the Autodata docs.
+"""Small source-read macros for the AutoData docs.
 
 Mirrors the Arena docs tooling (``isaaclab_arena_doc_tools``): text substitutions applied to every
 RST page before parsing, so recurring snippets (docker commands, code links, clone URLs) are defined

@@ -1,7 +1,7 @@
 Task Descriptors
 ================
 
-A **task descriptor** is a YAML file that declares everything Autodata needs to know
+A **task descriptor** is a YAML file that declares everything AutoData needs to know
 about a task: its subtasks per end-effector, the signals that mark subtask boundaries,
 cross-arm constraints, and the data generation policy for the task. It is the single source of truth shared by
 the annotation tool and the data generator. Both load it, so annotations and generation can
@@ -74,7 +74,7 @@ Subtasks
 A **subtask** is a contiguous segment of a demonstration in which an end-effector's motion is
 dictated by a single object, such as reaching for a cube or placing it on another cube. A subtask
 ends and the next one begins when the object dictating the motion changes. During
-generation, Autodata selects a recorded subtask segment, transforms it into the current scene, connects the
+generation, AutoData selects a recorded subtask segment, transforms it into the current scene, connects the
 robot's current trajectory to the segment, and replays it.
 
 The ``subtasks`` section of the YAML schema groups subtasks by ``<eef_name>``. The eef name key must exactly match

@@ -2,7 +2,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Run the Autodata test suite inside the repo's GPU Docker image.
+# Run the AutoData test suite inside the repo's GPU Docker image.
 # This is the single entry point shared by local runs and CI: it wraps
 # ./docker/run_docker.sh so a developer reproduces a CI failure with one command:
 #

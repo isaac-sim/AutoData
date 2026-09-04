@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # CLI Reference
 
-All commands run inside the Autodata container (repo mounted at
+All commands run inside the AutoData container (repo mounted at
 `/workspaces/autodata`, `python` aliased to Isaac Sim's interpreter). Grounded in the
 argparse definitions in `scripts/`.
 

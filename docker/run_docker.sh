@@ -56,7 +56,7 @@ while getopts ":d:crRvh" OPTION; do
         v) set -x ;;
         h)
             script_name=$(basename "$0")
-            echo "Build and run the Autodata dev container."
+            echo "Build and run the AutoData dev container."
             echo ""
             echo "Usage: $script_name [options] [command...]"
             echo ""
@@ -149,7 +149,7 @@ DOCKER_RUN_ARGS=(
     "--env" "ACCEPT_EULA=Y"
     "--env" "PRIVACY_CONSENT=Y"
     "--env" "ISAACLAB_PATH=${ISAACLAB_PATH}"
-    # Make Autodata's sitecustomize compatibility hook visible to direct upstream script entrypoints.
+    # Make AutoData's sitecustomize compatibility hook visible to direct upstream script entrypoints.
     "--env" "PYTHONPATH=${WORKDIR}"
     # Used by the entrypoint to recreate the host user inside the container.
     "--env" "DOCKER_RUN_USER_ID=$(id -u)"

@@ -1,8 +1,8 @@
 Installation
 ============
 
-Docker is the recommended way to install Autodata. The dev container setup includes Isaac Sim,
-Isaac Lab, Isaac Lab-Arena, and Autodata, providing a reproducible environment
+Docker is the recommended way to install AutoData. The dev container setup includes Isaac Sim,
+Isaac Lab, Isaac Lab-Arena, and AutoData, providing a reproducible environment
 without modifying the host Python installation. The repository is bind-mounted into the container,
 so edits on the host are live inside it.
 
@@ -126,7 +126,7 @@ From the repository root, create the ``autodata`` environment with Python 3.12:
    ./conda_installer.sh -c
 
 Activate the environment and install Isaac Sim, CUDA-enabled PyTorch, Isaac Lab, Isaac Lab-Arena,
-and Autodata:
+and AutoData:
 
 .. code-block:: bash
 
@@ -159,7 +159,7 @@ SkillGen additionally requires cuRobo. Before installing it, review the NVIDIA c
    ``setup_conda_env.sh``. Those scripts set ``PYTHONHOME`` and ``PYTHONPATH`` to use Kit's bundled
    packages, which can cause conda to fail during the cuRobo installation.
 
-Activate the Autodata environment, install the CUDA 12.8 toolkit, and configure the build for your
+Activate the AutoData environment, install the CUDA 12.8 toolkit, and configure the build for your
 GPU's compute capability:
 
 .. code-block:: bash
@@ -171,7 +171,7 @@ GPU's compute capability:
    export LD_LIBRARY_PATH="$CUDA_HOME/lib:$LD_LIBRARY_PATH"
    export TORCH_CUDA_ARCH_LIST="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1)+PTX"
 
-Install the cuRobo commit tested with Isaac Lab and used by the Autodata cuRobo container:
+Install the cuRobo commit tested with Isaac Lab and used by the AutoData cuRobo container:
 
 .. code-block:: bash
 
