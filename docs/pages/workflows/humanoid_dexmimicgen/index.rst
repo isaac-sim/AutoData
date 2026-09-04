@@ -1,7 +1,7 @@
 Humanoid Pick-and-Place with DexMimicGen
 ========================================
 
-This example demonstrates the Isaac AutoData workflow using DexMimicGen to generate a
+This example demonstrates the Autodata workflow using DexMimicGen to generate a
 synthetic pick-and-place dataset for a bimanual humanoid robot. It covers recording source
 demonstrations by Apple Vision Pro teleoperation, annotating their per-arm subtask boundaries,
 generating a large dataset with DexMimicGen, and validating the result.
@@ -52,9 +52,9 @@ what makes this a DexMimicGen rather than a MimicGen task.
          * - **Embodiment**
            - Upper-body IK with absolute-pose actions and dexterous hands per arm
          * - **Task descriptor**
-           - :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/gr1_pick_place.yaml>`
+           - :autodata_code_link:`<autodata_examples/tasks/gr1_pick_place.yaml>`
          * - **Embodiment config**
-           - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/gr1_ik_abs.yaml>`
+           - :autodata_code_link:`<autodata_examples/embodiments/gr1_ik_abs.yaml>`
          * - **Subtasks**
            - Right arm: idle then grasp (``idle_right``) → transport & place (``end of trajectory``).
              Left arm: grasp and transport (``end of trajectory``).
@@ -76,9 +76,9 @@ what makes this a DexMimicGen rather than a MimicGen task.
          * - **Embodiment**
            - Upper-body IK with absolute-pose actions and dexterous hands per arm. Lower body balancing policy.
          * - **Task descriptor**
-           - :isaac_autodata_code_link:`<isaac_autodata_examples/tasks/g1_pick_place.yaml>`
+           - :autodata_code_link:`<autodata_examples/tasks/g1_pick_place.yaml>`
          * - **Embodiment config**
-           - :isaac_autodata_code_link:`<isaac_autodata_examples/embodiments/g1_ik_abs.yaml>`
+           - :autodata_code_link:`<autodata_examples/embodiments/g1_ik_abs.yaml>`
          * - **Subtasks**
            - Right arm: idle then grasp (``idle_right``) → transport & place (``end of trajectory``).
              Left arm: grasp and transport (``end of trajectory``).

@@ -1,13 +1,13 @@
 Step 2: Annotate Demonstrations
 -------------------------------
 
-Before Isaac AutoData generation, each source demonstration must be annotated with **subtask termination
+Before Autodata generation, each source demonstration must be annotated with **subtask termination
 signals**: the action indices where one subtask ends and the next begins. The subtasks and
 their termination signal names are declared by the task descriptor (see
 :doc:`../../concepts/task_descriptors`). For this task, the subtasks are ``grasp_1``, ``stack_1``, and
 ``grasp_2`` (the final subtask ends with the trajectory and needs no explicit signal).
 
-Isaac AutoData supports two annotation modes:
+Autodata supports two annotation modes:
 
 * **Manual** — replay each episode in a Kit window and mark boundaries with the keyboard.
 * **Automatic** (``--auto``) — sample the environment's boolean subtask-term observations
@@ -31,8 +31,8 @@ Automatic Annotation (Recommended)
    python scripts/annotate_demos.py \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --viz none \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
        --input_file ./datasets/dataset_franka.hdf5 \
        --output_file ./datasets/dataset_franka_annotated.hdf5 \
        --auto
@@ -65,8 +65,8 @@ and marking boundaries with the keyboard.
    python scripts/annotate_demos.py \
       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
       --viz kit \
-      --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-      --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+      --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+      --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
       --input_file ./datasets/dataset_franka.hdf5 \
       --output_file ./datasets/dataset_franka_annotated.hdf5
 

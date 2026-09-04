@@ -7,15 +7,15 @@ source segment, transform it to the current scene, execute waypoints, record —
 everything algorithm-specific through a small plug-in interface, ``GenerationAlgorithm``.
 New algorithms plug in without editing the generator.
 
-The code lives in :isaac_autodata_code_link:`<isaac_autodata_core/data_generator.py>` and
-:isaac_autodata_code_link:`<isaac_autodata_core/algorithms.py>`.
+The code lives in :autodata_code_link:`<autodata_core/data_generator.py>` and
+:autodata_code_link:`<autodata_core/algorithms.py>`.
 
 Construction
 ------------
 
 .. code-block:: python
 
-   from isaac_autodata_core import DataGenerator, get_algorithm
+   from autodata_core import DataGenerator, get_algorithm
 
    generator = DataGenerator(datastream=datastream, algorithm=get_algorithm("mimicgen"))
 
@@ -139,7 +139,7 @@ Three layers report what happened:
        "num_attempts": 1412,
        "env_profile": {
          "name": "franka_bin_stack",
-         "path": "isaac_autodata_examples/env_profiles/franka_bin_stack.yaml",
+         "path": "autodata_examples/env_profiles/franka_bin_stack.yaml",
          "planner": "franka_stack_cube_bin"
        }
      }
@@ -208,7 +208,7 @@ A new algorithm is one subclass — no generator or CLI edits. The minimal shape
 
 .. code-block:: python
 
-   # isaac_autodata_core/algorithms.py (or a new module imported from the package __init__)
+   # autodata_core/algorithms.py (or a new module imported from the package __init__)
 
    class MyAlgorithm(GenerationAlgorithm):
        """One-line description of what differs from vanilla MimicGen."""
@@ -229,7 +229,7 @@ A new algorithm is one subclass — no generator or CLI edits. The minimal shape
 Setting ``name`` registers the class automatically; ``--alg my_algorithm`` works as soon as
 the module is imported. If the flags alone don't express the behavior, override
 ``plan_subtask_trajectory`` and honor its return contract (table above) — ``SkillGen`` in
-:isaac_autodata_code_link:`<isaac_autodata_core/algorithms.py>` is the worked example,
+:autodata_code_link:`<autodata_core/algorithms.py>` is the worked example,
 including the stash-and-resume pattern for two-phase execution. Helpers you'll want are on
 the ``data_generator`` argument: ``generate_eef_subtask_trajectory`` (select + transform a
 source segment) and ``merge_eef_subtask_trajectory`` (merge it with an approach from the

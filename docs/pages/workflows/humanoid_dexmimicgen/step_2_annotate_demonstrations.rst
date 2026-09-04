@@ -1,7 +1,7 @@
 Step 2: Annotate Demonstrations
 -------------------------------
 
-Before Isaac AutoData generation, each source demonstration must be annotated with **subtask
+Before Autodata generation, each source demonstration must be annotated with **subtask
 termination signals**: the action indices where one subtask ends and the next begins. The subtasks
 and their termination signal names are declared **per end-effector** by the task descriptor (see
 :doc:`../../concepts/task_descriptors`).
@@ -38,8 +38,8 @@ Manual Annotation
             --env_name Isaac-PickPlace-GR1T2-Abs-v0 \
             --viz kit \
             --device cpu \
-            --task_descriptor isaac_autodata_examples/tasks/gr1_pick_place.yaml \
-            --embodiment isaac_autodata_examples/embodiments/gr1_ik_abs.yaml \
+            --task_descriptor autodata_examples/tasks/gr1_pick_place.yaml \
+            --embodiment autodata_examples/embodiments/gr1_ik_abs.yaml \
             --input_file ./datasets/dataset_gr1.hdf5 \
             --output_file ./datasets/dataset_gr1_annotated.hdf5
 
@@ -51,8 +51,8 @@ Manual Annotation
             --env_name Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
             --viz kit \
             --device cpu \
-            --task_descriptor isaac_autodata_examples/tasks/g1_pick_place.yaml \
-            --embodiment isaac_autodata_examples/embodiments/g1_ik_abs.yaml \
+            --task_descriptor autodata_examples/tasks/g1_pick_place.yaml \
+            --embodiment autodata_examples/embodiments/g1_ik_abs.yaml \
             --input_file ./datasets/dataset_g1.hdf5 \
             --output_file ./datasets/dataset_g1_annotated.hdf5
 

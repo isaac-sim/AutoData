@@ -1,7 +1,7 @@
 Step 1: Record Source Demonstrations
 ------------------------------------
 
-Isaac AutoData consumes source demonstrations recorded as Isaac Lab HDF5 datasets (per-episode
+Autodata consumes source demonstrations recorded as Isaac Lab HDF5 datasets (per-episode
 actions, initial state, and observations). This step collects a small set of successful
 teleoperated demonstrations of the cube-stacking task.
 

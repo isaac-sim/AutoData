@@ -11,7 +11,7 @@ Complete this preflight before annotating demonstrations or starting a long Skil
 run. It verifies the cuRobo image, GPU build, source dataset, Nucleus asset download, and one complete
 end-to-end generation run. Repeat it after changing GPUs or rebuilding the development image.
 
-This page assumes the base :doc:`AutoData installation <../../quickstart/installation>` is complete
+This page assumes the base :doc:`Autodata installation <../../quickstart/installation>` is complete
 and the host satisfies the :doc:`support matrix <../../quickstart/support_matrix>`.
 
 Requirements at a Glance
@@ -31,7 +31,7 @@ Requirements at a Glance
    * - GPU build
      - cuRobo kernels compiled for the compute capability of the GPU running generation.
    * - Network
-     - Outbound access to the Nucleus asset server during planner initialization so AutoData can
+     - Outbound access to the Nucleus asset server during planner initialization so Autodata can
        retrieve the Franka URDF.
    * - Source data
      - Git LFS objects pulled and a structurally valid SkillGen-annotated HDF5 dataset.
@@ -85,8 +85,8 @@ Still inside the **cuRobo container**, generate one successful cube-stacking dem
    python scripts/generate_dataset.py \
        --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
        --alg skillgen \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
        --input_file ./datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_skillgen_preflight.hdf5 \
        --result_file ./datasets/generated_dataset_skillgen_preflight.json \
@@ -112,7 +112,7 @@ Expected Planning Failures
 
 SkillGen plans against a newly randomized scene on every attempt. Some configurations have no path
 within the planner's search budget, so an individual planning failure is expected. Both shipped
-SkillGen descriptors set ``guarantee_success: true``. AutoData counts the failed attempt, resets the
+SkillGen descriptors set ``guarantee_success: true``. Autodata counts the failed attempt, resets the
 scene, and retries until it records the requested number of successful demonstrations.
 
 .. list-table:: Interpreting SkillGen failures

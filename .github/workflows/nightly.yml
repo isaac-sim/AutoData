@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-name: Isaac AutoData Nightly
+name: Autodata Nightly
 
 # 03:30 UTC is off-peak and offset from other repos' nightlies to reduce GPU-runner contention.
 on:
@@ -30,13 +30,13 @@ jobs:
     env:
       FORCE_REBUILD: "true"
       PYTEST_MARK: ""
-      ISAAC_AUTODATA_RESULTS_DIR: test-results
+      AUTODATA_RESULTS_DIR: test-results
 
     steps:
       # Self-hosted runners persist the workspace; clear prior results so an early
       # failure can't upload a stale report.
       - name: Remove stale test results
-        run: rm -rf "${ISAAC_AUTODATA_RESULTS_DIR:-test-results}"
+        run: rm -rf "${AUTODATA_RESULTS_DIR:-test-results}"
 
       - name: nvidia-smi
         run: nvidia-smi
@@ -64,14 +64,14 @@ jobs:
         # stale credentials cannot override anonymous access to the public base image,
         # and this job cannot modify the runner's persistent Docker login.
         env:
-          DOCKER_CONFIG: ${{ runner.temp }}/isaac-autodata-docker
+          DOCKER_CONFIG: ${{ runner.temp }}/autodata-docker
         run: |
           mkdir -p "${DOCKER_CONFIG}"
           ./scripts/ci/run_tests.sh
 
       - name: Test results summary
         if: always()
-        run: python3 scripts/ci/summarize_test_results.py "${ISAAC_AUTODATA_RESULTS_DIR:-test-results}/junit.xml"
+        run: python3 scripts/ci/summarize_test_results.py "${AUTODATA_RESULTS_DIR:-test-results}/junit.xml"
 
       - name: Upload test results
         if: always()

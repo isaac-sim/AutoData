@@ -158,8 +158,8 @@ ENV/
 env.bak/
 venv.bak/
 # The env/ pattern above targets Python virtualenvs; re-include our env interface package.
-!isaac_autodata_interfaces/env/
-!isaac_autodata_tests/interfaces/env/
+!autodata_interfaces/env/
+!autodata_tests/interfaces/env/
 
 # Spyder project settings
 .spyderproject

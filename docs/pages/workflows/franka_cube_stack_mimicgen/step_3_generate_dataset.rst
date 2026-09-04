@@ -29,8 +29,8 @@ Start with a small-scale run in a Kit window (``--viz kit``) to sanity-check the
        --num_envs 20 \
        --alg mimicgen \
        --generation_num_trials 10 \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
        --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_mimicgen_franka_small.hdf5
 
@@ -64,8 +64,8 @@ For dataset-scale generation, run headless (``--viz none``) with parallel enviro
        --num_envs 500 \
        --alg mimicgen \
        --generation_num_trials 1000 \
-       --task_descriptor isaac_autodata_examples/tasks/franka_cube_stack.yaml \
-       --embodiment isaac_autodata_examples/embodiments/franka_ik_rel.yaml \
+       --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+       --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
        --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --output_file ./datasets/generated_dataset_mimicgen_franka.hdf5
 
