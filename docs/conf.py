@@ -17,7 +17,7 @@ AUTODATA_VERSION_NUMBER = "0.1"
 
 # -- Project information -----------------------------------------------------
 
-project = "Autodata"
+project = "AutoData"
 copyright = "2026, NVIDIA"
 author = "NVIDIA"
 released = False  # Indicates if this is a public or internal version of the repo.
@@ -70,7 +70,7 @@ nitpick_ignore: list[str] = []  # can exclude known bad refs
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 html_theme = "nvidia_sphinx_theme"
-html_title = f"Autodata {AUTODATA_VERSION_NUMBER}"
+html_title = f"AutoData {AUTODATA_VERSION_NUMBER}"
 html_show_sphinx = False
 html_theme_options = {
     "copyright_override": {"start": 2026},

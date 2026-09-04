@@ -11,7 +11,7 @@ Complete this preflight before annotating demonstrations or starting a long Skil
 run. It verifies the cuRobo image, GPU build, source dataset, Nucleus asset download, and one complete
 end-to-end generation run. Repeat it after changing GPUs or rebuilding the development image.
 
-This page assumes the base :doc:`Autodata installation <../../quickstart/installation>` is complete
+This page assumes the base :doc:`AutoData installation <../../quickstart/installation>` is complete
 and the host satisfies the :doc:`support matrix <../../quickstart/support_matrix>`.
 
 Requirements at a Glance
@@ -31,7 +31,7 @@ Requirements at a Glance
    * - GPU build
      - cuRobo kernels compiled for the compute capability of the GPU running generation.
    * - Network
-     - Outbound access to the Nucleus asset server during planner initialization so Autodata can
+     - Outbound access to the Nucleus asset server during planner initialization so AutoData can
        retrieve the Franka URDF.
    * - Source data
      - Git LFS objects pulled and a structurally valid SkillGen-annotated HDF5 dataset.
@@ -112,7 +112,7 @@ Expected Planning Failures
 
 SkillGen plans against a newly randomized scene on every attempt. Some configurations have no path
 within the planner's search budget, so an individual planning failure is expected. Both shipped
-SkillGen descriptors set ``guarantee_success: true``. Autodata counts the failed attempt, resets the
+SkillGen descriptors set ``guarantee_success: true``. AutoData counts the failed attempt, resets the
 scene, and retries until it records the requested number of successful demonstrations.
 
 .. list-table:: Interpreting SkillGen failures

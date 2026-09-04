@@ -17,7 +17,7 @@ usage() {
 Usage: $(basename "$0") [-c] [-i] [-h]
 
   -c    Create conda env "${ENV_NAME}" with Python ${PYTHON_VERSION}
-  -i    Install Isaac Sim, PyTorch, Isaac Lab, Arena, and Autodata
+  -i    Install Isaac Sim, PyTorch, Isaac Lab, Arena, and AutoData
         into the "${ENV_NAME}" env (env must already exist; run with -c first)
   -h    Show this help
 
@@ -110,7 +110,7 @@ install_all() {
     echo ">>> Installing Isaac Lab - Arena"
     uv pip install --editable "${arena_root}"
 
-    echo ">>> Installing Autodata"
+    echo ">>> Installing AutoData"
     uv pip install --editable "${REPO_ROOT}"
 
     echo ">>> Installation complete."

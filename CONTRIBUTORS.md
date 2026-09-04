@@ -1,6 +1,6 @@
-# Autodata Developers and Contributors
+# AutoData Developers and Contributors
 
-This is the official list of Autodata project developers and contributors.
+This is the official list of AutoData project developers and contributors.
 
 Guidelines for modifications:
 
