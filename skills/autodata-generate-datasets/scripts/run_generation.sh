@@ -2,8 +2,8 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# run_generation.sh — assemble and run an Autodata generate_dataset.py invocation,
-# then validate the output. Run this INSIDE the Autodata container, from the repo root
+# run_generation.sh — assemble and run an AutoData generate_dataset.py invocation,
+# then validate the output. Run this INSIDE the AutoData container, from the repo root
 # (/workspaces/autodata). For SkillGen, start the container with `-c` (cuRobo) first.
 #
 # Usage:

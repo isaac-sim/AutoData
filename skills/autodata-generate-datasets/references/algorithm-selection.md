@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Algorithm Selection Guide
 
-Autodata ships three generation algorithms. Pick based on the robot embodiment and the
+AutoData ships three generation algorithms. Pick based on the robot embodiment and the
 task's motion requirements.
 
 ## Decision tree

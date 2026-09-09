@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Core data generation runtime for Autodata.
+"""Core data generation runtime for AutoData.
 
 Public entrypoints:
 

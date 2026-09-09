@@ -34,7 +34,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(
-    description="Manually annotate Autodata source demonstrations with subtask signals.",
+    description="Manually annotate AutoData source demonstrations with subtask signals.",
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
 parser.add_argument(

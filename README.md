@@ -1,6 +1,6 @@
 <div align="center">
 
-# Autodata
+# AutoData
 
 ### Scalable Robot Demonstration Generation for Robot Learning
 
@@ -20,27 +20,27 @@
 
 ## Overview
 
-**Autodata** is a trajectory data-generation framework built on
+**AutoData** is a trajectory data-generation framework built on
 [NVIDIA Isaac Lab](https://github.com/isaac-sim/IsaacLab) and
 [Isaac Lab-Arena](https://github.com/isaac-sim/IsaacLab-Arena). Given a small set of annotated human
 demonstrations, it uses parallel simulation environments to generate diverse datasets of successful robot
 demonstrations for robot learning.
 
-Autodata splits demonstrations into object-relative skill segments. During generation, it transforms those
+AutoData splits demonstrations into object-relative skill segments. During generation, it transforms those
 segments to new scene configurations, connects them into complete trajectories, executes them in simulation, and
 records successful demonstrations in HDF5 datasets.
 
 <p align="center">
-  <img src="docs/images/autodata.gif" alt="Autodata generating robot demonstrations in parallel" width="100%">
+  <img src="docs/images/autodata.gif" alt="AutoData generating robot demonstrations in parallel" width="100%">
 </p>
 
-## Why Autodata?
+## Why AutoData?
 
 Robot-learning policies require large and diverse collections of successful demonstrations. Gathering all of
 that data through human teleoperation is slow and expensive, even though a small set of demonstrations often already
 contains the task's essential skills.
 
-Autodata scales those demonstrations across randomized object placements and scene configurations, reducing
+AutoData scales those demonstrations across randomized object placements and scene configurations, reducing
 the amount of manual collection needed to produce datasets for policy training.
 
 ## Key Features
@@ -162,25 +162,25 @@ For test-suite details and common commands, see
 
 ## License
 
-Autodata is released under the [Apache License 2.0](LICENSE.md).
+AutoData is released under the [Apache License 2.0](LICENSE.md).
 
 Third-party open-source software notices are provided in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Additional component-specific licenses are stored in [`docs/licenses/`](docs/licenses/). NVIDIA cuRobo is governed
 by the [NVIDIA Isaac Lab Additional Software and Materials License](docs/licenses/curobo-license.txt).
 
-Autodata depends on Isaac Sim, which includes components distributed under proprietary licensing terms. See
+AutoData depends on Isaac Sim, which includes components distributed under proprietary licensing terms. See
 the [Isaac Sim license](https://docs.isaacsim.omniverse.nvidia.com/latest/common/NVIDIA_Omniverse_License_Agreement.html)
 for details.
 
 ## Citation
 
-If you use Autodata in your research, please cite:
+If you use AutoData in your research, please cite:
 
 ```bibtex
 @misc{autodata2026,
-    title  = {Autodata: Scalable Robot Demonstration Generation for Robot Learning},
-    author = {{NVIDIA Autodata Contributors}},
+    title  = {AutoData: Scalable Robot Demonstration Generation for Robot Learning},
+    author = {{NVIDIA AutoData Contributors}},
     year   = {2026},
     url    = {https://github.com/isaac-sim/AutoData}
 }
@@ -193,7 +193,7 @@ Depending on the generation algorithm used, please also cite the original
 
 ## Acknowledgements
 
-Autodata builds on NVIDIA Isaac Sim, Isaac Lab, and Isaac Lab-Arena. Its data-generation workflows incorporate
+AutoData builds on NVIDIA Isaac Sim, Isaac Lab, and Isaac Lab-Arena. Its data-generation workflows incorporate
 ideas from MimicGen, DexMimicGen, and SkillMimicGen, with cuRobo providing GPU-accelerated motion planning for
 SkillGen workflows.
 
@@ -204,6 +204,6 @@ foundational work.
 
 <div align="center">
 
-**Autodata** · [Documentation](https://isaac-sim.github.io/AutoData/) · [GitHub](https://github.com/isaac-sim/AutoData)
+**AutoData** · [Documentation](https://isaac-sim.github.io/AutoData/) · [GitHub](https://github.com/isaac-sim/AutoData)
 
 </div>

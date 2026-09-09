@@ -2,20 +2,20 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 name: autodata-generate-datasets
-description: Generate amplified robot-demonstration datasets with NVIDIA Autodata. Record and annotate demonstrations, author task-descriptor / embodiment / environment-profile YAML, choose the right generation algorithm (MimicGen for single-arm, DexMimicGen for bimanual, SkillGen for single-arm, collision-aware motion-planned transitions), run parallel simulation generation with generate_dataset.py, and validate the resulting HDF5 datasets. Use when working with Autodata, MimicGen/DexMimicGen/SkillGen demonstration generation, task descriptors, or HDF5 robot-demo datasets in the Isaac Lab / Isaac Sim stack. Do not use for general Isaac Lab RL policy training, teleoperation hardware setup, or non-Isaac data pipelines.
+description: Generate amplified robot-demonstration datasets with NVIDIA AutoData. Record and annotate demonstrations, author task-descriptor / embodiment / environment-profile YAML, choose the right generation algorithm (MimicGen for single-arm, DexMimicGen for bimanual, SkillGen for single-arm, collision-aware motion-planned transitions), run parallel simulation generation with generate_dataset.py, and validate the resulting HDF5 datasets. Use when working with AutoData, MimicGen/DexMimicGen/SkillGen demonstration generation, task descriptors, or HDF5 robot-demo datasets in the Isaac Lab / Isaac Sim stack. Do not use for general Isaac Lab RL policy training, teleoperation hardware setup, or non-Isaac data pipelines.
 ---
 
-# Autodata: Generate Datasets
+# AutoData: Generate Datasets
 
 ## When to Use This Skill
 
 Use this skill when a user wants to produce robot-demonstration training data with
-**NVIDIA Autodata** — the framework that amplifies a small set of annotated human
+**NVIDIA AutoData** — the framework that amplifies a small set of annotated human
 demonstrations into large, diverse HDF5 datasets using parallel Isaac Lab simulation.
 
 Trigger this skill when the user asks to:
 
-- Generate or amplify a dataset with Autodata / MimicGen / DexMimicGen / SkillGen.
+- Generate or amplify a dataset with AutoData / MimicGen / DexMimicGen / SkillGen.
 - Record or annotate source demonstrations for data generation.
 - Author or edit a task-descriptor, embodiment, or environment-profile YAML.
 - Choose which generation algorithm or container an embodiment/task needs.
@@ -28,7 +28,7 @@ kernels, generic host setup (NVIDIA Container Toolkit install), or non-Isaac dat
 
 ## Prerequisites (state these before starting)
 
-Autodata runs **only inside its Docker dev container** on a
+AutoData runs **only inside its Docker dev container** on a
 Linux host with an NVIDIA GPU. Commands in this skill assume you are inside the container,
 where the repo is mounted at `/workspaces/autodata`. Use `/isaac-sim/python.sh` for Python commands rather than host aliases.
 If no container is running, tell the user to start one first:
@@ -44,7 +44,7 @@ the user start it.
 
 ## Workflow
 
-Autodata follows a four-stage loop: **record -> annotate -> generate -> validate**.
+AutoData follows a four-stage loop: **record -> annotate -> generate -> validate**.
 Most requests touch the last two stages (a pre-annotated dataset already exists).
 
 ### Step 1 — Pick the generation algorithm and container

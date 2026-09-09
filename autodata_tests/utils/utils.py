@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared assertion helpers for the Autodata test suite."""
+"""Shared assertion helpers for the AutoData test suite."""
 
 import h5py
 import json

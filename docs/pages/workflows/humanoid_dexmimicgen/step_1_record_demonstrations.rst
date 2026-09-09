@@ -8,7 +8,7 @@
 Step 1: Record Source Demonstrations
 ------------------------------------
 
-Autodata consumes source demonstrations recorded as Isaac Lab HDF5 datasets (per-episode
+AutoData consumes source demonstrations recorded as Isaac Lab HDF5 datasets (per-episode
 actions, initial state, and observations). This step collects a small set of successful
 teleoperated demonstrations of the humanoid pick-and-place task.
 
@@ -16,7 +16,7 @@ Unlike the single-arm Franka task — which can be teleoperated with a SpaceMous
 dexterous, bimanual humanoids are teleoperated with an **Apple Vision Pro** through
 `NVIDIA IsaacTeleop <https://github.com/NVIDIA/IsaacTeleop>`_ and the CloudXR runtime. The headset's
 wrist poses drive a differential IK controller per arm, and the finger joints are retargeted onto
-the robot's hands. The Autodata development container includes IsaacTeleop, so the flow below
+the robot's hands. The AutoData development container includes IsaacTeleop, so the flow below
 works out of the box.
 
 .. note::
@@ -39,7 +39,7 @@ works out of the box.
 Start the CloudXR Runtime
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The CloudXR runtime bridges the Apple Vision Pro and the simulator. Start it from the Autodata dev
+The CloudXR runtime bridges the Apple Vision Pro and the simulator. Start it from the AutoData dev
 container. Leave it running in this terminal for the whole recording session.
 
 #. On the **host machine** outside of the development container, configure the firewall to allow CloudXR traffic:
@@ -60,7 +60,7 @@ container. Leave it running in this terminal for the whole recording session.
       sudo ufw allow 48000/udp
       sudo ufw allow 48002/udp
 
-#. Start the Autodata dev container:
+#. Start the AutoData dev container:
 
    :docker_run_default:
 
@@ -93,7 +93,7 @@ container. Leave it running in this terminal for the whole recording session.
 Start Recording
 ^^^^^^^^^^^^^^^
 
-#. In **another terminal**, attach a second shell to the running Autodata container:
+#. In **another terminal**, attach a second shell to the running AutoData container:
 
    :docker_run_default:
 

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Installation script for the Autodata Python packages."""
+"""Installation script for the AutoData Python packages."""
 
 from setuptools import find_packages, setup
 
