@@ -12,6 +12,7 @@ from isaaclab.utils.datasets import EpisodeData
 
 from autodata_core.pool import DataGenInfoPool
 from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+from autodata_interfaces.env.scene_state import get_scene_state
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint
 from autodata_interfaces.tasks.subtask_spec import Subtask, SubtaskAlgoParams
@@ -255,6 +256,27 @@ class Datastream:
             object_pose_matrix[obj_name] = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
         return object_pose_matrix
 
+    def get_object_nodal_positions(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
+        """Get all deformable-object nodal positions in the env-relative frame.
+
+        Args:
+            env_ids: Environments to read; ``None`` reads all.
+
+        Returns:
+            Mapping from deformable-object name to a tensor shaped
+            ``(len(env_ids), num_nodes, 3)`` containing positions [m].
+        """
+
+        index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
+        scene = self.env.scene
+        env_origins = scene.env_origins[index]
+        object_nodal_positions: dict[str, torch.Tensor] = {}
+        for obj_name, obj in scene.deformable_objects.items():
+            nodal_pos_w = obj.data.nodal_pos_w
+            nodal_pos_w = nodal_pos_w.torch if hasattr(nodal_pos_w, "torch") else as_torch(nodal_pos_w)
+            object_nodal_positions[obj_name] = nodal_pos_w[index] - env_origins.unsqueeze(1)
+        return object_nodal_positions
+
     def get_subtask_term_signals(
         self, env_ids: Sequence[int] | None = None, obs_group: str = "subtask_terms"
     ) -> dict[str, torch.Tensor]:
@@ -322,7 +344,8 @@ class Datastream:
         hatch for callers that need the full dict (e.g. recorder ``initial_state``).
         """
 
-        return self.env.scene.get_state(is_relative=is_relative)
+        # TODO: Remove this custom method once upstream Lab fixes the nodal position relative scene state bug.
+        return get_scene_state(self.env.scene, is_relative=is_relative)
 
     # ------------------------------------------------------------------
     # Collision-world source

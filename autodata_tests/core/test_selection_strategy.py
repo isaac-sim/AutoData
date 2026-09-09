@@ -13,6 +13,7 @@ from autodata_core.selection_strategy import (
     NearestNeighborObjectStrategy,
     NearestNeighborRobotDistanceStrategy,
     RandomStrategy,
+    RegistrationCostStrategy,
     make_selection_strategy,
 )
 
@@ -34,6 +35,7 @@ def test_registry_contents():
         "random",
         "nearest_neighbor_object",
         "nearest_neighbor_robot_distance",
+        "registration_cost",
     }
 
 
@@ -109,3 +111,67 @@ def test_nearest_neighbor_robot_distance_transforms_source_eef_into_current_obje
     )
 
     assert int(index) == 0
+
+
+def test_registration_cost_picks_lowest_cost(monkeypatch):
+    import autodata_core.deformable_transforms as deformable_transforms
+
+    monkeypatch.setattr(
+        deformable_transforms,
+        "nodal_registration_cost",
+        lambda source, target, **kwargs: float(torch.linalg.vector_norm(source - target)),
+    )
+    current = torch.zeros(6, 3)
+    infos = [DatagenInfo(object_nodal_positions={"rope": torch.full((1, 6, 3), value)}) for value in (2.0, 0.0, 1.0)]
+    index = RegistrationCostStrategy().select_source_demo(
+        None,
+        None,
+        infos,
+        object_nodal_positions=current,
+        nn_k=1,
+    )
+    assert int(index) == 1
+
+
+def test_registration_cost_skips_failed_and_nonfinite_candidates(monkeypatch):
+    import autodata_core.deformable_transforms as deformable_transforms
+
+    def registration_cost(source, target, **kwargs):
+        del target, kwargs
+        source_value = source[0, 0].item()
+        if source_value == 0.0:
+            raise ValueError("invalid TPS input")
+        if source_value == 1.0:
+            return float("nan")
+        return 1.0
+
+    monkeypatch.setattr(deformable_transforms, "nodal_registration_cost", registration_cost)
+    current = torch.zeros(6, 3)
+    infos = [DatagenInfo(object_nodal_positions={"rope": torch.full((1, 6, 3), value)}) for value in (0.0, 1.0, 2.0)]
+
+    index = RegistrationCostStrategy().select_source_demo(
+        None,
+        None,
+        infos,
+        object_nodal_positions=current,
+        nn_k=3,
+    )
+
+    assert index == 2
+
+
+def test_registration_cost_rejects_all_invalid_candidates(monkeypatch):
+    import autodata_core.deformable_transforms as deformable_transforms
+
+    monkeypatch.setattr(deformable_transforms, "nodal_registration_cost", lambda source, target, **kwargs: float("inf"))
+    current = torch.zeros(6, 3)
+    infos = [DatagenInfo(object_nodal_positions={"rope": torch.zeros(1, 6, 3)})]
+
+    with pytest.raises(AssertionError, match="could not compute a finite TPS cost"):
+        RegistrationCostStrategy().select_source_demo(
+            None,
+            None,
+            infos,
+            object_nodal_positions=current,
+            nn_k=1,
+        )

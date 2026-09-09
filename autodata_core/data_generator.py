@@ -28,6 +28,7 @@ from autodata_core.transforms import (
     transform_source_data_segment_using_object_pose,
 )
 from autodata_core.waypoint import MultiWaypoint, Waypoint, WaypointSequence, WaypointTrajectory
+from autodata_interfaces.env.reset_request import EnvResetRequest
 from autodata_interfaces.tasks.subtask_constraint_spec import SubTaskConstraintCoordinationScheme, SubTaskConstraintType
 
 if TYPE_CHECKING:
@@ -209,8 +210,10 @@ class DataGenerator:
         eef_name: str,
         eef_pose: torch.Tensor,
         object_pose: torch.Tensor | None,
+        object_nodal_positions: torch.Tensor | None,
         src_demo_current_subtask_boundaries: np.ndarray,
         subtask_object_name: str | None,
+        subtask_object_soft: bool,
         selection_strategy_name: str,
         selection_strategy_kwargs: dict | None = None,
     ) -> int:
@@ -228,7 +231,12 @@ class DataGenerator:
                     eef_pose=src_ep.eef_pose[eef_name][start_ind:end_ind],
                     object_poses=(
                         {subtask_object_name: src_ep.object_poses[subtask_object_name][start_ind:end_ind]}
-                        if subtask_object_name is not None
+                        if subtask_object_name is not None and not subtask_object_soft
+                        else None
+                    ),
+                    object_nodal_positions=(
+                        {subtask_object_name: src_ep.object_nodal_positions[subtask_object_name][start_ind:end_ind]}
+                        if subtask_object_name is not None and subtask_object_soft
                         else None
                     ),
                     subtask_term_signals=None,
@@ -243,6 +251,7 @@ class DataGenerator:
             eef_pose=eef_pose,
             object_pose=object_pose,
             src_subtask_datagen_infos=src_subtask_datagen_infos,
+            object_nodal_positions=object_nodal_positions,
             **kwargs,
         )
 
@@ -265,9 +274,15 @@ class DataGenerator:
         # Subtask.object_ref is empty string when no object is involved; normalize to None so the
         # rest of the pipeline can keep using the upstream `is not None` convention.
         subtask_object_name = subtasks[subtask_ind].object_ref or None
+        subtask_object_soft = self.algorithm.is_deformable_subtask(subtasks[subtask_ind])
         subtask_object_pose = (
             self.datastream.get_object_poses(env_ids=[env_id])[subtask_object_name][0]
-            if subtask_object_name is not None
+            if subtask_object_name is not None and not subtask_object_soft
+            else None
+        )
+        subtask_object_nodal_positions = (
+            self.datastream.get_object_nodal_positions(env_ids=[env_id])[subtask_object_name][0]
+            if subtask_object_name is not None and subtask_object_soft
             else None
         )
 
@@ -291,8 +306,10 @@ class DataGenerator:
                 eef_name=eef_name,
                 eef_pose=self.datastream.get_robot_eef_pose(env_ids=[env_id], eef_name=eef_name)[0],
                 object_pose=subtask_object_pose,
+                object_nodal_positions=subtask_object_nodal_positions,
                 src_demo_current_subtask_boundaries=all_randomized_subtask_boundaries[eef_name][:, subtask_ind],
                 subtask_object_name=subtask_object_name,
+                subtask_object_soft=subtask_object_soft,
                 selection_strategy_name=subtasks[subtask_ind].selection_strategy,
                 selection_strategy_kwargs=subtasks[subtask_ind].selection_strategy_kwargs,
             )
@@ -325,7 +342,14 @@ class DataGenerator:
             if channel_name == eef_name or channel_name not in eef_names
         }
         src_subtask_object_pose = (
-            src_ep.object_poses[subtask_object_name][selected_boundary[0]] if subtask_object_name is not None else None
+            src_ep.object_poses[subtask_object_name][selected_boundary[0]]
+            if subtask_object_name is not None and not subtask_object_soft
+            else None
+        )
+        src_subtask_object_nodal_positions = (
+            src_ep.object_nodal_positions[subtask_object_name][selected_boundary[0]]
+            if subtask_object_name is not None and subtask_object_soft
+            else None
         )
 
         if is_first_subtask or policy.transform_first_robot_pose:
@@ -343,12 +367,15 @@ class DataGenerator:
                 for channel_name, channel_tensor in src_subtask_passthrough_actions.items()
             }
 
-        transformed_eef_poses = self._apply_subtask_transform(
+        transformed_eef_poses = self.algorithm.transform_source_eef_poses(
+            data_generator=self,
             eef_name=eef_name,
             subtask_ind=subtask_ind,
             subtask_object_name=subtask_object_name,
             subtask_object_pose=subtask_object_pose,
             src_subtask_object_pose=src_subtask_object_pose,
+            subtask_object_nodal_positions=subtask_object_nodal_positions,
+            src_subtask_object_nodal_positions=src_subtask_object_nodal_positions,
             src_eef_poses=src_eef_poses,
             use_delta_transform=use_delta_transform,
             coord_transform_scheme=coord_transform_scheme,
@@ -623,8 +650,9 @@ class DataGenerator:
         # Recorder + reset queue stay on env. The initial scene state
         # snapshot is read through the Datastream interface.
         self.datastream.get_env().recorder_manager.reset(env_ids=env_id_tensor)
-        await env_reset_queue.put(env_id)
-        await env_reset_queue.join()
+        completion = asyncio.get_running_loop().create_future()
+        await env_reset_queue.put(EnvResetRequest(env_id=env_id, completion=completion))
+        await completion
         return env_id_tensor, self.datastream.get_scene_state(is_relative=True)
 
     def _build_runtime_subtask_constraints(self) -> dict:

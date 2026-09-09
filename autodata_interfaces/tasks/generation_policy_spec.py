@@ -23,6 +23,9 @@ class GenerationPolicy:
         use_skillgen: Whether SkillGen is used to generate motion trajectories.
         use_navigation_controller: Whether a navigation controller generates loco-manipulation
             trajectories.
+        reset_settling_steps: Number of ordinary batched environment steps to run after reset
+            before generation begins. During these steps, the resetting environment receives zero
+            actions while other environments continue executing their generated actions.
 
     Segment stitching parameters:
         select_src_per_subtask: If True, re-select a source demo for every subtask. If False, the
@@ -47,6 +50,7 @@ class GenerationPolicy:
     task_name: str | None = None
     use_skillgen: bool = False
     use_navigation_controller: bool = False
+    reset_settling_steps: int = 0
 
     # --- segment stitching ---
     select_src_per_subtask: bool = False

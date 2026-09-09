@@ -56,9 +56,15 @@ def _env(env_origins: torch.Tensor | None = None) -> MockEnv:
             root_quat_w=torch.tensor(_IDENTITY_QUAT_XYZW),
         )
     )
+    rope = MockAsset(
+        MockArticulationData(
+            nodal_pos_w=torch.tensor([[[1.0, 1.0, 0.05], [1.2, 1.0, 0.05]]]),
+        )
+    )
     scene = MockScene(
         assets={"robot": robot},
         rigid_objects={"cube_1": cube},
+        deformable_objects={"rope": rope},
         env_origins=torch.tensor([[0.0, 0.0, 0.0]]) if env_origins is None else env_origins,
         state=_SCENE_STATE_SENTINEL,
     )
@@ -223,6 +229,23 @@ def test_get_object_poses_subtracts_env_origin():
     pose = datastream.get_object_poses()["cube_1"]
     # world [1, 1, 0.05] - origin [1, 1, 0] = [0, 0, 0.05]
     assert torch.allclose(pose[0, :3, 3], torch.tensor([0.0, 0.0, 0.05]))
+
+
+def test_get_object_nodal_positions_is_env_relative():
+    task = TaskDescriptor.from_dict(_task_dict())
+    embodiment_adapter = _embodiment_adapter()
+    env = _env(env_origins=torch.tensor([[1.0, 1.0, 0.0]]))
+    pool = DataGenInfoPool(
+        task_descriptor=task,
+        embodiment_adapter=embodiment_adapter,
+        device=env.device,
+        uses_start_signals=False,
+    )
+    datastream = Datastream(env=env, task_descriptor=task, embodiment_adapter=embodiment_adapter, source_pool=pool)
+    nodes = datastream.get_object_nodal_positions()["rope"]
+    assert nodes.shape == (1, 2, 3)
+    assert torch.allclose(nodes[0, 0], torch.tensor([0.0, 0.0, 0.05]))
+    assert torch.allclose(nodes[0, 1], torch.tensor([0.2, 0.0, 0.05]))
 
 
 def test_get_robot_root_pose():

@@ -11,6 +11,7 @@ from autodata_core.algorithms import (
     GenerationAlgorithm,
     MimicGen,
     SkillGen,
+    SoftMimicGen,
     get_algorithm,
     iter_algorithms,
 )
@@ -20,6 +21,7 @@ def test_registry_contents():
     assert REGISTERED_ALGORITHMS == {
         "mimicgen": MimicGen,
         "dexmimicgen": DexMimicGen,
+        "softmimicgen": SoftMimicGen,
         "skillgen": SkillGen,
     }
 
@@ -31,10 +33,13 @@ def test_base_class_not_registered():
 
 
 def test_iter_algorithms():
-    assert set(iter_algorithms()) == {MimicGen, DexMimicGen, SkillGen}
+    assert set(iter_algorithms()) == {MimicGen, DexMimicGen, SoftMimicGen, SkillGen}
 
 
-@pytest.mark.parametrize("name, cls", [("mimicgen", MimicGen), ("dexmimicgen", DexMimicGen)])
+@pytest.mark.parametrize(
+    "name, cls",
+    [("mimicgen", MimicGen), ("dexmimicgen", DexMimicGen), ("softmimicgen", SoftMimicGen)],
+)
 def test_get_algorithm_no_kwargs(name, cls):
     assert isinstance(get_algorithm(name), cls)
 
@@ -59,6 +64,15 @@ def test_dexmimicgen_attributes():
     assert algo.expected_eef_count == 2
     assert algo.supports_coordination is True
     assert algo.requires_motion_planner is False
+
+
+def test_softmimicgen_attributes():
+    algo = SoftMimicGen()
+    assert algo.name == "softmimicgen"
+    assert algo.expected_eef_count == (1, 2)
+    assert algo.requires_motion_planner is False
+    assert algo.uses_subtask_start_signals is False
+    assert algo.supports_coordination is False
 
 
 def test_skillgen_attributes():
