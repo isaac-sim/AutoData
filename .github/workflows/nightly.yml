@@ -60,13 +60,21 @@ jobs:
           git lfs pull
 
       - name: Run full E2E suite
-        # The GPU runners are shared. Use an empty job-temporary Docker config so
-        # stale credentials cannot override anonymous access to the public base image,
-        # and this job cannot modify the runner's persistent Docker login.
+        # The GPU runners are shared. Preserve their Docker client settings (for
+        # example proxy and buildx configuration) in a job-temporary copy, but
+        # remove all credential sources so stale logins cannot affect this job.
         env:
           DOCKER_CONFIG: ${{ runner.temp }}/autodata-docker
         run: |
           mkdir -p "${DOCKER_CONFIG}"
+          if [ -d "${HOME}/.docker" ]; then
+            cp -a "${HOME}/.docker/." "${DOCKER_CONFIG}/"
+          fi
+          if [ -f "${DOCKER_CONFIG}/config.json" ]; then
+            jq 'del(.auths, .credsStore, .credHelpers)' \
+              "${DOCKER_CONFIG}/config.json" > "${DOCKER_CONFIG}/config.sanitized.json"
+            mv "${DOCKER_CONFIG}/config.sanitized.json" "${DOCKER_CONFIG}/config.json"
+          fi
           ./scripts/ci/run_tests.sh
 
       - name: Test results summary
