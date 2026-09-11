@@ -1,4 +1,6 @@
-# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
 # SPDX-License-Identifier: Apache-2.0
 
 # Embodiment descriptor for the Unitree G1 (whole-body IK, Absolute-pose).
@@ -27,6 +29,12 @@ type: absolute_pose_whole_body_bimanual
 name: g1
 description: Unitree G1 humanoid with whole-body IK and three-finger hands, absolute-pose control.
 
+# Each EEF's `offset` is the SE(3) offset from the tracked control-link frame (wrist_yaw_link) to a
+# canonical grasp frame. Rotate-then-translate: rotate by axis_angle [rad], then translate [m] in that
+# grasp frame. Retargeting extracts the trajectory in the canonical frame (source_pose @ offset) and
+# re-anchors to the target's control link (@ inv(target offset)), so different grippers align at the
+# grasp point (handles gripper length + wrist convention). Seeded from the control-link -> grasped-
+# object transform at grasp; translation is shared L/R (same gripper), rotation is per-hand.
 eefs:
   left:
     pose_obs_keys:
@@ -34,6 +42,9 @@ eefs:
       quat: left_eef_quat
     # 7 left-hand joints (index/middle/thumb proximal + distal + thumb tip)
     gripper_action_indices: [0, 1, 2, 6, 7, 8, 12]
+    offset:
+      axis_angle: [1.2092, -1.2092, 1.2092]
+      translation: [0.0, -0.105, 0.03]
 
   right:
     pose_obs_keys:
@@ -41,6 +52,9 @@ eefs:
       quat: right_eef_quat
     # 7 right-hand joints (index/middle/thumb proximal + distal + thumb tip)
     gripper_action_indices: [3, 4, 5, 9, 10, 11, 13]
+    offset:
+      axis_angle: [-1.2092, -1.2092, -1.2092]
+      translation: [0.0, 0.105, 0.03]
 
 action_layout:
   left_pose_slice: [0, 7]
@@ -50,3 +64,13 @@ action_layout:
   # Non-eef passthrough channels: name -> contiguous action slice. Add more here freely.
   passthrough_channels:
     body: [28, 32]  # [vel_x, vel_y, rot_vel_z, hip_height]
+
+# Per-EEF open and closed hand joint configurations (7 hand joints each, in gripper_action_indices
+# order). Used by retargeting's 'binary' / 'interpolation' hand policies to score the source hand's
+# closedness. Measured from the G1 demos.
+hand_open:
+  left: [0.0, 0.0, 0.0, 0.0, 0.0, 0.72, 0.0]
+  right: [0.0, 0.0, 0.0, 0.0, 0.0, -0.72, 0.0]
+hand_close:
+  left: [-1.57, -1.57, 0.0, -1.74, -1.74, 1.04, 1.74]
+  right: [1.57, 1.57, .0, 1.74, 1.74, -1.04, -1.74]
