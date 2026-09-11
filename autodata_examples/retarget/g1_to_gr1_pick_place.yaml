@@ -1,0 +1,65 @@
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Retarget descriptor: Unitree G1  ->  Fourier GR1T2 pick-and-place (bimanual humanoids).
+#
+# The right arm picks the object and transports it; the left arm does a support motion. Self-contained:
+# the per-EEF `subtasks` below segment the source demo and track the carried object during transport
+# (replacing the old auto carry-detection).
+
+name: g1_to_gr1_pick_place
+description: G1 -> GR1T2 humanoid picks an object with the right arm and transfers it.
+write_datagen_info: true  # write full datagen_info -> output is a drop-in generate_dataset source
+
+source_embodiment: ../embodiments/g1_ik_abs.yaml
+target_embodiment: ../embodiments/gr1_ik_abs.yaml
+target_env_name: Isaac-PickPlace-GR1T2-Abs-v0
+
+hand_policy: binary
+init_robot_from_ik: false
+replay_speed: 2.0
+reference_pose: eef_pose
+eef_reference_link: controlled
+retarget_frame: world
+scene_translation: [0.0, 0.0, 0.30]
+
+segment_settle_steps: 0
+
+default_object_tracking:
+  interpolation_step_start: 15
+  interpolation_step_after: 5
+
+subtasks:
+  right:
+    - object_ref: world
+      description: Approach and grasp the object with the right hand.
+      subtask_end:
+        method: gripper_close
+        offset: 10
+
+    - frame_ref: world
+      description: Place the object in the bin.
+      subtask_end:
+        method: gripper_open
+      object_tracking: object
+
+    - object_ref: world
+      description: Go back to iddle
+
+  left:
+    - object_ref: object
+      description: Approach and grasp the object with the left hand.
+      subtask_end:
+        method: gripper_close
+        offset: 10
+
+    - frame_ref: world
+      description: Move the object next to the right end
+      subtask_end:
+        method: gripper_open
+      object_tracking: object
+
+    - object_ref: world
+      description: Go back to iddle

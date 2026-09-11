@@ -1,4 +1,6 @@
-# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2026, The Isaac AutoData Project Developers.
+# All rights reserved.
+#
 # SPDX-License-Identifier: Apache-2.0
 
 # Embodiment descriptor for the GR1 (IK, Absolute-pose).
@@ -18,6 +20,10 @@ type: absolute_pose_whole_body_bimanual
 name: gr1t2
 description: GR1 humanoid with whole-body IK and dexterous hands, absolute-pose control.
 
+# Each EEF's `offset` is the SE(3) offset from the tracked control-link frame (hand_pitch_link) to a
+# canonical grasp frame. See g1_ik_abs.yaml for the convention (rotate then translate; translation
+# shared L/R, rotation per-hand). Seeded from the control-link -> grasped-object transform from the
+# GR1 demos.
 eefs:
   left:
     pose_obs_keys:
@@ -25,6 +31,9 @@ eefs:
       quat: left_eef_quat
     # 11 left-hand joints: 5 proximal + 5 intermediate + 1 distal
     gripper_action_indices: [0, 1, 2, 3, 4, 10, 11, 12, 13, 14, 20]
+    offset:
+      axis_angle: [1.5708, 0.0, 0.0]
+      translation: [0.01, -0.08, 0.035]
 
   right:
     pose_obs_keys:
@@ -32,9 +41,22 @@ eefs:
       quat: right_eef_quat
     # 11 right-hand joints: 5 proximal + 5 intermediate + 1 distal
     gripper_action_indices: [5, 6, 7, 8, 9, 15, 16, 17, 18, 19, 21]
+    offset:
+      axis_angle: [-1.5708, -0.0, -0.0]
+      translation: [0.01, 0.08, 0.035]
 
 action_layout:
   left_pose_slice: [0, 7]
   right_pose_slice: [7, 14]
   hand_joints_slice: [14, 36]
   canonicalize_quat: true
+
+# Per-EEF open and closed hand joint configurations (11 hand joints each, in gripper_action_indices
+# order). Used by retargeting's 'binary' / 'interpolation' hand policies to score the source hand's
+# closedness and drive the target hand between these configs. Measured from the GR1 demos.
+hand_open:    # fully extended (robot default)
+  left:  [0.0, 0.0, 0.0, 0.0, -1.57,  0.0, 0.0, 0.0, 0.0,  0.5,  -0.238]
+  right: [0.0, 0.0, 0.0, 0.0, -1.57,  0.0, 0.0, 0.0, 0.0,  0.5,  -0.238]
+hand_close:   # full grip (limits, matching what the demos actually reach)
+  left:  [-1.57, -1.57, -1.57, -1.57, -1.74,  0.35, 0.35, 0.35, 0.35,  1.22, -0.238]
+  right: [-1.57, -1.57, -1.57, -1.57, -1.74,  0.35, 0.35, 0.35, 0.35,  1.22, -0.238]
