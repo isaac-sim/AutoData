@@ -123,6 +123,7 @@ class DatasetReplayProvider(PlanProvider):
         return False
 
     def next(self) -> Plan | None:
+        """Load and return the next source episode unless a stop condition was reached."""
         if self._target_reached() or self._cursor >= len(self._names):
             return None
         name = self._names[self._cursor]
@@ -144,4 +145,3 @@ class DatasetReplayProvider(PlanProvider):
         if self._target_runs is not None:
             return False, min(self._target_runs, len(self._names))
         return False, len(self._names)
-

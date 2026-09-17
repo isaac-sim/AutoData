@@ -33,6 +33,14 @@ class DefaultObjectTracking:
 
     @classmethod
     def parse(cls, value: "dict | DefaultObjectTracking | None") -> "DefaultObjectTracking":
+        """Normalize object-tracking defaults from a descriptor value.
+
+        Args:
+            value: Existing defaults, a mapping of field values, or ``None`` for defaults.
+
+        Returns:
+            Parsed object-tracking defaults.
+        """
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -75,6 +83,7 @@ class SubtaskEnd:
     _LENGTH_METHODS = ("fixed_length",)
 
     def __post_init__(self) -> None:
+        """Validate fields that depend on the selected end method."""
         allowed = self._SIGNAL_METHODS + self._GRIPPER_METHODS + self._LENGTH_METHODS
         assert self.method in allowed, f"subtask_end method must be one of {allowed}, got {self.method!r}."
         if self.method in self._SIGNAL_METHODS:
@@ -86,6 +95,14 @@ class SubtaskEnd:
 
     @classmethod
     def parse(cls, value: "str | dict | SubtaskEnd") -> "SubtaskEnd":
+        """Normalize a subtask-end descriptor.
+
+        Args:
+            value: Existing descriptor, method name, or mapping of field values.
+
+        Returns:
+            Parsed subtask-end descriptor.
+        """
         if isinstance(value, cls):
             return value
         if isinstance(value, str):
@@ -112,6 +129,14 @@ class SubtaskObjectTracking:
 
     @classmethod
     def parse(cls, value: "str | dict | SubtaskObjectTracking | None") -> "SubtaskObjectTracking | None":
+        """Normalize an optional object-tracking descriptor.
+
+        Args:
+            value: Existing descriptor, object name, mapping of field values, or ``None``.
+
+        Returns:
+            Parsed object-tracking descriptor, or ``None`` when tracking is disabled.
+        """
         if value is None:
             return None
         if isinstance(value, cls):
@@ -147,6 +172,7 @@ class Offset:
     interpolation_end: int = 0
 
     def __post_init__(self) -> None:
+        """Normalize and validate the offset vectors and interpolation lengths."""
         for name in ("translation", "axis_angle"):
             value = getattr(self, name)
             if value is not None:
@@ -162,6 +188,14 @@ class Offset:
 
     @classmethod
     def parse(cls, value: Any) -> "Offset | None":
+        """Normalize an optional offset descriptor.
+
+        Args:
+            value: Mapping of offset field values, or ``None``.
+
+        Returns:
+            Parsed offset descriptor, or ``None`` when no offset is configured.
+        """
         if value is None:
             return None
         assert isinstance(value, dict), f"offset must be a section (dict), got {type(value).__name__}."
@@ -195,6 +229,14 @@ class Subtask:
 
     @classmethod
     def parse(cls, value: dict) -> "Subtask":
+        """Parse one subtask and its nested descriptors.
+
+        Args:
+            value: Mapping of subtask field values.
+
+        Returns:
+            Parsed subtask descriptor.
+        """
         assert isinstance(value, dict), f"each subtask must be a section (dict), got {type(value).__name__}."
         data = dict(value)
         allowed = {f.name for f in fields(cls)}
@@ -309,6 +351,7 @@ class RetargetConfig:
     eef_reference_link: dict[str, str] | str | None = None
 
     def __post_init__(self) -> None:
+        """Parse nested descriptors and validate synchronization barriers."""
         self.default_object_tracking = DefaultObjectTracking.parse(self.default_object_tracking)
         self.subtasks = {
             eef: [st if isinstance(st, Subtask) else Subtask.parse(st) for st in entries]
