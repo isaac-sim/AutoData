@@ -10,7 +10,7 @@
 
 name: franka_bin_stack
 description: Blue sorting bin fixed at table center with the blue cube inside; red and green cubes spawn outside the bin.
-base_env: Isaac-Stack-Cube-Franka-IK-Rel-v0
+base_env: IsaacContrib-Stack-Cube-Franka-IK-Rel
 planner: franka_stack_cube_bin
 
 scene:
@@ -34,21 +34,21 @@ events:
     # Bin and cube_1 (the stack base) are pinned at the table center; cube_2/cube_3 randomize
     # outside the bin.
     reset_blue_bin_pose:
-      func: "isaaclab_tasks.manager_based.manipulation.stack.mdp.franka_stack_events:randomize_object_pose"
+      func: "isaaclab_tasks.contrib.stack.mdp.franka_stack_events:randomize_object_pose"
       mode: reset
       params:
         pose_range: {x: [0.4, 0.4], y: [0.0, 0.0], z: [0.0203, 0.0203], yaw: [0.0, 0.0]}
         min_separation: 0.0
         asset_cfgs: [blue_sorting_bin]
     reset_cube_1_pose:
-      func: "isaaclab_tasks.manager_based.manipulation.stack.mdp.franka_stack_events:randomize_object_pose"
+      func: "isaaclab_tasks.contrib.stack.mdp.franka_stack_events:randomize_object_pose"
       mode: reset
       params:
         pose_range: {x: [0.4, 0.4], y: [0.0, 0.0], z: [0.0203, 0.0203], yaw: [0.0, 0.0]}
         min_separation: 0.0
         asset_cfgs: [cube_1]
     reset_cube_pose:
-      func: "isaaclab_tasks.manager_based.manipulation.stack.mdp.franka_stack_events:randomize_object_pose"
+      func: "isaaclab_tasks.contrib.stack.mdp.franka_stack_events:randomize_object_pose"
       mode: reset
       params:
         pose_range: {x: [0.65, 0.70], y: [-0.18, 0.18], z: [0.0203, 0.0203], yaw: [-1.0, 1.0]}

@@ -10,9 +10,8 @@ uses the completed Franka files and commands in this repository. Apply the same 
 corresponding files when migrating another Isaac Lab Mimic task.
 
 AutoData uses standard Isaac Lab ManagerBasedRLEnv environments. For Franka cube stacking, keep the normal Isaac Lab
-environment and replace the Mimic environment ID
-``Isaac-Stack-Cube-Franka-IK-Rel-Mimic-v0`` with
-``Isaac-Stack-Cube-Franka-IK-Rel-v0``. The Mimic-specific configuration moves into AutoData's
+environment and use ``IsaacContrib-Stack-Cube-Franka-IK-Rel`` as the environment ID.
+The Mimic-specific configuration moves into AutoData's
 task and embodiment descriptors.
 
 What moves where?
@@ -49,7 +48,7 @@ The Isaac Lab Mimic implementation of Franka cube stacking combines two elements
 * ``FrankaCubeStackIKRelMimicEnvCfg`` and ``FrankaCubeStackIKRelMimicEnv`` add data-generation
   configuration and adapter methods.
 
-AutoData uses ``FrankaCubeStackEnvCfg`` directly. Change the environment ID as follows:
+AutoData uses ``FrankaCubeStackEnvCfg`` directly. Select the base task when migrating the Mimic environment:
 
 .. list-table::
    :widths: 35 65
@@ -57,8 +56,8 @@ AutoData uses ``FrankaCubeStackEnvCfg`` directly. Change the environment ID as f
 
    * - Isaac Lab Mimic
      - AutoData
-   * - ``Isaac-Stack-Cube-Franka-IK-Rel-Mimic-v0``
-     - ``Isaac-Stack-Cube-Franka-IK-Rel-v0``
+   * - ``FrankaCubeStackIKRelMimicEnv``
+     - ``IsaacContrib-Stack-Cube-Franka-IK-Rel``
 
 For your own Isaac Lab environment, verify that it provides:
 
@@ -257,7 +256,7 @@ correct HDF5 format. Annotate the raw dataset directly with AutoData:
 .. code-block:: bash
 
    python scripts/annotate_demos.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz none \
        --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
        --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
@@ -275,7 +274,7 @@ created in Steps 2 and 3:
 .. code-block:: bash
 
    python scripts/generate_dataset.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz kit \
        --num_envs 10 \
        --alg mimicgen \

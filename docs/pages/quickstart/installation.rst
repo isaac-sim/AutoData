@@ -6,8 +6,8 @@ Isaac Lab, Isaac Lab-Arena, and AutoData, providing a reproducible environment
 without modifying the host Python installation. The repository is bind-mounted into the container,
 so edits on the host are live inside it.
 
-An optional conda installation is also available for users who want direct control over their
-Python environment and installed packages. See `Optional Conda Installation`_ below.
+This checkout uses Isaac Sim 6.1.0, Isaac Lab 3.0.0, and Arena 0.3.0.
+Use the pinned Docker environment or the optional conda installation below for the workflows on this site.
 
 Before installing, review the :doc:`support_matrix` for the complete supported software stack,
 hardware requirements, optional cuRobo and XR dependencies, and resource guidance.
@@ -85,9 +85,9 @@ a separate versioned image tag that coexists with the default one:
 .. note::
 
    Inside the container the repo is mounted at ``/workspaces/autodata`` and ``python`` /
-   ``pytest`` are aliased to Isaac Sim's interpreter (``/isaac-sim/python.sh``). Unless you chose
-   the optional conda installation, run commands in these docs from that directory inside the
-   container.
+   ``pytest`` are aliased to Isaac Sim's interpreter (``/isaac-sim/python.sh``). Run simulation
+   commands in these docs from that directory inside the container. Host commands are marked
+   explicitly.
 
 Useful flags of ``./docker/run_docker.sh``:
 
@@ -112,100 +112,154 @@ Useful flags of ``./docker/run_docker.sh``:
 For a missing Kit window or an X11 error, see :ref:`troubleshooting-display`.
 
 
+Updating an Existing Checkout
+------------------------------
+
+After updating AutoData, synchronize the nested submodules and rebuild the image from the host:
+
+.. code-block:: bash
+
+   git submodule update --init --recursive
+   ./docker/run_docker.sh -r
+
+For SkillGen, use ``./docker/run_docker.sh -c -r`` instead. The current image tags are
+``autodata:sim-6.1.0`` and ``autodata:sim-6.1.0-curobo``. A rebuild does not replace an already
+running container. Finish its work, stop the matching container with
+``docker stop autodata-sim-6.1.0`` or ``docker stop autodata-sim-6.1.0-curobo``, and rerun the
+launcher. The launcher reports an error if a running container still uses the previous image.
+
+Source edits are live through the repository bind mount. Dependency changes require rebuilding.
+The checked-in example datasets are under ``./datasets/`` relative to the repository. The separate
+``/datasets`` mount comes from the host directory selected by ``-d``; it is not the repository's
+dataset directory.
+
+
 Optional Conda Installation
 ---------------------------
 
-Use the conda route if you want to manage the environment and its packages directly. Docker remains
-the recommended route because it provides the project's reproducible, preconfigured environment.
+The :autodata_code_link:`<conda_installer.sh>` installer supports Linux x86_64 and Python 3.12.
+It installs Isaac Sim **6.1.0.0** (the pip version of Sim 6.1.0), PyTorch **2.11.0+cu128**,
+Isaac Lab, and Arena from the pinned Arena ``uv.lock``, then installs AutoData with its test tools.
+Lab and Arena are editable installations from the nested submodules.
 
-The conda installation requires ``conda`` and `uv <https://docs.astral.sh/uv/>`_ on your ``PATH``.
-From the repository root, create the ``autodata`` environment with Python 3.12:
-
-.. code-block:: bash
-
-   ./conda_installer.sh -c
-
-Activate the environment and install Isaac Sim, CUDA-enabled PyTorch, Isaac Lab, Isaac Lab-Arena,
-and AutoData:
+On the host, install `conda <https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html>`_
+and `uv <https://docs.astral.sh/uv/getting-started/installation/>`_ **0.12.21 or newer**.
+Git, CMake, and a C++ compiler must also be available. On Ubuntu:
 
 .. code-block:: bash
 
-   conda activate autodata
-   ./conda_installer.sh -i
+   sudo apt-get install build-essential cmake git git-lfs
 
-You can create the environment and install the packages in one command:
+From a terminal outside any Python virtual environment, run these commands at the repository root:
 
 .. code-block:: bash
 
+   git submodule update --init --recursive
    ./conda_installer.sh -c -i
+   conda activate autodata
 
-Run ``./conda_installer.sh -h`` to see all installer options. Activate the environment before running
-commands from the rest of the documentation:
+The environment defaults to ``autodata``. Use ``-n`` to choose a different name, including when
+installing into your existing ``isaac_autodata`` environment:
 
 .. code-block:: bash
 
-   conda activate autodata
+   ./conda_installer.sh -i -n isaac_autodata
+   conda activate isaac_autodata
+
+``-c`` creates an environment and refuses to replace one that already exists. ``-i`` installs or
+updates packages in the selected environment, which must use Python 3.12. To keep an older setup
+available, create a separate environment with ``./conda_installer.sh -c -i -n autodata_lab3``.
+After updating the checkout and its submodules, rerun ``-i`` with the same environment name.
+Use a fresh shell if the old environment has Isaac Sim binary-install activation hooks; this
+installer uses pip-distributed Sim and does not configure a downloaded Sim binary.
+
+The installer exports Arena's lockfile to ``.cache/conda-installer/pylock.toml``. This preserves
+the pinned wheel URLs and hashes, including CUDA-enabled PyTorch, without rewriting the submodules.
+It retains unrelated installed packages and checks the locked stack again after installing AutoData.
+The generated ``.cache/conda-installer/runtime-constraints.txt`` pins the locked dependencies for
+later optional installations, including cuRobo. Rerun the installer to refresh both exports after
+an Arena update.
+Arena's lock includes upstream dependency overrides. The installed stack matches that lock, but
+``pip check`` still reports these five discrepancies with wheel metadata:
+
+.. list-table:: Upstream package metadata versus the Arena lock
+   :widths: 30 35 35
+   :header-rows: 1
+
+   * - Package
+     - Declared requirement
+     - Locked installation
+   * - ``openpi-client``
+     - NumPy < 2
+     - NumPy 2.3.1
+   * - ``isaacsim-core``
+     - Newton 1.5.0
+     - Newton 1.5.2
+   * - ``isaacsim-kernel``
+     - websockets < 15
+     - websockets 16.1.1
+   * - ``ovphysx``
+     - packaging < 24
+     - packaging 26.0
+   * - ``isaacsim-robot``
+     - onnxruntime-gpu 1.26.0
+     - CPU onnxruntime 1.26.0
+
+Keep the locked versions and use the runtime checks below. GPU ONNX inference is not provided
+by this installation; AutoData's tested GPU generation workflows use PyTorch and CUDA.
+
+Review and accept the Isaac Sim EULA on first launch. For unattended launches after accepting it,
+set ``export OMNI_KIT_ACCEPT_EULA=YES ACCEPT_EULA=Y``. See the official
+`Isaac Sim pip installation guide
+<https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_python.html>`_.
+Run workflow commands with ``python`` from the repository root while the selected conda environment
+is active. Substitute your checkout path for the Docker-only ``/workspaces/autodata`` path.
 
 
-Installing cuRobo for SkillGen
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Optional cuRobo for Conda
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-SkillGen additionally requires cuRobo. Before installing it, review the NVIDIA cuRobo license in
-:autodata_code_link:`<docs/licenses/curobo-license.txt>`.
-
-.. warning::
-
-   Install cuRobo from a clean shell that has not sourced Isaac Sim environment scripts such as
-   ``setup_conda_env.sh``. Those scripts set ``PYTHONHOME`` and ``PYTHONPATH`` to use Kit's bundled
-   packages, which can cause conda to fail during the cuRobo installation.
-
-Activate the AutoData environment, install the CUDA 12.8 toolkit, and configure the build for your
-GPU's compute capability:
+SkillGen additionally needs cuRobo and a **CUDA Toolkit 12.8** installation containing ``nvcc``.
+Install the toolkit using NVIDIA's
+`CUDA installation guide <https://docs.nvidia.com/cuda/cuda-installation-guide-linux/>`_, then
+run the following in the activated AutoData environment. Adjust ``CUDA_HOME`` if your toolkit
+is installed elsewhere:
 
 .. code-block:: bash
 
-   conda activate autodata
-   conda install -c nvidia cuda-toolkit=12.8 -y
-   export CUDA_HOME="$CONDA_PREFIX"
+   export CUDA_HOME=/usr/local/cuda-12.8
    export PATH="$CUDA_HOME/bin:$PATH"
-   export LD_LIBRARY_PATH="$CUDA_HOME/lib:$LD_LIBRARY_PATH"
-   export TORCH_CUDA_ARCH_LIST="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1)+PTX"
+   export LD_LIBRARY_PATH="$CUDA_HOME/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+   export TORCH_CUDA_ARCH_LIST="$(python -c \
+       'import torch; major, minor = torch.cuda.get_device_capability(); print(f"{major}.{minor}+PTX")')"
+   export MAX_JOBS=4
+   uv pip install --python "$CONDA_PREFIX/bin/python" \
+       --constraint .cache/conda-installer/runtime-constraints.txt ninja wheel
+   uv pip install --python "$CONDA_PREFIX/bin/python" \
+       --constraint .cache/conda-installer/runtime-constraints.txt \
+       --no-build-isolation \
+       'nvidia-curobo @ git+https://github.com/NVlabs/curobo.git@ebb71702f3f70e767f40fd8e050674af0288abe8'
+   uv pip install --python "$CONDA_PREFIX/bin/python" --check \
+       --requirements .cache/conda-installer/pylock.toml
 
-Install the cuRobo commit tested with Isaac Lab and used by the AutoData cuRobo container:
+The GPU must be visible when detecting its compute capability. If building for another machine,
+set ``TORCH_CUDA_ARCH_LIST`` explicitly to that GPU's compute capability instead. Rebuild cuRobo
+when changing PyTorch or the target GPU architecture. The base conda installer does not install cuRobo.
 
-.. code-block:: bash
 
-   pip install -e "git+https://github.com/NVlabs/curobo.git@ebb71702f3f70e767f40fd8e050674af0288abe8#egg=nvidia-curobo" \
-     --no-build-isolation
+Documentation Environment
+-------------------------
 
-The editable installation clones cuRobo into ``src/nvidia-curobo`` beneath the current directory.
-Run the command from the directory where you want to keep that source checkout.
-
-Verify the installation:
-
-.. code-block:: bash
-
-   python -c "import curobo; print('cuRobo installed successfully')"
-
-For missing modules, CUDA kernel errors, or a GPU change, see :ref:`troubleshooting-curobo`.
-
-.. tip::
-
-   If the import fails because ``libstdc++.so.6`` does not provide ``GLIBCXX_3.4.30``, update the
-   environment's C++ runtime libraries:
-
-   .. code-block:: bash
-
-      conda config --env --set channel_priority strict
-      conda config --env --add channels conda-forge
-      conda install -y -c conda-forge "libstdcxx-ng>=12" "libgcc-ng>=12"
+Building the documentation only needs a separate Python virtual environment and
+``docs/requirements.txt``. It does not require Isaac Sim, Arena, cuRobo, or a conda environment.
+See :autodata_code_link:`<docs/README.md>` for local build instructions.
 
 
 Verifying the Installation
 --------------------------
 
-Docker users should run these commands inside the container. Conda users should run them from the
-repository root after activating the ``autodata`` environment.
+Run these commands from the repository root in the activated conda environment, or from
+``/workspaces/autodata`` inside the container. The full suite includes SkillGen tests and requires cuRobo.
 
 Run the fast unit tests (a few seconds, no Isaac Sim launch):
 

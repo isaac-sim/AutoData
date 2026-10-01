@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG BASE_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.1
+ARG BASE_IMAGE=nvcr.io/nvidia/isaac-sim:6.1.0
 FROM ${BASE_IMAGE}
 
 USER root
@@ -27,6 +27,8 @@ RUN if [ -e "/usr/share/vulkan" ] && [ -e "/etc/vulkan" ]; then \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git \
       git-lfs \
+      openssh-client \
+      ripgrep \
       cmake \
       build-essential \
       sudo \
@@ -38,39 +40,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #######################################
 # Install IsaacLab & IsaacLab - Arena
 #######################################
-# Copy the Arena submodule once as it carries the nested IsaacLab checkout.
-# The .dockerignore drops Arena's other nested submodules (e.g. Isaac-GR00T)
-# which AutoData does not use.
-COPY submodules/IsaacLab-Arena ${WORKDIR}/submodules/IsaacLab-Arena
+# Install Lab before copying Arena so Arena changes can reuse the Lab layer.
+COPY submodules/IsaacLab-Arena/submodules/IsaacLab ${ISAACLAB_PATH}
 
 # --- IsaacLab ---
 # Symlink Isaac Sim to IsaacLab.
 RUN ln -s /isaac-sim/ ${ISAACLAB_PATH}/_isaac_sim
-# Install IsaacLab dependencies.
-RUN for DIR in ${ISAACLAB_PATH}/source/isaaclab*/; do /isaac-sim/python.sh -m pip install --no-deps -e "$DIR"; done
 # The non-root runtime user (created by the entrypoint) needs to write Kit logs/caches under /isaac-sim.
 RUN chmod 777 -R /isaac-sim/kit/ && chmod a+x /isaac-sim
-# Ensure the visualizer extension is present so "--viz kit" works.
-RUN /isaac-sim/python.sh -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_visualizers
+# Lab 3.0 owns dependency pins in its root pyproject.toml and registers its
+# packages through this installer, including the visualizers and Pink IK.
 RUN ${ISAACLAB_PATH}/isaaclab.sh -i
-# Pin daqp for Pink IK (matches conda_installer.sh).
-RUN /isaac-sim/python.sh -m pip install --force-reinstall daqp==0.8.5
 
 # --- IsaacLab - Arena ---
+COPY docker/runtime-constraints.txt /opt/autodata/runtime-constraints.txt
+# Lab's pip installer can resolve a newer NumPy than Isaac Sim supports.
+# Apply Arena's validated pins to all remaining build-time pip installations.
+ARG PIP_CONSTRAINT=/opt/autodata/runtime-constraints.txt
+RUN /isaac-sim/python.sh -m pip install numpy==2.3.1
+COPY submodules/IsaacLab-Arena ${WORKDIR}/submodules/IsaacLab-Arena
 RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
-
-##################
-# AutoData
-##################
-# Copy the package sources + packaging metadata (exclude submodules installed above).
-COPY setup.py pyproject.toml README.md sitecustomize.py ${WORKDIR}/
-COPY autodata_core ${WORKDIR}/autodata_core
-COPY autodata_interfaces ${WORKDIR}/autodata_interfaces
-COPY autodata_utils ${WORKDIR}/autodata_utils
-COPY autodata_examples ${WORKDIR}/autodata_examples
-COPY autodata_tests ${WORKDIR}/autodata_tests
-RUN /isaac-sim/python.sh -m pip install -e "${WORKDIR}[dev]"
-RUN /isaac-sim/python.sh -m pip install pre-commit
+# Complete the dependencies omitted from Isaac Sim's bundled package metadata.
+RUN /isaac-sim/python.sh -m pip install --extra-index-url https://pypi.nvidia.com \
+      usd-validation-nvidia==1.22.0 "pyjwt[crypto]==2.15.1" "aiobotocore[boto3]==2.25.1" \
+      rerun-sdk==0.31.4 ipython==9.10.1 psutil==5.9.8 \
+    && /isaac-sim/python.sh -m pip check
 
 #####################
 # cuRobo (optional)
@@ -78,6 +72,8 @@ RUN /isaac-sim/python.sh -m pip install pre-commit
 ARG INSTALL_CUROBO=false
 # Default arch list, run_docker.sh overrides it with the detected compute capability.
 ARG TORCH_CUDA_ARCH_LIST=8.0+PTX
+# Limit concurrent compiler processes on shared GPU hosts.
+ARG MAX_JOBS=4
 
 ENV CUDA_HOME=/usr/local/cuda-12.8
 ENV PATH=/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}
@@ -88,6 +84,20 @@ RUN if [ "$INSTALL_CUROBO" = "true" ]; then \
     else \
       echo "Skipping cuRobo install (INSTALL_CUROBO=false. Use run_docker.sh -c to include it)"; \
     fi && rm -f /tmp/install_curobo.sh
+
+##################
+# AutoData
+##################
+# Keep application changes after cuRobo so they do not rebuild its CUDA kernels.
+COPY setup.py pyproject.toml README.md sitecustomize.py ${WORKDIR}/
+COPY autodata_core ${WORKDIR}/autodata_core
+COPY autodata_interfaces ${WORKDIR}/autodata_interfaces
+COPY autodata_utils ${WORKDIR}/autodata_utils
+COPY autodata_examples ${WORKDIR}/autodata_examples
+COPY autodata_tests ${WORKDIR}/autodata_tests
+RUN /isaac-sim/python.sh -m pip install -e "${WORKDIR}[dev]"
+RUN /isaac-sim/python.sh -m pip install pre-commit
+RUN /isaac-sim/python.sh -m pip check
 
 # Set aliases for the shell
 RUN echo 'export PATH="/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}"' >> /etc/bash.bashrc \

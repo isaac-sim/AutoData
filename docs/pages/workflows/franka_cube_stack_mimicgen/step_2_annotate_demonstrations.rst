@@ -29,7 +29,7 @@ Automatic Annotation (Recommended)
 .. code-block:: bash
 
    python scripts/annotate_demos.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz none \
        --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
        --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
@@ -63,7 +63,7 @@ and marking boundaries with the keyboard.
 .. code-block:: bash
 
    python scripts/annotate_demos.py \
-      --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+      --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
       --viz kit \
       --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
       --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
