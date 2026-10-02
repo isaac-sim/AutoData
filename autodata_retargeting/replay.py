@@ -613,6 +613,28 @@ def apply_subtask_offsets(
     return target_eef_poses
 
 
+# Offset frames that resolve without a source-object pose (see :func:`apply_subtask_offsets`).
+_RESERVED_OFFSET_FRAMES = {"world", "eef", "controlled"}
+
+
+def subtasks_need_source_objects(subtasks: dict) -> bool:
+    """Whether replaying these subtasks needs the source demo's per-object pose trajectories.
+
+    True if any subtask tracks an object, or carries an ``offset`` whose frame resolves to an object
+    name (``offset.frame`` else ``object_ref`` else ``frame_ref``; see :func:`apply_subtask_offsets`).
+    An object-framed offset silently falls back to the world frame when the object poses are not loaded,
+    so it must be counted here even when ``object_tracking`` is disabled.
+    """
+    for entries in subtasks.values():
+        for st in entries:
+            if st.object_tracking is not None:
+                return True
+            off = getattr(st, "offset", None)
+            if off is not None and (off.frame or st.object_ref or st.frame_ref or "eef") not in _RESERVED_OFFSET_FRAMES:
+                return True
+    return False
+
+
 def prepare_episode(
     env: Any,
     env_id: int,
@@ -1034,7 +1056,7 @@ def replay_episode_on_target(
     """
     subtasks = subtasks or {}
     default_object_tracking = default_object_tracking or DefaultObjectTracking()
-    need_source_objects = any(st.object_tracking is not None for entries in subtasks.values() for st in entries)
+    need_source_objects = subtasks_need_source_objects(subtasks)
     if prep is None:
         prep = prepare_episode(
             env,

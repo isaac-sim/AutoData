@@ -36,6 +36,7 @@ from .replay import (
     _record_signal_frame,
     prepare_episode,
     read_achieved_eef_poses,
+    subtasks_need_source_objects,
 )
 from .util import pose_tracking_error
 
@@ -105,9 +106,7 @@ async def _replay_one_episode(
         subtasks=params.subtasks,
         default_object_tracking=params.default_object_tracking,
         source_hand_postures=params.source_hand_postures,
-        need_source_objects=any(
-            st.object_tracking is not None for entries in params.subtasks.values() for st in entries
-        ),
+        need_source_objects=subtasks_need_source_objects(params.subtasks),
         reset_sim=False,
         eef_reference_link=params.eef_reference_link,
         write_datagen_info=params.write_datagen_info,
