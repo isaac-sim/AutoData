@@ -1024,7 +1024,7 @@ def replay_episode_on_target(
     write_datagen_info: bool = False,
     eef_reference_link: dict[str, str] | str | None = None,
     source_hand_postures: dict[str, dict[str, list[float]]] | None = None,
-) -> tuple[bool, dict[str, dict[str, torch.Tensor]], torch.Tensor | None]:
+) -> tuple[bool, dict[str, dict[str, torch.Tensor]]]:
     """Replay one source episode on the target embodiment and record the target rollout.
 
     Args:
