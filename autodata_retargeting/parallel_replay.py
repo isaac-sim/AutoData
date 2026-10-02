@@ -82,9 +82,13 @@ async def _async_step(env, env_id, action_queue, target_adapter, target_eef_pose
 
 async def _replay_one_episode(
     env, env_id, plan, action_queue, target_default_state, adapters, params, success_term
-) -> bool:
-    """Reset ``env_id`` to the source scene and drive one plan's trajectory async; return whether it
-    succeeded."""
+) -> tuple[bool, dict[str, torch.Tensor]]:
+    """Reset ``env_id`` to the source scene and drive one plan's trajectory async.
+
+    Returns ``(task_succeeded, passthrough_action_dict)``: whether the success term fired, and the
+    final-waypoint passthrough action dict (e.g. gripper state) the worker holds while it waits for the
+    remaining envs to finish.
+    """
     target_adapter, source_adapter, remap_passthrough = adapters
     prep = prepare_episode(
         env,
