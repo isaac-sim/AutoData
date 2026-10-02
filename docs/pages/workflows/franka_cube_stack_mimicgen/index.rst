@@ -16,7 +16,7 @@ validating the result.
 Task Overview
 -------------
 
-**Environment name:** ``Isaac-Stack-Cube-Franka-IK-Rel-v0``
+**Environment name:** ``IsaacContrib-Stack-Cube-Franka-IK-Rel``
 
 **Task Description:** A Franka arm stacks three cubes on a table — red on blue, then green
 on red.

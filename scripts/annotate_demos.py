@@ -22,7 +22,7 @@ Controls:
 
 Automatic mode:
 
-Pass ``--auto`` to annotate subtask termination signals without keyboard input (``--headless``
+Pass ``--auto`` to annotate subtask termination signals without keyboard input (``--viz none``
 supported). ``--signal_obs_group`` selects the observation group holding the per-subtask boolean
 terms (default ``subtask_terms``). SkillGen start signals still require manual mode.
 """
@@ -80,10 +80,16 @@ parser.add_argument(
     help="Observation group holding the per-subtask boolean terms read in --auto mode.",
 )
 
+parser.add_argument(
+    "--enable_cameras",
+    dest="record_images",
+    action="store_true",
+    help="Render and record the task's image observations.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
-app_launcher = AppLauncher(args_cli)
+app_launcher = AppLauncher(args_cli, enable_cameras=args_cli.record_images)
 simulation_app = app_launcher.app
 
 """Rest everything follows."""
@@ -92,7 +98,9 @@ import contextlib  # noqa: E402
 import gymnasium as gym  # noqa: E402
 import math  # noqa: E402
 import os  # noqa: E402
+import sys  # noqa: E402
 import torch  # noqa: E402
+import traceback  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401, E402  (registers gym envs)
@@ -206,9 +214,9 @@ def main() -> int:
     """Annotate the source dataset and export the annotated copy."""
     global _datastream, is_paused, skip_episode, marked_subtask_action_indices
 
-    assert args_cli.auto or not args_cli.headless, (
+    assert args_cli.auto or app_launcher.has_window, (
         "annotate_demos.py performs manual keyboard annotation and cannot run headless. "
-        "Re-run with a window (drop --headless / unset HEADLESS), or pass --auto."
+        "Re-run with a window (--viz kit), or pass --auto."
     )
 
     if not os.path.exists(args_cli.input_file):
@@ -250,6 +258,7 @@ def main() -> int:
         device=args_cli.device,
         generation_policy_params=generation_policy,
         recorder_cfg=AnnotationRecorderManagerCfg(),
+        enable_cameras=args_cli.record_images,
     )
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
     env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY
@@ -479,13 +488,14 @@ def annotate_episode_in_manual_mode(
         # Termination signal: False until the subtask completes, True from that step onward.
         signal = torch.ones(num_steps, dtype=torch.bool)
         signal[:action_index] = False
-        annotated_episode.add(f"obs/datagen_info/subtask_term_signals/{signal_name}", signal)
+        # These are complete trajectories; EpisodeData.add() appends a single timestep.
+        annotated_episode.data["obs"]["datagen_info"].setdefault("subtask_term_signals", {})[signal_name] = signal
 
     if annotate_start:
         for signal_name, action_index in start_signal_action_indices.items():
             signal = torch.ones(num_steps, dtype=torch.bool)
             signal[:action_index] = False
-            annotated_episode.add(f"obs/datagen_info/subtask_start_signals/{signal_name}", signal)
+            annotated_episode.data["obs"]["datagen_info"].setdefault("subtask_start_signals", {})[signal_name] = signal
 
     return True
 
@@ -597,7 +607,8 @@ def annotate_episode_in_auto_mode(
         # Termination signal: False until the subtask completes, True from that step onward.
         signal = torch.ones(num_steps, dtype=torch.bool)
         signal[:action_index] = False
-        annotated_episode.add(f"obs/datagen_info/subtask_term_signals/{signal_name}", signal)
+        # Store the whole trajectory without adding an extra timestep dimension.
+        annotated_episode.data["obs"]["datagen_info"].setdefault("subtask_term_signals", {})[signal_name] = signal
 
     return True
 
@@ -609,6 +620,9 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nInterrupted; exiting.")
         exit_code = 130
+    except Exception:
+        traceback.print_exc()
+        exit_code = 1
     finally:
-        simulation_app.close()
-    exit(exit_code)
+        simulation_app.close(exit_code=exit_code)
+    sys.exit(exit_code)

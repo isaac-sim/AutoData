@@ -1,6 +1,7 @@
 .. attention::
 
-   Recording and annotating your own demonstrations requires an Apple Vision Pro and the CloudXR runtime.
+   Recording your own demonstrations requires an Apple Vision Pro and the CloudXR runtime.
+   Annotating an existing recording only requires the simulator and a Kit window.
    If you do not have the required hardware, you may skip :doc:`step_1_record_demonstrations` and
    :doc:`step_2_annotate_demonstrations` by using the pre-annotated source dataset that ships with
    the repository and jumping directly to :doc:`step_3_generate_dataset`.
@@ -15,9 +16,10 @@ teleoperated demonstrations of the humanoid pick-and-place task.
 Unlike the single-arm Franka task — which can be teleoperated with a SpaceMouse or keyboard — the
 dexterous, bimanual humanoids are teleoperated with an **Apple Vision Pro** through
 `NVIDIA IsaacTeleop <https://github.com/NVIDIA/IsaacTeleop>`_ and the CloudXR runtime. The headset's
-wrist poses drive a differential IK controller per arm, and the finger joints are retargeted onto
+wrist poses drive the robot's IK controllers, and the finger joints are retargeted onto
 the robot's hands. The AutoData development container includes IsaacTeleop, so the flow below
-works out of the box.
+provides the software dependencies. A headset, its client application, and a working CloudXR
+connection are still required.
 
 .. note::
 
@@ -122,7 +124,7 @@ Start Recording
          .. code-block:: bash
 
             python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
-                --task Isaac-PickPlace-GR1T2-Abs-v0 \
+                --task IsaacContrib-PickPlace-GR1T2-Abs \
                 --viz kit \
                 --device cpu \
                 --xr \
@@ -136,7 +138,7 @@ Start Recording
          .. code-block:: bash
 
             python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
-                --task Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
+                --task IsaacContrib-PickPlace-Locomanipulation-G1-Abs \
                 --viz kit \
                 --device cpu \
                 --xr \

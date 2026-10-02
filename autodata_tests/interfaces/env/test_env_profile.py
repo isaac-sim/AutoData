@@ -17,14 +17,14 @@ from autodata_tests.utils.constants import TestPaths
 
 
 def _minimal_valid() -> dict:
-    return {"name": "p", "base_env": "Isaac-Stack-Cube-Franka-IK-Rel-v0"}
+    return {"name": "p", "base_env": "IsaacContrib-Stack-Cube-Franka-IK-Rel"}
 
 
 def _full_valid() -> dict:
     return {
         "name": "p",
         "description": "d",
-        "base_env": "Isaac-Stack-Cube-Franka-IK-Rel-v0",
+        "base_env": "IsaacContrib-Stack-Cube-Franka-IK-Rel",
         "planner": "franka_stack_cube_bin",
         "scene": {
             "rigid_objects": {
@@ -185,7 +185,7 @@ def test_from_dict_builds_specs_and_coerces_vectors():
     profile = EnvironmentProfile.from_dict(_full_valid())
 
     assert profile.name == "p"
-    assert profile.base_env == "Isaac-Stack-Cube-Franka-IK-Rel-v0"
+    assert profile.base_env == "IsaacContrib-Stack-Cube-Franka-IK-Rel"
     assert profile.planner == "franka_stack_cube_bin"
 
     bin_spec = profile.scene.rigid_objects.add["bin"]
@@ -226,7 +226,7 @@ def test_shipped_bin_stack_profile_parses():
     path = os.path.join(TestPaths.env_profiles_dir, "franka_bin_stack.yaml")
     profile = EnvironmentProfile.from_yaml(path)
     assert profile.name == "franka_bin_stack"
-    assert profile.base_env == "Isaac-Stack-Cube-Franka-IK-Rel-v0"
+    assert profile.base_env == "IsaacContrib-Stack-Cube-Franka-IK-Rel"
     assert profile.planner == "franka_stack_cube_bin"
     assert "blue_sorting_bin" in profile.scene.rigid_objects.add
     assert set(profile.scene.rigid_objects.override) == {"cube_1", "cube_2", "cube_3"}

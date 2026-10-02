@@ -33,7 +33,7 @@ def test_dexmimicgen_g1_data_generation_success_rate():
             TestPaths.python_path,
             TestPaths.generate_dataset_script,
             "--env_name",
-            "Isaac-PickPlace-Locomanipulation-G1-Abs-v0",
+            "IsaacContrib-PickPlace-Locomanipulation-G1-Abs",
             "--alg",
             "dexmimicgen",
             "--task_descriptor",

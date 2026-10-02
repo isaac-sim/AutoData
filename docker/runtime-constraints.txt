@@ -1,0 +1,16 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Keep Arena and cuRobo dependencies compatible with the pinned Lab/Sim stack.
+# These versions match Arena 016cba57's validated runtime overrides.
+numpy==2.3.1
+torch==2.11.0
+torchvision==0.26.0
+torchaudio==2.11.0
+warp-lang==1.16.0
+newton==1.5.2
+websockets==16.1.1
+# Match Arena's lockfile: newer Rerun/IPython require psutil >=7, while rl-games requires <6.
+rerun-sdk==0.31.4
+ipython==9.10.1
+psutil==5.9.8

@@ -22,15 +22,18 @@ from typing import Any
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
+from isaaclab.envs.mdp.actions.pink_task_space_actions import PinkInverseKinematicsAction
 from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
 from isaaclab.managers import DatasetExportMode, EventTermCfg, SceneEntityCfg
 from isaaclab.managers.recorder_manager import RecorderManagerBaseCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.datasets import HDF5DatasetFileHandler
 from isaaclab.utils.string import string_to_callable
+from isaaclab_physx.sim.schemas import PhysxRigidBodyPropertiesCfg
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
 from autodata_interfaces.env.env_profile import EnvironmentProfile, convert_event_params
+from autodata_interfaces.env.pink_ik_action import PinkInverseKinematicsActionSharedUrdf
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 
 
@@ -58,6 +61,7 @@ def get_env_name_from_dataset(input_file_path: str) -> str:
     dataset_file_handler = HDF5DatasetFileHandler()
     dataset_file_handler.open(input_file_path)
     env_name = dataset_file_handler.get_env_name()
+    dataset_file_handler.close()
     assert env_name is not None, "Environment name not found in dataset"
     return env_name
 
@@ -96,7 +100,7 @@ def apply_env_profile(env_cfg: Any, profile: EnvironmentProfile, env_name: str) 
                 spawn=sim_utils.UsdFileCfg(
                     usd_path=usd_path,
                     scale=add_spec.scale,
-                    rigid_props=sim_utils.RigidBodyPropertiesCfg(**add_spec.rigid_props),
+                    rigid_props=PhysxRigidBodyPropertiesCfg(**add_spec.rigid_props),
                 ),
             ),
         )
@@ -153,6 +157,7 @@ def setup_env_config(
     generation_policy_params: GenerationPolicy,
     recorder_cfg: RecorderManagerBaseCfg | None = None,
     env_profile: EnvironmentProfile | None = None,
+    enable_cameras: bool = False,
 ) -> tuple[Any, Any]:
     """Configure the environment for data generation.
 
@@ -171,12 +176,23 @@ def setup_env_config(
         recorder_cfg: Optional recorder manager config; defaults to an action/state recorder.
         env_profile: Optional environment profile overlaid on the parsed config (scene additions,
             reset-event changes) before the generation-specific adjustments below.
+        enable_cameras: Record the task's image observations. Defaults to low-dimensional
+            observations, excluding the cameras used for teleoperation previews.
 
     Returns:
         A tuple of the environment configuration and the success termination condition.
     """
     env_cfg = parse_env_cfg(env_name, device=device, num_envs=num_envs)
     env_cfg.env_name = env_name
+
+    # Lab's Pink controller forces a USD conversion per instance. Resolve the
+    # shared model once before creating the independent per-environment solvers.
+    for action_cfg in vars(env_cfg.actions).values():
+        if getattr(action_cfg, "class_type", None) in (
+            PinkInverseKinematicsAction,
+            f"{PinkInverseKinematicsAction.__module__}:{PinkInverseKinematicsAction.__name__}",
+        ):
+            action_cfg.class_type = PinkInverseKinematicsActionSharedUrdf
 
     if env_profile is not None:
         apply_env_profile(env_cfg, env_profile, env_name)
@@ -189,6 +205,18 @@ def setup_env_config(
     # Configure for data generation
     env_cfg.terminations = None
     env_cfg.observations.policy.concatenate_terms = False
+
+    # Lab 3.0 humanoid tasks include teleoperation preview cameras. Keep the
+    # existing low-dimensional generation workflow unless images are requested.
+    if not enable_cameras and hasattr(env_cfg, "image_obs_list"):
+        for image_name in env_cfg.image_obs_list:
+            image_term = getattr(env_cfg.observations.policy, image_name, None)
+            if image_term is not None:
+                sensor_cfg = image_term.params.get("sensor_cfg")
+                if sensor_cfg is not None:
+                    setattr(env_cfg.scene, sensor_cfg.name, None)
+                setattr(env_cfg.observations.policy, image_name, None)
+        env_cfg.image_obs_list = []
 
     # Setup recorders
     if recorder_cfg is None:

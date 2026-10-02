@@ -7,7 +7,7 @@
       "question": "Use AutoData to generate 10 Franka cube-stacking demonstrations from the annotated dataset and validate the output.",
       "expected_skill": "autodata-generate-datasets",
       "expected_script": "skills/autodata-generate-datasets/scripts/run_generation.sh",
-      "ground_truth": "Run generate_dataset.py with --alg mimicgen, --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0, --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml, --embodiment autodata_examples/embodiments/franka_ik_rel.yaml, --input_file the annotated Franka dataset, --generation_num_trials 10, then validate with validate_dataset.py.",
+      "ground_truth": "Run generate_dataset.py with --alg mimicgen, --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel, --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml, --embodiment autodata_examples/embodiments/franka_ik_rel.yaml, --input_file the annotated Franka dataset, --generation_num_trials 10, then validate with validate_dataset.py.",
       "expected_behavior": [
         "Identify a single-arm Franka task and select the mimicgen algorithm.",
         "Use the default container (no cuRobo needed).",

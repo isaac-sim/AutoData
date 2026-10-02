@@ -45,8 +45,11 @@ fi
 # Run the passed command as the dev user (bash -i so the python/pytest aliases expand), or drop into
 # an interactive shell.
 if [ $# -ge 1 ]; then
+    # Quote each argument before passing it to the interactive shell so shell
+    # aliases work without splitting paths, marker expressions, or Python code.
+    printf -v AUTODATA_COMMAND '%q ' "$@"
     exec sudo --preserve-env -u "$DOCKER_RUN_USER_NAME" \
-        -- env HOME="/home/$DOCKER_RUN_USER_NAME" bash -ic "$*"
+        -- env HOME="/home/$DOCKER_RUN_USER_NAME" bash -ic "${AUTODATA_COMMAND}"
 else
     exec su "$DOCKER_RUN_USER_NAME"
 fi

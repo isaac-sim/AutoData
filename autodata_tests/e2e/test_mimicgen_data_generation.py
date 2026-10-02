@@ -24,7 +24,7 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
             TestPaths.python_path,
             TestPaths.generate_dataset_script,
             "--env_name",
-            "Isaac-Stack-Cube-Franka-IK-Rel-v0",
+            "IsaacContrib-Stack-Cube-Franka-IK-Rel",
             "--alg",
             "mimicgen",
             "--task_descriptor",

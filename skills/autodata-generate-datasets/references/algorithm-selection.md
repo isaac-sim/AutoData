@@ -25,7 +25,7 @@ task's motion requirements.
 
 | Algorithm | Arms | Motion planning | Container | Example task / embodiment |
 |-----------|------|-----------------|-----------|---------------------------|
-| `mimicgen` | Single | No | default | `Isaac-Stack-Cube-Franka-IK-Rel-v0`, `franka_cube_stack.yaml` / `franka_ik_rel.yaml` |
+| `mimicgen` | Single | No | default | `IsaacContrib-Stack-Cube-Franka-IK-Rel`, `franka_cube_stack.yaml` / `franka_ik_rel.yaml` |
 | `dexmimicgen` | Multi / bimanual | No | default | `gr1_pick_place.yaml` / `gr1_ik_abs.yaml`; `g1_pick_place.yaml` / `g1_ik_abs.yaml` |
 | `skillgen` | Single-arm Franka (current release) | Yes (cuRobo) | `-c` (cuRobo) | `franka_bin_stack_skillgen.yaml` / `franka_ik_rel_skillgen.yaml` |
 

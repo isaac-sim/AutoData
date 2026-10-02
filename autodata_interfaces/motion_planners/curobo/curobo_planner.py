@@ -7,6 +7,7 @@ import logging
 import numpy as np
 import torch
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import warp as wp
@@ -30,6 +31,11 @@ from autodata_utils import pose_math as PoseUtils
 
 if TYPE_CHECKING:
     from autodata_interfaces.datastream.datastream import Datastream
+
+# cuRobo ebb71702 still uses this namespace in WorldMeshCollision. Warp 1.16
+# exposes the same bridge at the top level and no longer provides warp.torch.
+if not hasattr(wp, "torch"):
+    wp.torch = SimpleNamespace(device_from_torch=wp.device_from_torch)
 
 
 class PlannerLogger:
