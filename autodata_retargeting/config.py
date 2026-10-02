@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Task/pair retargeting configuration (the retarget-descriptor YAML schema).
@@ -16,6 +14,18 @@ import yaml
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
+
+
+def _as_bool(value: Any, field_name: str) -> bool:
+    """Require a real YAML boolean, rejecting coercible non-booleans (e.g. the string ``"false"``).
+
+    ``bool("false")`` is ``True``, so a quoted flag in the descriptor would silently flip behavior;
+    reject anything that is not already a ``bool``.
+    """
+    assert isinstance(
+        value, bool
+    ), f"{field_name} must be a boolean (true/false), got {value!r} ({type(value).__name__})."
+    return value
 
 
 @dataclass
@@ -404,6 +414,12 @@ class RetargetConfig:
         with open(path) as f:
             data = yaml.safe_load(f) or {}
 
+        # Reject unknown top-level keys so typos (e.g. ``replay_speeed``) fail loudly instead of
+        # silently taking the default. The descriptor keys mirror this dataclass's fields exactly.
+        allowed = {f.name for f in fields(cls)}
+        unknown = set(data) - allowed
+        assert not unknown, f"unknown retarget descriptor keys {sorted(unknown)}; allowed: {sorted(allowed)}."
+
         def _resolve(ref: str) -> str:
             ref_path = Path(ref)
             return str(ref_path if ref_path.is_absolute() else (config_dir / ref_path).resolve())
@@ -420,7 +436,7 @@ class RetargetConfig:
             hand_interp_band=(tuple(data["hand_interp_band"]) if data.get("hand_interp_band") is not None else None),
             joint_mapping=data.get("joint_mapping"),
             num_interpolation_steps=int(data.get("num_interpolation_steps", 0)),
-            init_robot_from_ik=bool(data.get("init_robot_from_ik", False)),
+            init_robot_from_ik=_as_bool(data.get("init_robot_from_ik", False), "init_robot_from_ik"),
             replay_speed=float(data.get("replay_speed", 1.0)),
             max_eef_linear_velocity=(
                 None if data.get("max_eef_linear_velocity") is None else float(data["max_eef_linear_velocity"])
@@ -428,7 +444,7 @@ class RetargetConfig:
             max_eef_rotation_speed=(
                 None if data.get("max_eef_rotation_speed") is None else float(data["max_eef_rotation_speed"])
             ),
-            stop_early_on_failure=bool(data.get("stop_early_on_failure", False)),
+            stop_early_on_failure=_as_bool(data.get("stop_early_on_failure", False), "stop_early_on_failure"),
             max_translation_error=(
                 None if data.get("max_translation_error") is None else float(data["max_translation_error"])
             ),
@@ -448,6 +464,6 @@ class RetargetConfig:
             default_object_tracking=data.get("default_object_tracking"),
             subtasks=data.get("subtasks", {}),
             synchronization=[list(group) for group in data.get("synchronization", [])],
-            write_datagen_info=bool(data.get("write_datagen_info", False)),
+            write_datagen_info=_as_bool(data.get("write_datagen_info", False), "write_datagen_info"),
             eef_reference_link=data.get("eef_reference_link"),
         )

@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Cross-embodiment dataset retargeting entrypoint (replay-based).
@@ -46,8 +44,10 @@ The task descriptor is shared with the source dataset (same subtasks / EEF names
 for the generation policy (export mode, seed) and to validate that both embodiments agree on the
 task's EEF names.
 
-Note: the output records target actions + states. Re-run ``annotate_demos.py`` on it before using
-it as a source for ``generate_dataset.py`` (the subtask signals are not carried over).
+Note: the output records target actions + states. When the descriptor sets ``write_datagen_info:
+true`` the full ``obs/datagen_info`` and the forwarded ``subtask_term_signals`` are written too, so
+the output is a drop-in source for ``generate_dataset.py`` with no separate ``annotate_demos.py``
+pass; otherwise re-run ``annotate_demos.py`` on it first (the subtask signals are not carried over).
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -153,4 +153,5 @@ if __name__ == "__main__":
         run(args_cli, simulation_app)
     except KeyboardInterrupt:
         print("\nInterrupted; exiting.")
-    simulation_app.close()
+    finally:
+        simulation_app.close()

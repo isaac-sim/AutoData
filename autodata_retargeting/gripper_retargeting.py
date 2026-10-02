@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Gripper / hand passthrough remapping (binary and interpolation hand policies)."""
@@ -221,9 +219,11 @@ def build_passthrough_remapper(
             ), f"hand_interp_band must be [lo, hi] with 0 <= lo < hi <= 1, got {hand_interp_band}"
             assert hand_policy == "interpolation", "hand_interp_band only applies to --hand_policy interpolation."
         for eef_name in target_eef_names:
-            assert (
-                len(target_hand_postures[eef_name]["open"]) == target_layout[eef_name]
-            ), f"target hand_open[{eef_name!r}] must have {target_layout[eef_name]} values"
+            for posture in ("open", "close"):
+                got = len(target_hand_postures[eef_name][posture])
+                assert (
+                    got == target_layout[eef_name]
+                ), f"target hand_{posture}[{eef_name!r}] must have {target_layout[eef_name]} values, got {got}"
         if hand_policy == "joint_mapping":
             assert (
                 joint_mapping
