@@ -28,6 +28,23 @@ def _as_bool(value: Any, field_name: str) -> bool:
     return value
 
 
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """A ``SafeLoader`` that rejects duplicate mapping keys instead of silently keeping the last one.
+
+    ``yaml.safe_load`` is last-key-wins, so a repeated descriptor key (``replay_speed: 1`` twice) would
+    quietly override an earlier value before any schema validation runs. Checking in ``construct_mapping``
+    covers every mapping node, including nested ones (subtasks, offsets, ...).
+    """
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            assert key not in seen, f"duplicate key {key!r} in retarget descriptor YAML."
+            seen.add(key)
+        return super().construct_mapping(node, deep)
+
+
 @dataclass
 class DefaultObjectTracking:
     """Default object-tracking interpolation parameters, overridable per :class:`SubtaskObjectTracking`.
@@ -412,7 +429,7 @@ class RetargetConfig:
         """Load a retarget descriptor; the embodiment paths resolve relative to the YAML's dir."""
         config_dir = Path(path).resolve().parent
         with open(path) as f:
-            data = yaml.safe_load(f) or {}
+            data = yaml.load(f, Loader=_UniqueKeySafeLoader) or {}
 
         # Reject unknown top-level keys so typos (e.g. ``replay_speeed``) fail loudly instead of
         # silently taking the default. The descriptor keys mirror this dataclass's fields exactly.
