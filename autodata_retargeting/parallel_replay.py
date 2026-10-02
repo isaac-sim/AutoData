@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Parallel (multi-env) retargeting replay.
@@ -68,9 +66,7 @@ class ReplayParams:
     config: Any = None  # RetargetConfig (early-abort thresholds, synchronization, speed caps)
 
 
-async def _async_step(
-    env, env_id, action_queue, target_adapter, target_eef_pose_dict, passthrough_action_dict
-) -> None:
+async def _async_step(env, env_id, action_queue, target_adapter, target_eef_pose_dict, passthrough_action_dict) -> None:
     """Encode one action for ``env_id`` and hand it to ``env_loop`` (which batches all envs and steps)."""
     action = target_adapter.target_eef_pose_to_action(
         target_eef_pose_dict=target_eef_pose_dict,

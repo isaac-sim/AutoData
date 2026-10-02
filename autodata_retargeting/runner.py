@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Top-level orchestration: resolve config, build the env, replay every episode."""
@@ -118,6 +116,7 @@ def run(args, simulation_app) -> int:
     np.random.seed(generation_policy.seed)
     torch.manual_seed(generation_policy.seed)
 
+    dataset_file_handler = None
     try:
         target_adapter.bind_env(env)
         env.reset()
@@ -179,4 +178,6 @@ def run(args, simulation_app) -> int:
         )
         return replayer.run(provider, num_envs, simulation_app)
     finally:
+        if dataset_file_handler is not None:
+            dataset_file_handler.close()
         env.close()

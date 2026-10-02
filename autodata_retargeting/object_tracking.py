@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Build object-centric carry segments and subtask boundaries from the descriptor's subtasks.
@@ -116,7 +114,10 @@ def _resolve_subtask_end(
             return None
         step = _event_step(sig.flatten() > 0.5, start, rising=(method == "signal_on"))
     if step is None:
-        warnings.warn(f"subtask_end {method!r} never fired after step {start}; boundary set to trajectory end.", 2)
+        warnings.warn(
+            f"subtask_end {method!r} never fired after step {start}; boundary set to trajectory end.",
+            stacklevel=2,
+        )
         return None
     return max(0, min(num_steps - 1, step + offset))
 

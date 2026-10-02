@@ -1,6 +1,4 @@
-# Copyright (c) 2026, The Isaac AutoData Project Developers.
-# All rights reserved.
-#
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """The retargeting replay engine: reset state, IK warm-start, closed-loop replay, error report."""
@@ -580,18 +578,16 @@ def apply_subtask_offsets(
         subtasks, gripper_closed, signals, num_steps, eef_name_map, close_fraction
     ):
         off = getattr(st, "offset", None)
-        per_eef.setdefault(eef, []).append(
-            {
-                "start": start,
-                "end": end,
-                "trans": list(off.translation) if (off and off.translation) else [0.0, 0.0, 0.0],
-                "aa": list(off.axis_angle) if (off and off.axis_angle) else [0.0, 0.0, 0.0],
-                "frame": (off.frame if (off and off.frame) else None) or st.object_ref or st.frame_ref or "eef",
-                "i_start": off.interpolation_start if off else 0,
-                "i_end": off.interpolation_end if off else 0,
-                "has_offset": off is not None,
-            }
-        )
+        per_eef.setdefault(eef, []).append({
+            "start": start,
+            "end": end,
+            "trans": list(off.translation) if (off and off.translation) else [0.0, 0.0, 0.0],
+            "aa": list(off.axis_angle) if (off and off.axis_angle) else [0.0, 0.0, 0.0],
+            "frame": (off.frame if (off and off.frame) else None) or st.object_ref or st.frame_ref or "eef",
+            "i_start": off.interpolation_start if off else 0,
+            "i_end": off.interpolation_end if off else 0,
+            "has_offset": off is not None,
+        })
     for eef, segs in per_eef.items():
         if eef not in target_eef_poses or not any(s["has_offset"] for s in segs):
             continue
@@ -1038,9 +1034,7 @@ def replay_episode_on_target(
     """
     subtasks = subtasks or {}
     default_object_tracking = default_object_tracking or DefaultObjectTracking()
-    need_source_objects = any(
-        st.object_tracking is not None for entries in subtasks.values() for st in entries
-    )
+    need_source_objects = any(st.object_tracking is not None for entries in subtasks.values() for st in entries)
     if prep is None:
         prep = prepare_episode(
             env,
