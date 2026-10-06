@@ -87,7 +87,7 @@ jobs:
           git lfs install --local
           git lfs pull
 
-      - name: Run E2E tests
+      - name: Run tests
         # The GPU runners are shared. Use an empty job-temporary Docker config so
         # stale credentials cannot override anonymous access to the public base image,
         # and this job cannot modify the runner's persistent Docker login.
