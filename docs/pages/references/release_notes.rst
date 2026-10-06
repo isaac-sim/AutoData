@@ -4,8 +4,9 @@ Release Notes
 Arena 0.3 / Isaac Lab 3.0 Upgrade
 -----------------------------------
 
-This checkout pins Arena ``016cba57ca565c7a3ec3053f6c0d7d76b518762f`` and its nested
-Isaac Lab revision, with Isaac Sim 6.1.0 Docker images. See the
+This checkout pins Arena 0.3.1 at ``481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7`` and its nested
+Isaac Lab commit ``28a386f063e41c04c07f50e63eefb83fd8408fbe`` (v3.0.0-EA plus 3 commits),
+with Isaac Sim 6.1.0 Docker images. See the
 :doc:`support matrix <../quickstart/support_matrix>` for the complete version set.
 
 * Workflow commands, environment profiles, and source dataset metadata use Lab's

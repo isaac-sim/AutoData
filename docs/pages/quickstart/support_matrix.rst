@@ -40,9 +40,9 @@ Isaac Lab or Isaac Lab-Arena revisions.
    * - Isaac Sim
      - ``nvcr.io/nvidia/isaac-sim:6.1.0`` (Docker) or ``isaacsim==6.1.0.0`` (conda/pip)
    * - Isaac Lab
-     - 3.0.0 at commit ``ae37b028ea415c91ea2bc32609efcd759ed2b974``
+     - 3.0.0 at commit ``28a386f063e41c04c07f50e63eefb83fd8408fbe``
    * - Isaac Lab-Arena
-     - 0.3.0 at commit ``016cba57ca565c7a3ec3053f6c0d7d76b518762f``
+     - 0.3.1 at commit ``481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7``
    * - Python and PyTorch
      - Python 3.12 and PyTorch 2.11.0 with CUDA 12.8
    * - NumPy, Warp, and Newton

@@ -89,8 +89,9 @@ The first launch builds the development image and opens a shell in the repositor
 `/workspaces/autodata`. Subsequent launches reuse the image. Use `./docker/run_docker.sh -c` to include cuRobo
 for SkillGen workflows.
 
-This checkout uses Isaac Sim 6.1.0, Isaac Lab 3.0.0, and Arena commit
-`016cba57ca565c7a3ec3053f6c0d7d76b518762f`. After updating an existing clone, run
+This checkout uses Isaac Sim 6.1.0, Arena 0.3.1 at commit
+`481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7`, and its nested Isaac Lab at commit
+`28a386f063e41c04c07f50e63eefb83fd8408fbe` (v3.0.0-EA plus 3 commits). After updating an existing clone, run
 `git submodule update --init --recursive` and rebuild with `./docker/run_docker.sh -c -r`.
 Commands, environment profiles, and source dataset metadata use Lab 3.0's `IsaacContrib-*`
 task names directly. For example, Franka recording uses

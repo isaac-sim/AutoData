@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Keep Arena and cuRobo dependencies compatible with the pinned Lab/Sim stack.
-# These versions match Arena 016cba57's validated runtime overrides.
+# These versions match Arena 481f5ae5's validated runtime overrides.
 numpy==2.3.1
 torch==2.11.0
 torchvision==0.26.0
