@@ -147,10 +147,17 @@ def iter_subtask_spans(
                 end, boundary = num_steps - 1, None
             else:
                 assert (
-                    st.subtask_end is not None
+                    st.algo_params.subtask_end is not None
                 ), f"subtask {i} of EEF {eef_key!r} needs a 'subtask_end' (only the last subtask may omit it)."
                 boundary = _resolve_subtask_end(
-                    st.subtask_end, eef_key, start, num_steps, gripper_closed, signals, name_map, close_fraction
+                    st.algo_params.subtask_end,
+                    eef_key,
+                    start,
+                    num_steps,
+                    gripper_closed,
+                    signals,
+                    name_map,
+                    close_fraction,
                 )
                 end = num_steps - 1 if boundary is None else boundary
             end = max(end, start)
@@ -178,7 +185,8 @@ def carry_segments_and_boundaries_from_subtasks(
     non-final subtask ends are returned as the boundary steps where the replayer holds its settle, each
     mapped to its settle-hold cap (``SubtaskEnd.settle_steps`` if set, else ``default_settle_steps``).
 
-    ``subtasks`` values are :class:`~.config.Subtask` objects (duck-typed). Keyed by *source* EEF name;
+    ``subtasks`` values are core ``Subtask`` objects whose ``algo_params`` is a
+    :class:`~.config.RetargetSubtaskAlgoParams`. Keyed by *source* EEF name;
     ``eef_name_map`` renames each onto the target EEF the segment commands. ``gripper_closed`` is keyed by
     *target* EEF name (per-step closedness fraction); ``signals`` by signal name.
 
@@ -196,18 +204,19 @@ def carry_segments_and_boundaries_from_subtasks(
         subtasks, gripper_closed, signals, num_steps, eef_name_map, close_fraction
     ):
         eef_boundaries = boundaries.setdefault(target_eef, {})
+        params = st.algo_params
         if boundary is not None:
-            override = st.subtask_end.settle_steps
+            override = params.subtask_end.settle_steps
             cap = default_settle_steps if override is None else override
             eef_boundaries[boundary] = max(eef_boundaries.get(boundary, 0), cap)
-        if st.name is not None:
-            name_end_step[st.name] = (target_eef, end)
-        if st.object_tracking is not None:
-            iss, isa = st.object_tracking.interpolation_step_start, st.object_tracking.interpolation_step_after
+        if params.name is not None:
+            name_end_step[params.name] = (target_eef, end)
+        if params.object_tracking is not None:
+            iss, isa = params.object_tracking.interpolation_step_start, params.object_tracking.interpolation_step_after
             segments.append(
                 CarrySegment(
                     eef=target_eef,
-                    obj=st.object_tracking.object,
+                    obj=params.object_tracking.object,
                     start=start,
                     end=end,
                     interp_start=default_interp_start if iss is None else iss,
