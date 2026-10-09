@@ -19,7 +19,7 @@ from .config import RetargetConfig
 from .eef_offset import build_eef_offsets, compose_retarget_eef_offsets
 from .gripper_retargeting import build_passthrough_remapper, load_hand_postures
 from .provider import DatasetReplayProvider
-from .replay import resolve_eef_reference_links, validate_eef_agreement
+from .replay import ReplayContext, resolve_eef_reference_links, validate_eef_agreement
 from .replayer import Replayer
 
 
@@ -161,21 +161,19 @@ def run(args, simulation_app) -> int:
             target_runs=getattr(args, "target_runs", None),
         )
         # Replayer: executes each plan on the target robot (single-env or parallel).
-        replayer = Replayer(
-            env=env,
+        ctx = ReplayContext(
+            config=config,
             source_adapter=source_adapter,
             target_adapter=target_adapter,
             remap_passthrough=remap_passthrough,
-            config=config,
-            generation_policy=generation_policy,
             success_term=success_term,
             robot_asset_name=getattr(target_adapter, "robot_asset_name", "robot"),
             target_default_state=target_default_state,
             eef_offsets=eef_offsets,
             eef_reference_link=eef_reference_link,
             source_hand_postures=source_hand_postures,
-            output_file=args.output_file,
         )
+        replayer = Replayer(env=env, ctx=ctx, generation_policy=generation_policy, output_file=args.output_file)
         return replayer.run(provider, num_envs, simulation_app)
     finally:
         if dataset_file_handler is not None:
