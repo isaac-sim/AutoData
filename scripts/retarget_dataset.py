@@ -2,7 +2,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Cross-embodiment dataset retargeting entrypoint (replay-based).
+"""Cross-embodiment dataset retargeting entrypoint (replay-based, experimental).
 
 Usage (config-based — the task/pair parameters live in a retarget descriptor YAML)::
 

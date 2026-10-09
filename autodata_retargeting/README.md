@@ -1,5 +1,9 @@
 # Cross-embodiment dataset retargeting
 
+> **Experimental.** This package is a self-contained, experimental feature. Most of its replay and
+> segmentation logic is separate from the AutoData core generation pipeline, and its interfaces (the
+> retarget descriptor schema, the Python API) may change or be removed without notice.
+
 Replay a demonstration dataset recorded on one robot (the **source** embodiment) onto a different
 robot (the **target** embodiment), one output demo per input demo. The source end-effector (EEF)
 trajectory is transferred verbatim onto the target robot and the resulting rollout is recorded — no
