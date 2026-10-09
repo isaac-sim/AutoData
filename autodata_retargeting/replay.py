@@ -5,6 +5,7 @@
 
 import torch
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any
 
 import isaaclab.utils.math as math_utils
@@ -15,7 +16,7 @@ from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 from autodata_interfaces.tasks.subtask_spec import Subtask
 from autodata_utils.tensor_utils import as_torch
 
-from .config import DefaultObjectTracking
+from .config import RetargetConfig
 from .gripper_retargeting import PassthroughRemapper, _hand_close_fraction
 from .object_tracking import CarrySegment, carry_segments_and_boundaries_from_subtasks, iter_subtask_spans
 from .trajectory import (
@@ -39,20 +40,6 @@ from .util import (
 # is within these tolerances. Used only for the IK-performance report, not for success.
 _IK_POS_TOL_M = 0.05
 _IK_ROT_TOL_DEG = 15.0
-
-# Per-step EEF motion below these tolerances is treated as "settled" (motion has died down), used to
-# end a segment settle-hold early. Compared as a delta between consecutive steps, so the pitch/roll
-# frame offset that inflates absolute tracking error does not affect it.
-_SETTLE_POS_TOL_M = 0.01
-_SETTLE_ROT_TOL_DEG = 2.5
-# At a subtask boundary (grasp / place) the replayer holds the pose until the robot's joints -- arm AND
-# gripper -- stop moving, up to ``config.segment_settle_steps`` extra sim steps (a run knob), then exits
-# early, so a slow gripper (e.g. the under-actuated Robotiq 2F-85 linkage) finishes closing/opening before
-# the arm advances. Non-boundary waypoints still replay at source speed (one step). "Stopped" is measured
-# by per-step joint *position* change, NOT joint_vel: the Robotiq linkage reports a velocity-saturated
-# ~1 rad/s joint forever even at rest, whereas the position delta decays cleanly to ~0 once it has closed.
-# A fast gripper settles in a few steps and exits well before the cap.
-_JOINT_SETTLE_TOL = 0.003  # [rad or m] max per-step joint position change below which the robot is settled
 
 _IK_SOLVE_ITERATIONS = 80
 """Iterations of the differential IK solver used to converge the first-pose joint configuration."""
@@ -642,43 +629,99 @@ def subtasks_need_source_objects(subtasks: dict) -> bool:
     return False
 
 
+@dataclass
+class ReplayContext:
+    """Per-run replay context shared by every episode, on both the sequential and the parallel path.
+
+    Built once per run from the resolved :class:`~.config.RetargetConfig`; the replay knobs are read
+    straight from ``config``, the rest are the run artifacts resolved from it against the live env.
+
+    Args:
+        config: The retarget descriptor (replay knobs, subtasks, synchronization, ...).
+        source_adapter: Adapter used to extract the source passthrough (gripper) actions.
+        target_adapter: Adapter used to re-encode each step into the target's action space.
+        remap_passthrough: Maps source passthrough actions to the target passthrough layout.
+        success_term: Optional success termination term evaluated each step.
+        robot_asset_name: Scene key of the target robot articulation.
+        target_default_state: Snapshot of the target env's home scene state (captured once from a clean
+            reset); the target robot starts each replay from its ``robot_asset_name`` entry.
+        eef_offsets: Resolved per-EEF source->target grasp-frame offsets (4x4), or ``None``.
+        eef_reference_link: Resolved controlled-link reconstruction (see
+            :func:`resolve_eef_reference_links`), or ``None`` to use the observed ``eef_pose``.
+        source_hand_postures: Source ``open`` / ``close`` hand postures per target EEF name, or ``None``.
+    """
+
+    config: RetargetConfig
+    source_adapter: EmbodimentAdapter
+    target_adapter: EmbodimentAdapter
+    remap_passthrough: PassthroughRemapper
+    success_term: TerminationTermCfg | None
+    robot_asset_name: str
+    target_default_state: dict
+    eef_offsets: dict[str, torch.Tensor] | None
+    eef_reference_link: dict[str, str] | str | None
+    source_hand_postures: dict[str, dict[str, list[float]]] | None
+
+
+@dataclass
+class PreparedEpisode:
+    """An episode reset into its env and turned into per-EEF commanded sequences, ready for the step loop.
+
+    Args:
+        eef_names: Target EEF names, in adapter order.
+        commanded_poses: Per-EEF commanded 4x4 poses, lead-in included, shape ``(num_steps, 4, 4)``.
+        commanded_passthrough: Per-channel commanded passthrough (e.g. gripper) actions, lead-in included.
+        num_interpolation_steps: Lead-in steps at the start of each commanded sequence (0 after an IK
+            warm start).
+        carry_segments: Spans over which an EEF tracks an object instead of the source EEF path.
+        source_objects: Source per-object pose trajectories (only when subtasks need them), else empty.
+        source_signals: Subtask-term signals resampled to the trajectory length, shape ``(T, 1)``, or empty.
+        segment_ends: ``{eef: {trajectory step: settle cap}}`` for the per-EEF motion-aware settle.
+        sync_of: ``{eef: {end step: group id}}`` cross-EEF rendezvous from ``synchronization``.
+        group_members: ``{group id: [(eef, end step)]}``.
+    """
+
+    eef_names: list[str]
+    commanded_poses: dict[str, torch.Tensor]
+    commanded_passthrough: dict[str, torch.Tensor]
+    num_interpolation_steps: int
+    carry_segments: list[CarrySegment]
+    source_objects: dict[str, torch.Tensor]
+    source_signals: dict[str, torch.Tensor]
+    segment_ends: dict[str, dict[int, int]]
+    sync_of: dict[str, dict[int, int]]
+    group_members: dict[int, list[tuple[str, int]]]
+
+    @property
+    def num_steps(self) -> int:
+        """Length of the commanded sequence (lead-in included)."""
+        return self.commanded_poses[self.eef_names[0]].shape[0]
+
+
 def prepare_episode(
-    env: Any,
-    env_id: int,
-    episode: EpisodeData,
-    target_adapter: EmbodimentAdapter,
-    source_adapter: EmbodimentAdapter,
-    remap_passthrough: PassthroughRemapper,
-    target_default_state: dict,
-    robot_asset_name: str,
-    reference_pose: str,
-    eef_name_map: dict[str, str] | None,
-    replay_speed: float,
-    retarget_frame: str,
-    scene_translation: tuple[float, float, float],
-    eef_offsets: dict[str, torch.Tensor] | None,
-    num_interpolation_steps: int,
-    init_robot_from_ik: bool,
-    subtasks: dict,
-    default_object_tracking: DefaultObjectTracking,
-    source_hand_postures: dict[str, dict[str, list[float]]] | None,
-    need_source_objects: bool,
-    reset_sim: bool,
-    eef_reference_link: dict[str, str] | str | None = None,
-    write_datagen_info: bool = False,
-    segment_settle_steps: int = 0,
-    max_eef_linear_velocity: float | None = None,
-    max_eef_rotation_speed: float | None = None,
-    synchronization: list | None = None,
-) -> dict:
+    ctx: ReplayContext, env: Any, env_id: int, episode: EpisodeData, reset_sim: bool
+) -> PreparedEpisode:
     """Reset ``env_id`` to the source episode's scene and build its commanded trajectory.
 
     Shared by the sequential replay and the parallel workers. Everything here is env-side (reset) plus
-    pure trajectory math, keyed by ``env_id``. ``reset_sim`` triggers a global ``env.sim.reset()`` (only
-    valid single-env; parallel passes False and relies on per-env ``reset_to``). Returns a dict with the
-    commanded pose/passthrough sequences, step count, segment boundaries, carry segments, and (when
-    requested) the source object trajectories -- ready for the step loop.
+    pure trajectory math, keyed by ``env_id``.
+
+    Args:
+        ctx: Per-run replay context.
+        env: The target env.
+        env_id: Index of the env to reset and plan for.
+        episode: The source episode to retarget.
+        reset_sim: Trigger a global ``env.sim.reset()`` first (only valid single-env; parallel passes False
+            and relies on per-env ``reset_to``).
+
+    Returns:
+        The commanded sequences, segment boundaries, carry segments and (when needed) the source object
+        trajectories, ready for the step loop.
     """
+    config = ctx.config
+    target_adapter = ctx.target_adapter
+    eef_name_map = config.eef_name_map
+    subtasks = config.subtasks
     eef_names = list(target_adapter.get_eef_names())
 
     # When eef_reference_link is set, rebuild the achieved ("eef_pose") reference at each EEF's
@@ -686,25 +729,25 @@ def prepare_episode(
     # can be a joint short of the gripper. Only "eef_pose" is a link-observed quantity; "target_eef_pose"
     # is already the commanded controlled-link pose, so it needs no reconstruction.
     def _achieved_eef_poses() -> dict[str, torch.Tensor]:
-        if eef_reference_link is None:
+        if ctx.eef_reference_link is None:
             return source_datagen_poses(episode, eef_names, "eef_pose", eef_name_map)
-        body_names = list(env.scene[robot_asset_name].data.body_names)
-        return source_eef_poses_at_link(episode, eef_names, eef_reference_link, body_names, eef_name_map)
+        body_names = list(env.scene[ctx.robot_asset_name].data.body_names)
+        return source_eef_poses_at_link(episode, eef_names, ctx.eef_reference_link, body_names, eef_name_map)
 
-    if reference_pose == "eef_pose":
+    if config.reference_pose == "eef_pose":
         target_eef_poses = _achieved_eef_poses()
     else:
-        target_eef_poses = source_datagen_poses(episode, eef_names, reference_pose, eef_name_map)
+        target_eef_poses = source_datagen_poses(episode, eef_names, config.reference_pose, eef_name_map)
 
     source_actions = episode.data["actions"]
-    source_passthrough = source_adapter.actions_to_passthrough_actions(source_actions)
+    source_passthrough = ctx.source_adapter.actions_to_passthrough_actions(source_actions)
     if eef_name_map:
         source_passthrough = {eef_name_map.get(name, name): value for name, value in source_passthrough.items()}
-    target_passthrough = remap_passthrough(source_passthrough)
+    target_passthrough = ctx.remap_passthrough(source_passthrough)
 
-    source_objects = source_object_poses(episode) if need_source_objects else {}
+    source_objects = source_object_poses(episode) if subtasks_need_source_objects(subtasks) else {}
     # Signals are read when a subtask ends on a signal event and/or to forward them into the output.
-    needs_signals = write_datagen_info or any(
+    needs_signals = config.write_datagen_info or any(
         st.algo_params.subtask_end is not None and st.algo_params.subtask_end.method in ("signal_on", "signal_off")
         for entries in subtasks.values()
         for st in entries
@@ -713,30 +756,30 @@ def prepare_episode(
     # Per-EEF source gripper closedness (0 open -> 1 closed), keyed by target EEF name (source_passthrough
     # was already renamed via eef_name_map); used to detect gripper_open/close subtask boundaries.
     source_gripper_closed: dict[str, torch.Tensor] = {}
-    if source_hand_postures:
+    if ctx.source_hand_postures:
         for eef in eef_names:
-            posture, hand = source_hand_postures.get(eef), source_passthrough.get(eef)
+            posture, hand = ctx.source_hand_postures.get(eef), source_passthrough.get(eef)
             if posture is None or hand is None:
                 continue
             src_open = torch.tensor(posture["open"], dtype=hand.dtype, device=hand.device)
             src_close = torch.tensor(posture["close"], dtype=hand.dtype, device=hand.device)
             source_gripper_closed[eef] = _hand_close_fraction(hand, src_open, src_close).unsqueeze(1)  # (T, 1)
 
-    if replay_speed != 1.0:
+    if config.replay_speed != 1.0:
         orig_num_steps = target_eef_poses[eef_names[0]].shape[0]
         (target_eef_poses,), (target_passthrough,), _ = resample_trajectory(
             [target_eef_poses],
             [target_passthrough],
             num_steps=orig_num_steps,
             segment_ends=[],
-            replay_speed=replay_speed,
+            replay_speed=config.replay_speed,
         )
         # Per-step value dicts resampled nearest-neighbor (binary/gripper/signals stay sharp).
         extras = [d for d in (source_objects,) if d]
         value_dicts = [d for d in (source_gripper_closed, source_signals) if d]
         if extras or value_dicts:
             resampled, resampled_values, _ = resample_trajectory(
-                extras, value_dicts, num_steps=orig_num_steps, segment_ends=[], replay_speed=replay_speed
+                extras, value_dicts, num_steps=orig_num_steps, segment_ends=[], replay_speed=config.replay_speed
             )
             resampled_iter, resampled_values_iter = iter(resampled), iter(resampled_values)
             if source_objects:
@@ -755,23 +798,25 @@ def prepare_episode(
     # (num_envs, ...) default so the source object poses (also (1, ...)) shape-match and get applied.
     reset_state = retargeted_initial_state(
         episode.data["initial_state"],
-        _slice_scene_state(target_default_state, env_id),
-        robot_asset_name,
-        object_translation=scene_translation,
+        _slice_scene_state(ctx.target_default_state, env_id),
+        ctx.robot_asset_name,
+        object_translation=config.scene_translation,
     )
     env.reset_to(reset_state, env_ids, is_relative=True)
 
-    if retarget_frame == "robot_base":
-        source_root = as_torch(episode.data["states"]["articulation"][robot_asset_name]["root_pose"]).to(env.device)
+    if config.retarget_frame == "robot_base":
+        source_root = as_torch(episode.data["states"]["articulation"][ctx.robot_asset_name]["root_pose"]).to(env.device)
         source_base = poses_from_root_pose(source_root)
-        target_base = read_target_base_pose(env, robot_asset_name, env_id)
+        target_base = read_target_base_pose(env, ctx.robot_asset_name, env_id)
         target_eef_poses = {
             eef: reanchor_to_target_base(pose, source_base, target_base) for eef, pose in target_eef_poses.items()
         }
 
-    if any(scene_translation):
+    if any(config.scene_translation):
         translation = torch.tensor(
-            scene_translation, dtype=target_eef_poses[eef_names[0]].dtype, device=target_eef_poses[eef_names[0]].device
+            config.scene_translation,
+            dtype=target_eef_poses[eef_names[0]].dtype,
+            device=target_eef_poses[eef_names[0]].device,
         )
         for eef in eef_names:
             target_eef_poses[eef] = target_eef_poses[eef].clone()
@@ -780,23 +825,23 @@ def prepare_episode(
             source_objects[name] = source_objects[name].clone()
             source_objects[name][:, :3, 3] += translation
 
-    if eef_offsets is not None:
+    if ctx.eef_offsets is not None:
         for eef in eef_names:
-            target_eef_poses[eef] = target_eef_poses[eef] @ eef_offsets[eef].to(target_eef_poses[eef].dtype)
+            target_eef_poses[eef] = target_eef_poses[eef] @ ctx.eef_offsets[eef].to(target_eef_poses[eef].dtype)
 
     # Cap the commanded EEF speed for a reactive controller (e.g. Galbot RmpFlow): subdivide the shared
     # timeline wherever any EEF moves faster than the caps, resampling every EEF pose, the passthrough, the
     # tracked-object paths, gripper closedness, and signals together so they stay index-aligned. Measured on
     # the final (post-offset) commanded poses. A differential-IK robot snaps to each waypoint in one step,
     # so leave the caps ``None`` there. Boundaries below are then computed on this capped timeline.
-    if max_eef_linear_velocity is not None or max_eef_rotation_speed is not None:
+    if config.max_eef_linear_velocity is not None or config.max_eef_rotation_speed is not None:
         target_eef_poses, (target_passthrough, source_gripper_closed, source_signals), source_objects = (
             cap_shared_timeline_speed(
                 target_eef_poses,
                 [target_passthrough, source_gripper_closed, source_signals],
                 source_objects,
-                max_eef_linear_velocity,
-                max_eef_rotation_speed,
+                config.max_eef_linear_velocity,
+                config.max_eef_rotation_speed,
             )
         )
 
@@ -823,18 +868,19 @@ def prepare_episode(
         source_signals,
         num_traj_steps,
         eef_name_map=eef_name_map,
-        default_interp_start=default_object_tracking.interpolation_step_start,
-        default_interp_after=default_object_tracking.interpolation_step_after,
-        default_settle_steps=segment_settle_steps,
+        default_interp_start=config.default_object_tracking.interpolation_step_start,
+        default_interp_after=config.default_object_tracking.interpolation_step_after,
+        default_settle_steps=config.segment_settle_steps,
         close_fraction=_CARRY_GRIPPER_CLOSED_FRACTION,
     )
-    sync_of, group_members = _build_sync_barriers(synchronization or [], name_end_step)
+    sync_of, group_members = _build_sync_barriers(config.synchronization, name_end_step)
 
-    if init_robot_from_ik:
+    num_interpolation_steps = config.num_interpolation_steps
+    if config.init_robot_from_ik:
         warm_state = _ik_solved_robot_state(
             env,
             target_adapter,
-            robot_asset_name,
+            ctx.robot_asset_name,
             reset_state,
             first_pose_dict={eef: target_eef_poses[eef][0] for eef in eef_names},
             first_passthrough_dict={name: tensor[0] for name, tensor in target_passthrough.items()},
@@ -847,19 +893,18 @@ def prepare_episode(
     commanded_poses, commanded_passthrough = _build_commanded_sequences(
         target_adapter, target_eef_poses, target_passthrough, eef_names, num_interpolation_steps, env_id
     )
-    return {
-        "eef_names": eef_names,
-        "commanded_poses": commanded_poses,
-        "commanded_passthrough": commanded_passthrough,
-        "num_interpolation_steps": num_interpolation_steps,
-        "num_steps": commanded_poses[eef_names[0]].shape[0],
-        "carry_segments": carry_segments,
-        "source_objects": source_objects,
-        "source_signals": source_signals,  # resampled to trajectory length; forwarded when write_datagen_info
-        "segment_ends": segment_ends,  # {eef: {trajectory step: settle cap}} -- per-EEF motion-aware settle
-        "sync_of": sync_of,  # {eef: {end step: group id}} -- cross-EEF rendezvous from ``synchronization``
-        "group_members": group_members,  # {group id: [(eef, end step)]}
-    }
+    return PreparedEpisode(
+        eef_names=eef_names,
+        commanded_poses=commanded_poses,
+        commanded_passthrough=commanded_passthrough,
+        num_interpolation_steps=num_interpolation_steps,
+        carry_segments=carry_segments,
+        source_objects=source_objects,
+        source_signals=source_signals,
+        segment_ends=segment_ends,
+        sync_of=sync_of,
+        group_members=group_members,
+    )
 
 
 def _monitored_error(
@@ -998,61 +1043,14 @@ def _score_step(
 
 
 def replay_episode_on_target(
-    env: Any,
-    episode: EpisodeData | None,
-    source_adapter: EmbodimentAdapter | None,
-    target_adapter: EmbodimentAdapter,
-    remap_passthrough: PassthroughRemapper | None,
-    success_term: TerminationTermCfg | None,
-    robot_asset_name: str,
-    target_default_state: dict | None,
-    prep: dict | None = None,
-    num_interpolation_steps: int = 0,
-    init_robot_from_ik: bool = False,
-    replay_speed: float = 1.0,
-    success_settle_steps: int = 0,
-    segment_settle_steps: int = 0,
-    max_eef_linear_velocity: float | None = None,
-    max_eef_rotation_speed: float | None = None,
-    synchronization: list | None = None,
-    stop_early_on_failure: bool = False,
-    max_translation_error: float | None = None,
-    max_rotation_error: float | None = None,
-    settle_pos_tol_m: float = _SETTLE_POS_TOL_M,
-    settle_rot_tol_deg: float = _SETTLE_ROT_TOL_DEG,
-    settle_joint_tol: float = _JOINT_SETTLE_TOL,
-    retarget_frame: str = "world",
-    scene_translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    eef_offsets: dict[str, torch.Tensor] | None = None,
-    eef_name_map: dict[str, str] | None = None,
-    reference_pose: str = "eef_pose",
-    subtasks: dict | None = None,
-    default_object_tracking: DefaultObjectTracking | None = None,
-    write_datagen_info: bool = False,
-    eef_reference_link: dict[str, str] | str | None = None,
-    source_hand_postures: dict[str, dict[str, list[float]]] | None = None,
+    ctx: ReplayContext, env: Any, episode: EpisodeData
 ) -> tuple[bool, dict[str, dict[str, torch.Tensor]]]:
-    """Replay one source episode on the target embodiment and record the target rollout.
+    """Replay one source episode on the target embodiment (single env) and record the target rollout.
 
     Args:
-        env: The target env (with a recorder manager) to replay in.
+        ctx: Per-run replay context.
+        env: The target env (with a recorder manager) to replay in; uses env 0.
         episode: The source episode to retarget.
-        source_adapter: Adapter used to extract the source passthrough (gripper) actions.
-        target_adapter: Adapter used to re-encode each step into the target's action space.
-        remap_passthrough: Maps source passthrough actions to the target passthrough layout.
-        success_term: Optional success termination term evaluated each step.
-        robot_asset_name: Scene key of the target robot articulation.
-        target_default_state: Snapshot of the target env's home scene state (captured once from a
-            clean reset); the target robot starts each replay from its ``robot_asset_name`` entry.
-        num_interpolation_steps: Lead-in steps ramping each EEF from the target's start pose to the
-            first trajectory pose (0 disables). Ignored when ``init_robot_from_ik`` is set, since the
-            robot then already starts at the first pose.
-        replay_speed: Retime the extracted trajectory by ``1 / replay_speed`` waypoints per segment
-            (1.0 = unchanged; 0.5 = twice as many waypoints, replayed slower so the IK tracks a longer
-            source path more closely). Segment-boundary waypoints are preserved exactly.
-        init_robot_from_ik: Start the recorded demo at the IK solution of the first trajectory pose
-            (solved kinematically, no physics), so there is no startup transient. Works for any target
-            embodiment.
 
     Returns:
         ``(task_succeeded, eef_errors)``. ``eef_errors`` maps each EEF to ``{"pos": tensor, "rot":
@@ -1061,50 +1059,12 @@ def replay_episode_on_target(
         ``eef_reference_link`` is set; lead-in steps excluded). ``task_succeeded`` is True if the success
         condition held on any step (or no success term).
     """
-    subtasks = subtasks or {}
-    default_object_tracking = default_object_tracking or DefaultObjectTracking()
-    need_source_objects = subtasks_need_source_objects(subtasks)
-    if prep is None:
-        prep = prepare_episode(
-            env,
-            0,
-            episode,
-            target_adapter,
-            source_adapter,
-            remap_passthrough,
-            target_default_state,
-            robot_asset_name,
-            reference_pose,
-            eef_name_map,
-            replay_speed,
-            retarget_frame,
-            scene_translation,
-            eef_offsets,
-            num_interpolation_steps,
-            init_robot_from_ik,
-            subtasks,
-            default_object_tracking,
-            source_hand_postures=source_hand_postures,
-            need_source_objects=need_source_objects,
-            reset_sim=True,
-            eef_reference_link=eef_reference_link,
-            write_datagen_info=write_datagen_info,
-            segment_settle_steps=segment_settle_steps,
-            max_eef_linear_velocity=max_eef_linear_velocity,
-            max_eef_rotation_speed=max_eef_rotation_speed,
-            synchronization=synchronization,
-        )
-    eef_names = prep["eef_names"]
-    commanded_poses = prep["commanded_poses"]
-    commanded_passthrough = prep["commanded_passthrough"]
-    num_interpolation_steps = prep["num_interpolation_steps"]
-    num_steps = prep["num_steps"]
-    carry_segments = prep["carry_segments"]
-    source_objects = prep["source_objects"]
-    source_signals = prep["source_signals"]  # {name: (num_traj_steps, 1)} to forward, or {}
-    segment_ends = prep["segment_ends"]  # {eef: {trajectory step: settle-hold cap}} for the motion-aware settle
-    sync_of = prep.get("sync_of", {})  # {eef: {end step: group id}} -- a cross-EEF rendezvous barrier
-    group_members = prep.get("group_members", {})  # {group id: [(eef, end step)]}
+    config, target_adapter, success_term = ctx.config, ctx.target_adapter, ctx.success_term
+    prep = prepare_episode(ctx, env, 0, episode, reset_sim=True)
+    eef_names = prep.eef_names
+    commanded_poses, commanded_passthrough = prep.commanded_poses, prep.commanded_passthrough
+    num_interpolation_steps = prep.num_interpolation_steps
+    carry_segments, source_objects = prep.carry_segments, prep.source_objects
 
     # Where the achieved pose is read for the tracking error. When the reference is reconstructed at the
     # IK-controlled link (eef_reference_link), the command drives that link, so the achieved must be read
@@ -1112,9 +1072,9 @@ def replay_episode_on_target(
     # GR1's ~20 deg wrist_pitch: the angle between the hand and the forearm) and inflate the error even
     # when the hand is aligned. Otherwise (no reconstruction) the observed frame is the reference frame.
     controlled_reader = (
-        _build_controlled_link_pose_reader(env, target_adapter) if eef_reference_link is not None else None
+        _build_controlled_link_pose_reader(env, target_adapter) if ctx.eef_reference_link is not None else None
     )
-    if eef_reference_link is not None and controlled_reader is None:
+    if ctx.eef_reference_link is not None and controlled_reader is None:
         print("\t  (warning: eef_reference_link set but no PinkIK controlled link found; using observed frame)")
 
     def read_achieved() -> dict[str, torch.Tensor]:
@@ -1145,10 +1105,12 @@ def replay_episode_on_target(
     record_signals = None
     # When ``write_datagen_info`` (copy), record the full ``obs/datagen_info`` (poses + signals) each step so
     # the output is a drop-in ``generate_dataset.py`` source. The scene's rigid objects (for ``object_pose``).
-    object_names = list(env.scene.rigid_objects.keys()) if write_datagen_info else []
+    object_names = list(env.scene.rigid_objects.keys()) if config.write_datagen_info else []
     tick = 0
     early_failure = False
-    monitor_early = stop_early_on_failure and (max_translation_error is not None or max_rotation_error is not None)
+    monitor_early = config.stop_early_on_failure and (
+        config.max_translation_error is not None or config.max_rotation_error is not None
+    )
     while any(ptr[eef_name] < lengths[eef_name] for eef_name in eef_names):
         idx = {eef_name: min(ptr[eef_name], lengths[eef_name] - 1) for eef_name in eef_names}
         traj_step = {eef_name: idx[eef_name] - num_interpolation_steps for eef_name in eef_names}
@@ -1175,7 +1137,7 @@ def replay_episode_on_target(
                 eefs=advanced,
             )
         ref_ts = max(traj_step.values())  # shared clock for signals only
-        signal_frame = {name: sig[min(max(ref_ts, 0), sig.shape[0] - 1)] for name, sig in source_signals.items()}
+        signal_frame = {name: sig[min(max(ref_ts, 0), sig.shape[0] - 1)] for name, sig in prep.source_signals.items()}
         record_signals = (lambda sf=signal_frame: _record_signal_frame(env, 0, sf)) if signal_frame else None
 
         action = target_adapter.target_eef_pose_to_action(
@@ -1186,7 +1148,7 @@ def replay_episode_on_target(
         env.step(action.reshape(1, -1).to(device=env.device))
         if record_signals is not None:
             record_signals()
-        if write_datagen_info:
+        if config.write_datagen_info:
             _record_datagen_poses(env, 0, target_adapter, target_eef_pose_dict, object_names)
         if success_term is not None and bool(success_term.func(env, **success_term.params)[0]):
             task_succeeded = True
@@ -1207,8 +1169,8 @@ def replay_episode_on_target(
             source_objects,
             env,
             0,
-            max_translation_error,
-            max_rotation_error,
+            config.max_translation_error,
+            config.max_rotation_error,
             tick,
         )
         if early_failure:
@@ -1217,17 +1179,17 @@ def replay_episode_on_target(
         # Advance each EEF: a mid-segment step advances by one; at a segment end (a per-EEF boundary cap)
         # HOLD until the arm+gripper settle or the cap is hit.
         curr_poses = target_adapter.get_eef_poses(env_ids=[0])
-        curr_qpos = as_torch(env.scene[robot_asset_name].data.joint_pos)[0] if robot_asset_name else None
+        curr_qpos = as_torch(env.scene[ctx.robot_asset_name].data.joint_pos)[0] if ctx.robot_asset_name else None
         joint_moved = (
             prev_qpos is not None
             and curr_qpos is not None
-            and float(torch.max(torch.abs(curr_qpos - prev_qpos))) > settle_joint_tol
+            and float(torch.max(torch.abs(curr_qpos - prev_qpos))) > config.settle_joint_tol
         )
         for eef_name in eef_names:
             if ptr[eef_name] >= lengths[eef_name]:
                 continue
-            cap = segment_ends.get(eef_name, {}).get(traj_step[eef_name], 0)
-            gid = sync_of.get(eef_name, {}).get(traj_step[eef_name])  # a sync barrier at this step, or None
+            cap = prep.segment_ends.get(eef_name, {}).get(traj_step[eef_name], 0)
+            gid = prep.sync_of.get(eef_name, {}).get(traj_step[eef_name])  # a sync barrier at this step, or None
             if cap > 0 or gid is not None:  # a hold point: motion-aware settle and/or a cross-EEF rendezvous
                 hold[eef_name] += 1
                 settle_ok = True
@@ -1235,12 +1197,12 @@ def replay_episode_on_target(
                     moved = joint_moved
                     if prev_pose[eef_name] is not None:
                         dpos, drot = pose_tracking_error(prev_pose[eef_name], curr_poses[eef_name][0])
-                        moved = moved or dpos > settle_pos_tol_m or drot > settle_rot_tol_deg
+                        moved = moved or dpos > config.settle_pos_tol_m or drot > config.settle_rot_tol_deg
                     settle_ok = (not moved) or hold[eef_name] >= cap
                 # Rendezvous: hold until every group member has reached its own barrier (concluded). ``ptr``
                 # is in commanded-index space (lead-in included); the barrier step is a trajectory step.
                 sync_ok = gid is None or all(
-                    ptr[m_eef] - num_interpolation_steps >= m_step for m_eef, m_step in group_members[gid]
+                    ptr[m_eef] - num_interpolation_steps >= m_step for m_eef, m_step in prep.group_members[gid]
                 )
                 if settle_ok and sync_ok:
                     ptr[eef_name] += 1
@@ -1261,11 +1223,11 @@ def replay_episode_on_target(
     if (
         not task_succeeded
         and not early_failure
-        and success_settle_steps > 0
-        and num_steps > 0
+        and config.success_settle_steps > 0
+        and prep.num_steps > 0
         and success_term is not None
     ):
-        for _ in range(success_settle_steps):
+        for _ in range(config.success_settle_steps):
             action = target_adapter.target_eef_pose_to_action(
                 target_eef_pose_dict=target_eef_pose_dict,
                 passthrough_action_dict=passthrough_action_dict,
@@ -1274,7 +1236,7 @@ def replay_episode_on_target(
             env.step(action.reshape(1, -1).to(device=env.device))
             if record_signals is not None:  # hold the last waypoint's signal across the success settle
                 record_signals()
-            if write_datagen_info:
+            if config.write_datagen_info:
                 _record_datagen_poses(env, 0, target_adapter, target_eef_pose_dict, object_names)
             if bool(success_term.func(env, **success_term.params)[0]):
                 task_succeeded = True
