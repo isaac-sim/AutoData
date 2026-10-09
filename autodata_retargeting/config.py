@@ -3,10 +3,11 @@
 
 """Task/pair retargeting configuration (the retarget-descriptor YAML schema).
 
-The descriptor is now self-contained: it carries its own task structure (a per-EEF list of
-:class:`Subtask`) instead of referencing an external task descriptor. Each subtask declares how it ends
-(:class:`SubtaskEnd` -- a gripper or signal event, offsettable) and, optionally, which object the EEF
-tracks over it (:class:`SubtaskObjectTracking`), so segmentation and object-centric planning come
+The descriptor is self-contained: it carries its own task structure (a per-EEF list of core
+:class:`~autodata_interfaces.tasks.subtask_spec.Subtask`, with retarget-specific fields in
+:class:`RetargetSubtaskAlgoParams`) instead of referencing an external task descriptor. Each subtask declares
+how it ends (:class:`SubtaskEnd` -- a gripper or signal event, offsettable) and, optionally, which object the
+EEF tracks over it (:class:`SubtaskObjectTracking`), so segmentation and object-centric planning come
 straight from this file. Retargeting replays each recorded source trajectory 1:1 onto the target robot.
 """
 
@@ -15,6 +16,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
+from autodata_interfaces.tasks.subtask_spec import Subtask, SubtaskAlgoParams
 from autodata_utils.yaml_utils import UniqueKeySafeLoader
 
 
@@ -218,47 +220,58 @@ class Offset:
 
 
 @dataclass
-class Subtask:
-    """One subtask in an EEF's sequence.
+class RetargetSubtaskAlgoParams(SubtaskAlgoParams):
+    """Retargeting-specific parameters of a core :class:`~autodata_interfaces.tasks.subtask_spec.Subtask`.
+
+    A retarget subtask is a core ``Subtask`` (``object_ref``, ``description``) whose ``algo_params`` is an
+    instance of this class. ``subtask_end`` generalizes the core ``subtask_term_signal``: besides a signal
+    edge it can end on a source gripper event or a fixed length, with an offset.
 
     ``name`` (optional) is a stable identifier for the subtask; when given it must be unique across all
-    subtasks of all EEFs. ``object_ref`` / ``frame_ref`` name the object or frame the subtask is planned
-    relative to; they default the reference frame a per-subtask :class:`Offset` acts in. ``subtask_end`` is
-    required except on the last subtask of an EEF (which runs to the end of the trajectory).
-    ``object_tracking`` (optional) makes the EEF track an object over the whole subtask instead of
-    following the source EEF path.
+    subtasks of all EEFs. ``frame_ref`` names the frame the subtask is planned relative to when it has no
+    ``object_ref``; together they default the reference frame a per-subtask :class:`Offset` acts in.
+    ``subtask_end`` is required except on the last subtask of an EEF (which runs to the end of the
+    trajectory). ``object_tracking`` (optional) makes the EEF track an object over the whole subtask instead
+    of following the source EEF path. ``offset`` (optional) is a per-subtask SE(3) pose offset applied to
+    this EEF's commanded trajectory over the subtask's span.
     """
 
     name: str | None = None
-    object_ref: str | None = None
     frame_ref: str | None = None
-    description: str = ""
     subtask_end: SubtaskEnd | None = None
     object_tracking: SubtaskObjectTracking | None = None
-    # Per-subtask SE(3) pose offset applied to this EEF's commanded trajectory over the subtask's span
-    # (see :class:`Offset`). None = no offset.
-    offset: "Offset | None" = None
+    offset: Offset | None = None
 
-    @classmethod
-    def parse(cls, value: dict) -> "Subtask":
-        """Parse one subtask and its nested descriptors.
 
-        Args:
-            value: Mapping of subtask field values.
+# Core ``Subtask`` fields a retarget descriptor may set; the rest drive generation-time segment selection
+# and noise, which retargeting (a 1:1 replay) does not use, so they are rejected rather than ignored.
+_CORE_SUBTASK_KEYS = ("object_ref", "description")
 
-        Returns:
-            Parsed subtask descriptor.
-        """
-        assert isinstance(value, dict), f"each subtask must be a section (dict), got {type(value).__name__}."
-        data = dict(value)
-        allowed = {f.name for f in fields(cls)}
-        unknown = set(data) - allowed
-        assert not unknown, f"unknown subtask keys {sorted(unknown)}; allowed: {sorted(allowed)}."
-        if data.get("subtask_end") is not None:
-            data["subtask_end"] = SubtaskEnd.parse(data["subtask_end"])
-        data["object_tracking"] = SubtaskObjectTracking.parse(data.get("object_tracking"))
-        data["offset"] = Offset.parse(data.get("offset"))
-        return cls(**data)
+
+def parse_subtask(value: dict) -> Subtask:
+    """Parse one descriptor subtask into a core :class:`Subtask` with :class:`RetargetSubtaskAlgoParams`.
+
+    The descriptor keeps a flat layout: ``object_ref`` / ``description`` fill the core fields, and every
+    other key fills the retarget ``algo_params``.
+
+    Args:
+        value: Mapping of subtask field values.
+
+    Returns:
+        Parsed subtask.
+    """
+    assert isinstance(value, dict), f"each subtask must be a section (dict), got {type(value).__name__}."
+    algo_keys = {f.name for f in fields(RetargetSubtaskAlgoParams)}
+    allowed = set(_CORE_SUBTASK_KEYS) | algo_keys
+    unknown = set(value) - allowed
+    assert not unknown, f"unknown subtask keys {sorted(unknown)}; allowed: {sorted(allowed)}."
+    algo = {key: value[key] for key in algo_keys if key in value}
+    if algo.get("subtask_end") is not None:
+        algo["subtask_end"] = SubtaskEnd.parse(algo["subtask_end"])
+    algo["object_tracking"] = SubtaskObjectTracking.parse(algo.get("object_tracking"))
+    algo["offset"] = Offset.parse(algo.get("offset"))
+    core = {key: value[key] for key in _CORE_SUBTASK_KEYS if value.get(key) is not None}
+    return Subtask(**core, algo_params=RetargetSubtaskAlgoParams(**algo))
 
 
 @dataclass
@@ -336,7 +349,8 @@ class RetargetConfig:
     # Default object-tracking interpolation, overridable per subtask (see DefaultObjectTracking).
     default_object_tracking: "dict | DefaultObjectTracking" = field(default_factory=DefaultObjectTracking)
     # Per-EEF subtask lists (keyed by *source* EEF name; eef_name_map renames onto the target). Each entry
-    # is parsed into a Subtask. Segmentation and object tracking come from these.
+    # is parsed into a core Subtask with RetargetSubtaskAlgoParams. Segmentation and object tracking come from
+    # these.
     subtasks: dict[str, list[Subtask]] = field(default_factory=dict)
     # Bimanual/multi-arm synchronization: a list of barrier groups, each a list of subtask *names* that must
     # conclude together. Every EEF that reaches its named segment holds at that pose until all segments in
@@ -366,18 +380,28 @@ class RetargetConfig:
         """Parse nested descriptors and validate synchronization barriers."""
         self.default_object_tracking = DefaultObjectTracking.parse(self.default_object_tracking)
         self.subtasks = {
-            eef: [st if isinstance(st, Subtask) else Subtask.parse(st) for st in entries]
+            eef: [st if isinstance(st, Subtask) else parse_subtask(st) for st in entries]
             for eef, entries in (self.subtasks or {}).items()
         }
-        names = [st.name for entries in self.subtasks.values() for st in entries if st.name is not None]
+        for entries in self.subtasks.values():
+            for st in entries:
+                assert isinstance(
+                    st.algo_params, RetargetSubtaskAlgoParams
+                ), f"subtask algo_params must be RetargetSubtaskAlgoParams, got {type(st.algo_params).__name__}."
+        names = [
+            st.algo_params.name
+            for entries in self.subtasks.values()
+            for st in entries
+            if st.algo_params.name is not None
+        ]
         duplicates = sorted({name for name in names if names.count(name) > 1})
         assert not duplicates, f"subtask names must be unique across all subtasks; duplicates: {duplicates}"
 
         by_name = {
-            st.name: (eef, i)
+            st.algo_params.name: (eef, i)
             for eef, entries in self.subtasks.items()
             for i, st in enumerate(entries)
-            if st.name is not None
+            if st.algo_params.name is not None
         }
         # Synchronization barriers: names must exist; a group's members belong to different EEFs; each name
         # is in at most one group; and the declaration order is a valid schedule -- for each EEF, the groups

@@ -12,6 +12,7 @@ from isaaclab.managers import TerminationTermCfg
 from isaaclab.utils.datasets import EpisodeData
 
 from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+from autodata_interfaces.tasks.subtask_spec import Subtask
 from autodata_utils.tensor_utils import as_torch
 
 from .config import DefaultObjectTracking
@@ -553,6 +554,13 @@ def _offset_se3(translation, axis_angle, scale: float, ref: torch.Tensor) -> tor
     return mat
 
 
+def _subtask_offset_frame(subtask: Subtask) -> str:
+    """The frame a subtask's offset acts in: ``offset.frame``, else ``object_ref``, else ``frame_ref``, else ``eef``."""
+    params = subtask.algo_params
+    off_frame = params.offset.frame if params.offset is not None else None
+    return off_frame or subtask.object_ref or params.frame_ref or "eef"
+
+
 def apply_subtask_offsets(
     target_eef_poses: dict[str, torch.Tensor],
     subtasks: dict,
@@ -577,13 +585,13 @@ def apply_subtask_offsets(
     for _eef_key, eef, _index, st, start, end, _boundary in iter_subtask_spans(
         subtasks, gripper_closed, signals, num_steps, eef_name_map, close_fraction
     ):
-        off = getattr(st, "offset", None)
+        off = st.algo_params.offset
         per_eef.setdefault(eef, []).append({
             "start": start,
             "end": end,
             "trans": list(off.translation) if (off and off.translation) else [0.0, 0.0, 0.0],
             "aa": list(off.axis_angle) if (off and off.axis_angle) else [0.0, 0.0, 0.0],
-            "frame": (off.frame if (off and off.frame) else None) or st.object_ref or st.frame_ref or "eef",
+            "frame": _subtask_offset_frame(st),
             "i_start": off.interpolation_start if off else 0,
             "i_end": off.interpolation_end if off else 0,
             "has_offset": off is not None,
@@ -627,10 +635,9 @@ def subtasks_need_source_objects(subtasks: dict) -> bool:
     """
     for entries in subtasks.values():
         for st in entries:
-            if st.object_tracking is not None:
+            if st.algo_params.object_tracking is not None:
                 return True
-            off = getattr(st, "offset", None)
-            if off is not None and (off.frame or st.object_ref or st.frame_ref or "eef") not in _RESERVED_OFFSET_FRAMES:
+            if st.algo_params.offset is not None and _subtask_offset_frame(st) not in _RESERVED_OFFSET_FRAMES:
                 return True
     return False
 
@@ -698,7 +705,7 @@ def prepare_episode(
     source_objects = source_object_poses(episode) if need_source_objects else {}
     # Signals are read when a subtask ends on a signal event and/or to forward them into the output.
     needs_signals = write_datagen_info or any(
-        st.subtask_end is not None and st.subtask_end.method in ("signal_on", "signal_off")
+        st.algo_params.subtask_end is not None and st.algo_params.subtask_end.method in ("signal_on", "signal_off")
         for entries in subtasks.values()
         for st in entries
     )

@@ -133,6 +133,11 @@ Bundles everything task/pair-specific into one file. Required references plus th
   `interpolation_start`/`interpolation_end`);
 - `name` — optional stable id (required only if referenced in `synchronization`).
 
+Each segment is parsed into a core AutoData `Subtask` (`autodata_interfaces/tasks/subtask_spec.py`):
+`object_ref` and `description` fill the core fields, and the retarget-only keys above go into its
+`algo_params` (`RetargetSubtaskAlgoParams`). The other core `Subtask` fields (selection strategy, noise,
+term-offset ranges, ...) only matter for generation, so a retarget descriptor rejects them.
+
 Minimal example (right arm picks, then places, then returns):
 
 ```yaml
