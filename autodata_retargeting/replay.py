@@ -4,6 +4,7 @@
 """The retargeting replay engine: reset state, IK warm-start, closed-loop replay, error report."""
 
 import torch
+from collections.abc import Generator
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
@@ -698,6 +699,24 @@ class PreparedEpisode:
         return self.commanded_poses[self.eef_names[0]].shape[0]
 
 
+@dataclass
+class EpisodeOutcome:
+    """Result of replaying one episode on the target.
+
+    Args:
+        task_succeeded: True if the success condition held on any step (or there is no success term).
+        eef_errors: Per-EEF ``{"pos": tensor, "rot": tensor}`` of per-step tracking errors [m], [deg]: the
+            tracked object vs its source path during a carry, else the achieved EEF pose vs its command
+            (lead-in steps excluded).
+        passthrough_action_dict: The final-waypoint passthrough action (e.g. gripper state), which a
+            parallel worker holds while it waits for the other envs.
+    """
+
+    task_succeeded: bool
+    eef_errors: dict[str, dict[str, torch.Tensor]]
+    passthrough_action_dict: dict[str, torch.Tensor]
+
+
 def prepare_episode(
     ctx: ReplayContext, env: Any, env_id: int, episode: EpisodeData, reset_sim: bool
 ) -> PreparedEpisode:
@@ -716,7 +735,7 @@ def prepare_episode(
 
     Returns:
         The commanded sequences, segment boundaries, carry segments and (when needed) the source object
-        trajectories, ready for the step loop.
+        trajectories, ready for :func:`episode_steps`.
     """
     config = ctx.config
     target_adapter = ctx.target_adapter
@@ -960,40 +979,6 @@ def _early_stop_hit(
     return False
 
 
-def _monitored_miss(
-    eef_names: list[str],
-    traj_step: dict[str, int],
-    ptr: dict[str, int],
-    lengths: dict[str, int],
-    carry_segments: list,
-    source_objects: dict[str, torch.Tensor],
-    target_eef_pose_dict: dict[str, torch.Tensor],
-    achieved_poses: dict[str, torch.Tensor],
-    env: Any,
-    env_id: int,
-    max_translation_error: float | None,
-    max_rotation_error: float | None,
-    tick: int,
-) -> bool:
-    """True if any active EEF's monitored error (see :func:`_monitored_error`) exceeds the thresholds.
-
-    Prints the reason. Used to early-abort a doomed replay (``stop_early_on_failure``) on the parallel path
-    (the single-env path scores + checks together in :func:`_score_step`).
-    """
-    for eef_name in eef_names:
-        ts = traj_step[eef_name]
-        if ts < 0 or ptr[eef_name] >= lengths[eef_name]:
-            continue
-        pos_err, rot_err, is_object = _monitored_error(
-            eef_name, ts, carry_segments, source_objects, target_eef_pose_dict, achieved_poses, env, env_id
-        )
-        if _early_stop_hit(
-            pos_err, rot_err, is_object, max_translation_error, max_rotation_error, env_id, tick, eef_name
-        ):
-            return True
-    return False
-
-
 def _score_step(
     eef_names: list[str],
     traj_step: dict[str, int],
@@ -1042,55 +1027,58 @@ def _score_step(
     return early_failure
 
 
-def replay_episode_on_target(
-    ctx: ReplayContext, env: Any, episode: EpisodeData
-) -> tuple[bool, dict[str, dict[str, torch.Tensor]]]:
-    """Replay one source episode on the target embodiment (single env) and record the target rollout.
+StepCommand = tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]
+"""One env-step command: ``(target_eef_pose_dict, passthrough_action_dict)``."""
+
+
+def episode_steps(
+    ctx: ReplayContext, env: Any, env_id: int, prep: PreparedEpisode
+) -> Generator[StepCommand, None, EpisodeOutcome]:
+    """Drive one prepared episode on ``env_id``: the step loop shared by the sequential and parallel paths.
+
+    A generator so each caller steps the env its own way: it yields one :data:`StepCommand` per env step,
+    and the caller must apply it (sequential: encode + ``env.step``; parallel: hand it to ``env_loop``)
+    before resuming the generator, which then reads the new sim state. Returns the
+    :class:`EpisodeOutcome` (as ``StopIteration.value``).
+
+    Single-step per-EEF scheduler: exactly one env step per tick, each EEF advancing its OWN pointer
+    through its (possibly unequal-length) commanded sequence. A subtask boundary is an inline HOLD -- the
+    EEF repeats its pose and each tick checks its motion-aware settle (arm+gripper below tolerance),
+    advancing once settled or at the cap; cross-EEF sync extends the same hold. Pose / passthrough / object
+    override are (re)computed only for EEFs that just arrived at a new waypoint, so a HOLDING EEF keeps its
+    pose (re-running the override mid-release would remeasure the grasp and corrupt it). Aligned
+    equal-length arms move in lockstep.
 
     Args:
         ctx: Per-run replay context.
-        env: The target env (with a recorder manager) to replay in; uses env 0.
-        episode: The source episode to retarget.
+        env: The target env.
+        env_id: Index of the env this episode runs in.
+        prep: The episode prepared by :func:`prepare_episode`.
 
     Returns:
-        ``(task_succeeded, eef_errors)``. ``eef_errors`` maps each EEF to ``{"pos": tensor, "rot":
-        tensor}`` of per-step tracking errors [m], [deg] between the target robot's achieved EEF pose and
-        the (ideal) commanded pose it was driven to (measured at the controlled link when
-        ``eef_reference_link`` is set; lead-in steps excluded). ``task_succeeded`` is True if the success
-        condition held on any step (or no success term).
+        The episode outcome.
     """
     config, target_adapter, success_term = ctx.config, ctx.target_adapter, ctx.success_term
-    prep = prepare_episode(ctx, env, 0, episode, reset_sim=True)
     eef_names = prep.eef_names
     commanded_poses, commanded_passthrough = prep.commanded_poses, prep.commanded_passthrough
     num_interpolation_steps = prep.num_interpolation_steps
     carry_segments, source_objects = prep.carry_segments, prep.source_objects
 
-    # Where the achieved pose is read for the tracking error. When the reference is reconstructed at the
-    # IK-controlled link (eef_reference_link), the command drives that link, so the achieved must be read
-    # there too; reading the observed EEF frame would add the fixed observed->controlled offset (e.g.
-    # GR1's ~20 deg wrist_pitch: the angle between the hand and the forearm) and inflate the error even
-    # when the hand is aligned. Otherwise (no reconstruction) the observed frame is the reference frame.
+    # Where the achieved pose is read for the tracking error and the object-centric grasp transform. When
+    # the reference is reconstructed at the IK-controlled link (eef_reference_link), the command drives
+    # that link, so the achieved must be read there too; reading the observed EEF frame would add the
+    # fixed observed->controlled offset (e.g. GR1's ~20 deg wrist_pitch: the angle between the hand and
+    # the forearm) and inflate the error even when the hand is aligned. Otherwise (no reconstruction) the
+    # observed frame is the reference frame.
     controlled_reader = (
         _build_controlled_link_pose_reader(env, target_adapter) if ctx.eef_reference_link is not None else None
     )
     if ctx.eef_reference_link is not None and controlled_reader is None:
         print("\t  (warning: eef_reference_link set but no PinkIK controlled link found; using observed frame)")
 
-    def read_achieved() -> dict[str, torch.Tensor]:
-        return read_achieved_eef_poses(target_adapter, controlled_reader, 0)
-
     task_succeeded = success_term is None
     pos_errors: dict[str, list[float]] = {eef_name: [] for eef_name in eef_names}
     rot_errors: dict[str, list[float]] = {eef_name: [] for eef_name in eef_names}
-
-    # Single-step per-EEF scheduler (replaces the nested ``_settle_at_pose`` loop): exactly one ``env.step``
-    # per tick, each EEF advancing its OWN pointer through its (possibly unequal-length) commanded sequence.
-    # A subtask boundary is an inline HOLD -- the EEF repeats its pose and each tick checks its motion-aware
-    # settle (arm+gripper below tolerance), advancing once settled or at the cap; cross-EEF sync extends the
-    # same hold (M3). Pose / passthrough / object override are (re)computed only for EEFs that just arrived at
-    # a new waypoint, so a HOLDING EEF keeps its pose (re-running the override mid-release would remeasure the
-    # grasp and corrupt it). Aligned equal-length arms move in lockstep -> reproduces the pre-refactor path.
     lengths = {eef_name: commanded_poses[eef_name].shape[0] for eef_name in eef_names}
     ptr = {eef_name: 0 for eef_name in eef_names}
     hold = {eef_name: 0 for eef_name in eef_names}  # frames held so far at the current segment end
@@ -1131,6 +1119,7 @@ def replay_episode_on_target(
                 source_objects,
                 target_adapter,
                 env,
+                env_id,
                 controlled_reader=controlled_reader,
                 commanded_poses=commanded_poses,
                 num_interpolation_steps=num_interpolation_steps,
@@ -1138,23 +1127,18 @@ def replay_episode_on_target(
             )
         ref_ts = max(traj_step.values())  # shared clock for signals only
         signal_frame = {name: sig[min(max(ref_ts, 0), sig.shape[0] - 1)] for name, sig in prep.source_signals.items()}
-        record_signals = (lambda sf=signal_frame: _record_signal_frame(env, 0, sf)) if signal_frame else None
+        record_signals = (lambda sf=signal_frame: _record_signal_frame(env, env_id, sf)) if signal_frame else None
 
-        action = target_adapter.target_eef_pose_to_action(
-            target_eef_pose_dict=target_eef_pose_dict,
-            passthrough_action_dict=passthrough_action_dict,
-            env_id=0,
-        )
-        env.step(action.reshape(1, -1).to(device=env.device))
+        yield target_eef_pose_dict, passthrough_action_dict
         if record_signals is not None:
             record_signals()
         if config.write_datagen_info:
-            _record_datagen_poses(env, 0, target_adapter, target_eef_pose_dict, object_names)
-        if success_term is not None and bool(success_term.func(env, **success_term.params)[0]):
+            _record_datagen_poses(env, env_id, target_adapter, target_eef_pose_dict, object_names)
+        if success_term is not None and bool(success_term.func(env, **success_term.params)[env_id]):
             task_succeeded = True
 
         # Record per-EEF tracking error (real, unfinished steps only) and test the early-abort thresholds.
-        achieved_poses = read_achieved()
+        achieved_poses = read_achieved_eef_poses(target_adapter, controlled_reader, env_id)
         early_failure = _score_step(
             eef_names,
             traj_step,
@@ -1168,7 +1152,7 @@ def replay_episode_on_target(
             carry_segments,
             source_objects,
             env,
-            0,
+            env_id,
             config.max_translation_error,
             config.max_rotation_error,
             tick,
@@ -1178,8 +1162,8 @@ def replay_episode_on_target(
 
         # Advance each EEF: a mid-segment step advances by one; at a segment end (a per-EEF boundary cap)
         # HOLD until the arm+gripper settle or the cap is hit.
-        curr_poses = target_adapter.get_eef_poses(env_ids=[0])
-        curr_qpos = as_torch(env.scene[ctx.robot_asset_name].data.joint_pos)[0] if ctx.robot_asset_name else None
+        curr_poses = target_adapter.get_eef_poses(env_ids=[env_id])
+        curr_qpos = as_torch(env.scene[ctx.robot_asset_name].data.joint_pos)[env_id] if ctx.robot_asset_name else None
         joint_moved = (
             prev_qpos is not None
             and curr_qpos is not None
@@ -1228,17 +1212,12 @@ def replay_episode_on_target(
         and success_term is not None
     ):
         for _ in range(config.success_settle_steps):
-            action = target_adapter.target_eef_pose_to_action(
-                target_eef_pose_dict=target_eef_pose_dict,
-                passthrough_action_dict=passthrough_action_dict,
-                env_id=0,
-            )
-            env.step(action.reshape(1, -1).to(device=env.device))
+            yield target_eef_pose_dict, passthrough_action_dict
             if record_signals is not None:  # hold the last waypoint's signal across the success settle
                 record_signals()
             if config.write_datagen_info:
-                _record_datagen_poses(env, 0, target_adapter, target_eef_pose_dict, object_names)
-            if bool(success_term.func(env, **success_term.params)[0]):
+                _record_datagen_poses(env, env_id, target_adapter, target_eef_pose_dict, object_names)
+            if bool(success_term.func(env, **success_term.params)[env_id]):
                 task_succeeded = True
                 break
 
@@ -1246,7 +1225,34 @@ def replay_episode_on_target(
         eef_name: {"pos": torch.tensor(pos_errors[eef_name]), "rot": torch.tensor(rot_errors[eef_name])}
         for eef_name in eef_names
     }
-    return task_succeeded, eef_errors
+    return EpisodeOutcome(task_succeeded, eef_errors, passthrough_action_dict)
+
+
+def replay_episode_on_target(ctx: ReplayContext, env: Any, episode: EpisodeData) -> EpisodeOutcome:
+    """Replay one source episode on the target embodiment (single env) and record the target rollout.
+
+    Args:
+        ctx: Per-run replay context.
+        env: The target env (with a recorder manager) to replay in; uses env 0.
+        episode: The source episode to retarget.
+
+    Returns:
+        The episode outcome (see :class:`EpisodeOutcome`).
+    """
+    prep = prepare_episode(ctx, env, 0, episode, reset_sim=True)
+    steps = episode_steps(ctx, env, 0, prep)
+    try:
+        target_eef_pose_dict, passthrough_action_dict = next(steps)
+        while True:
+            action = ctx.target_adapter.target_eef_pose_to_action(
+                target_eef_pose_dict=target_eef_pose_dict,
+                passthrough_action_dict=passthrough_action_dict,
+                env_id=0,
+            )
+            env.step(action.reshape(1, -1).to(device=env.device))
+            target_eef_pose_dict, passthrough_action_dict = steps.send(None)
+    except StopIteration as stop:
+        return stop.value
 
 
 def _build_sync_barriers(

@@ -39,15 +39,15 @@ class Replayer:
 
     def replay_plan(self, plan) -> ReplayResult:
         """Replay one plan on the target env (single-env), record it, and return its outcome."""
-        succeeded, eef_errors = replay_episode_on_target(self.ctx, self.env, plan.episode)
+        outcome = replay_episode_on_target(self.ctx, self.env, plan.episode)
         # The recorder's export mode (from the generation policy's keep_failed flag) decides whether a
         # failed replay is written; always report the outcome to it.
         env_ids = torch.tensor([0], device=self.env.device)
         self.env.recorder_manager.set_success_to_episodes(
-            env_ids, torch.tensor([[succeeded]], dtype=torch.bool, device=self.env.device)
+            env_ids, torch.tensor([[outcome.task_succeeded]], dtype=torch.bool, device=self.env.device)
         )
         self.env.recorder_manager.export_episodes(env_ids)
-        return ReplayResult(success=succeeded, eef_errors=eef_errors)
+        return ReplayResult(success=outcome.task_succeeded, eef_errors=outcome.eef_errors)
 
     def _run_single(self, provider: PlanProvider, simulation_app: Any) -> int:
         """Pull plans from ``provider`` and replay them one at a time until it is done."""

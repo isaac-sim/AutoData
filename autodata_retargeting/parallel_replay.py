@@ -22,20 +22,9 @@ import traceback
 from copy import deepcopy
 
 from autodata_interfaces.env import env_loop
-from autodata_utils.tensor_utils import as_torch
 
 from .provider import PlanProvider, ReplayResult
-from .replay import (
-    ReplayContext,
-    _apply_object_centric_override,
-    _build_controlled_link_pose_reader,
-    _monitored_miss,
-    _record_datagen_poses,
-    _record_signal_frame,
-    prepare_episode,
-    read_achieved_eef_poses,
-)
-from .util import pose_tracking_error
+from .replay import EpisodeOutcome, ReplayContext, episode_steps, prepare_episode
 
 
 async def _async_step(env, env_id, action_queue, target_adapter, target_eef_pose_dict, passthrough_action_dict) -> None:
@@ -53,163 +42,22 @@ async def _async_step(env, env_id, action_queue, target_adapter, target_eef_pose
 
 async def _replay_one_episode(
     ctx: ReplayContext, env, env_id: int, plan, action_queue: asyncio.Queue
-) -> tuple[bool, dict[str, torch.Tensor]]:
+) -> EpisodeOutcome:
     """Reset ``env_id`` to the source scene and drive one plan's trajectory async.
 
-    Returns ``(task_succeeded, passthrough_action_dict)``: whether the success term fired, and the
-    final-waypoint passthrough action dict (e.g. gripper state) the worker holds while it waits for the
-    remaining envs to finish.
+    Runs the same step loop as the sequential path (:func:`~.replay.episode_steps`); each step is handed
+    to ``env_loop``, which batches every env into one ``env.step``. The per-EEF scheduler state is local to
+    this env, so a sync barrier joins the arms of one env -- bimanual + hand-off run in parallel.
     """
-    config, target_adapter, success_term = ctx.config, ctx.target_adapter, ctx.success_term
     prep = prepare_episode(ctx, env, env_id, plan.episode, reset_sim=False)
-    eef_names = prep.eef_names
-    commanded_poses, commanded_passthrough = prep.commanded_poses, prep.commanded_passthrough
-    num_interpolation_steps = prep.num_interpolation_steps
-    carry_segments, source_objects = prep.carry_segments, prep.source_objects
-    # Measure the object-centric grasp transform (and any debug tracking) at the same IK-controlled link
-    # the command drives when the reference is reconstructed there, else the observed EEF frame.
-    controlled_reader = (
-        _build_controlled_link_pose_reader(env, target_adapter) if ctx.eef_reference_link is not None else None
-    )
-
-    # Per-EEF single-step scheduler (mirrors replay_episode_on_target, one ``_async_step`` per tick for THIS
-    # env): each EEF advances its own pointer through its (possibly unequal-length) commanded sequence; at a
-    # subtask boundary it HOLDS until its motion-aware settle AND its sync group's rendezvous are satisfied.
-    # This is per-env local state, so the barrier joins the two arms of one env -- bimanual + hand-off run in
-    # parallel. Pose / passthrough / override are (re)computed only for EEFs that just advanced (a holding
-    # carrier keeps its pose so the override does not remeasure the grasp mid-release).
-    task_succeeded = success_term is None
-    lengths = {eef_name: commanded_poses[eef_name].shape[0] for eef_name in eef_names}
-    ptr = {eef_name: 0 for eef_name in eef_names}
-    hold = {eef_name: 0 for eef_name in eef_names}
-    prev_pose: dict[str, torch.Tensor | None] = {eef_name: None for eef_name in eef_names}
-    prev_ptr = {eef_name: -1 for eef_name in eef_names}
-    prev_qpos = None
-    channel_eef = {name: name if name in eef_names else eef_names[0] for name in commanded_passthrough}
-    target_eef_pose_dict: dict[str, torch.Tensor] = {}
-    passthrough_action_dict: dict[str, torch.Tensor] = {}
-    record_signals = None
-    # Full datagen_info (poses) per step when write_datagen_info (copy) -> the output is generate-ready.
-    object_names = list(env.scene.rigid_objects.keys()) if config.write_datagen_info else []
-    tick = 0
-    early_failure = False
-    monitor_early = config.stop_early_on_failure and (
-        config.max_translation_error is not None or config.max_rotation_error is not None
-    )
-    while any(ptr[eef_name] < lengths[eef_name] for eef_name in eef_names):
-        idx = {eef_name: min(ptr[eef_name], lengths[eef_name] - 1) for eef_name in eef_names}
-        traj_step = {eef_name: idx[eef_name] - num_interpolation_steps for eef_name in eef_names}
-        advanced = {eef_name for eef_name in eef_names if ptr[eef_name] != prev_ptr[eef_name]}
-        for eef_name in advanced:
-            target_eef_pose_dict[eef_name] = commanded_poses[eef_name][idx[eef_name]]
-            prev_ptr[eef_name] = ptr[eef_name]
-        for name, tensor in commanded_passthrough.items():
-            if channel_eef[name] in advanced or name not in passthrough_action_dict:
-                passthrough_action_dict[name] = tensor[idx[channel_eef[name]]]
-        if carry_segments and advanced:
-            _apply_object_centric_override(
-                carry_segments,
-                traj_step,
-                target_eef_pose_dict,
-                source_objects,
-                target_adapter,
-                env,
-                env_id,
-                controlled_reader=controlled_reader,
-                commanded_poses=commanded_poses,
-                num_interpolation_steps=num_interpolation_steps,
-                eefs=advanced,
-            )
-        ref_ts = max(traj_step.values())  # shared clock for signals only
-        signal_frame = {name: sig[min(max(ref_ts, 0), sig.shape[0] - 1)] for name, sig in prep.source_signals.items()}
-        record_signals = (lambda sf=signal_frame: _record_signal_frame(env, env_id, sf)) if signal_frame else None
-
-        await _async_step(
-            env,
-            env_id,
-            action_queue,
-            target_adapter,
-            target_eef_pose_dict,
-            passthrough_action_dict,
-        )
-        if record_signals is not None:
-            record_signals()
-        if config.write_datagen_info:
-            _record_datagen_poses(env, env_id, target_adapter, target_eef_pose_dict, object_names)
-        if success_term is not None and bool(success_term.func(env, **success_term.params)[env_id]):
-            task_succeeded = True
-
-        if monitor_early:
-            achieved_poses = read_achieved_eef_poses(target_adapter, controlled_reader, env_id)
-            if _monitored_miss(
-                eef_names,
-                traj_step,
-                ptr,
-                lengths,
-                carry_segments,
-                source_objects,
-                target_eef_pose_dict,
-                achieved_poses,
-                env,
-                env_id,
-                config.max_translation_error,
-                config.max_rotation_error,
-                tick,
-            ):
-                early_failure = True
-                break
-
-        curr_poses = target_adapter.get_eef_poses(env_ids=[env_id])
-        curr_qpos = as_torch(env.scene[ctx.robot_asset_name].data.joint_pos)[env_id] if ctx.robot_asset_name else None
-        joint_moved = (
-            prev_qpos is not None
-            and curr_qpos is not None
-            and float(torch.max(torch.abs(curr_qpos - prev_qpos))) > config.settle_joint_tol
-        )
-        for eef_name in eef_names:
-            if ptr[eef_name] >= lengths[eef_name]:
-                continue
-            cap = prep.segment_ends.get(eef_name, {}).get(traj_step[eef_name], 0)
-            gid = prep.sync_of.get(eef_name, {}).get(traj_step[eef_name])
-            if cap > 0 or gid is not None:
-                hold[eef_name] += 1
-                settle_ok = True
-                if cap > 0:
-                    moved = joint_moved
-                    if prev_pose[eef_name] is not None:
-                        dpos, drot = pose_tracking_error(prev_pose[eef_name], curr_poses[eef_name][0])
-                        moved = moved or dpos > config.settle_pos_tol_m or drot > config.settle_rot_tol_deg
-                    settle_ok = (not moved) or hold[eef_name] >= cap
-                sync_ok = gid is None or all(
-                    ptr[m_eef] - num_interpolation_steps >= m_step for m_eef, m_step in prep.group_members[gid]
-                )
-                if settle_ok and sync_ok:
-                    ptr[eef_name] += 1
-                    hold[eef_name] = 0
-            else:
-                ptr[eef_name] += 1
-            prev_pose[eef_name] = curr_poses[eef_name][0]
-        prev_qpos = curr_qpos.clone() if curr_qpos is not None else None
-        tick += 1
-
-    # Final success settle: hold the last pose (final gripper release) until success or the cap.
-    if (
-        not task_succeeded
-        and not early_failure
-        and config.success_settle_steps > 0
-        and prep.num_steps > 0
-        and success_term is not None
-    ):
-        for _ in range(config.success_settle_steps):
-            await _async_step(env, env_id, action_queue, target_adapter, target_eef_pose_dict, passthrough_action_dict)
-            if record_signals is not None:  # hold the last waypoint's signal across the success settle
-                record_signals()
-            if config.write_datagen_info:
-                _record_datagen_poses(env, env_id, target_adapter, target_eef_pose_dict, object_names)
-            if bool(success_term.func(env, **success_term.params)[env_id]):
-                task_succeeded = True
-                break
-    return task_succeeded, passthrough_action_dict
+    steps = episode_steps(ctx, env, env_id, prep)
+    try:
+        command = next(steps)
+        while True:
+            await _async_step(env, env_id, action_queue, ctx.target_adapter, *command)
+            command = steps.send(None)
+    except StopIteration as stop:
+        return stop.value
 
 
 def _zeros_passthrough(env, target_adapter) -> dict[str, torch.Tensor]:
@@ -262,7 +110,8 @@ async def _replay_worker(
             await action_queue.join()
             continue
         try:
-            success, hold_passthrough = await _replay_one_episode(ctx, env, env_id, plan, action_queue)
+            outcome = await _replay_one_episode(ctx, env, env_id, plan, action_queue)
+            success, hold_passthrough = outcome.task_succeeded, outcome.passthrough_action_dict
         except Exception:
             sys.stderr.write(f"[parallel-replay] env {env_id} failed on {plan.name}:\n{traceback.format_exc()}")
             sys.stderr.flush()
