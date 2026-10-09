@@ -4,6 +4,7 @@
 """Unit tests for :class:`autodata_interfaces.datastream.datastream.Datastream`."""
 
 import torch
+from types import SimpleNamespace
 
 import pytest
 
@@ -88,6 +89,12 @@ def test_construction_binds_env_to_task_and_adapter():
     assert embodiment_adapter.env is env
     assert datastream.get_env() is env
     assert datastream.device == "cpu"
+
+
+def test_robot_prim_path_uses_backend_view():
+    datastream, _, _, env = _datastream()
+    env.scene["robot"].root_view = SimpleNamespace(prim_paths=["/World/envs/env_0/CustomRobot/root"])
+    assert datastream.get_robot_prim_path(0) == "/World/envs/env_0/CustomRobot/root"
 
 
 def test_requires_exactly_one_demo_source():

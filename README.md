@@ -5,9 +5,9 @@
 ### Scalable Robot Demonstration Generation for Robot Learning
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/isaac-sim/AutoData)
-[![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-6.0.1-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
-[![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-3.0.0--beta2-silver.svg)](https://github.com/isaac-sim/IsaacLab)
-[![Isaac Lab-Arena](https://img.shields.io/badge/Isaac%20Lab--Arena-0.2.x-silver.svg)](https://github.com/isaac-sim/IsaacLab-Arena)
+[![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-6.1.0-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
+[![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-3.0.0-silver.svg)](https://github.com/isaac-sim/IsaacLab)
+[![Isaac Lab-Arena](https://img.shields.io/badge/Isaac%20Lab--Arena-0.3.0-silver.svg)](https://github.com/isaac-sim/IsaacLab-Arena)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue.svg)](https://docs.python.org/3/whatsnew/3.12.html)
 [![Linux](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://www.linux.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](LICENSE.md)
@@ -89,8 +89,19 @@ The first launch builds the development image and opens a shell in the repositor
 `/workspaces/autodata`. Subsequent launches reuse the image. Use `./docker/run_docker.sh -c` to include cuRobo
 for SkillGen workflows.
 
-Docker is the recommended setup. An optional conda installation and additional container options are described in
-the [installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html).
+This checkout uses Isaac Sim 6.1.0, Arena 0.3.1 at commit
+`481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7`, and its nested Isaac Lab at commit
+`28a386f063e41c04c07f50e63eefb83fd8408fbe` (v3.0.0-EA plus 3 commits). After updating an existing clone, run
+`git submodule update --init --recursive` and rebuild with `./docker/run_docker.sh -c -r`.
+Commands, environment profiles, and source dataset metadata use Lab 3.0's `IsaacContrib-*`
+task names directly. For example, Franka recording uses
+`--task IsaacContrib-Stack-Cube-Franka-IK-Rel`.
+
+Docker is recommended. For a native Python 3.12 environment, the updated
+`./conda_installer.sh -c -i` installs the Sim/Lab stack from Arena's lockfile; see the
+[installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-conda-installation).
+Additional container options are described in the
+[installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html).
 
 ### Generate Your First Dataset
 
@@ -99,7 +110,7 @@ Inside the container, generate ten Franka cube-stacking demonstrations from the 
 ```bash
 python scripts/generate_dataset.py \
     --viz kit \
-    --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+    --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
     --alg mimicgen \
     --generation_num_trials 10 \
     --num_envs 10 \

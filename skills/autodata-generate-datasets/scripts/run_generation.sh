@@ -9,7 +9,7 @@
 # Usage:
 #   skills/autodata-generate-datasets/scripts/run_generation.sh \
 #     --alg mimicgen \
-#     --env-name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+#     --env-name IsaacContrib-Stack-Cube-Franka-IK-Rel \
 #     --task autodata_examples/tasks/franka_cube_stack.yaml \
 #     --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
 #     --input ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \

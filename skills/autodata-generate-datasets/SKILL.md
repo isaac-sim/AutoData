@@ -89,7 +89,7 @@ Quickstart happy path (10 Franka cube-stacking demos with MimicGen):
 ```bash
 skills/autodata-generate-datasets/scripts/run_generation.sh \
     --viz none \
-    --env-name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+    --env-name IsaacContrib-Stack-Cube-Franka-IK-Rel \
     --alg mimicgen \
     --trials 10 \
     --num-envs 10 \
@@ -135,7 +135,7 @@ If no annotated source dataset exists yet:
 - **Annotate** subtask signals with `scripts/annotate_demos.py` (`--env_name`,
   `--task_descriptor`, `--embodiment`, `--input_file`, `--output_file`). Interactive controls:
   `N` play/resume, `B` pause, `S` mark a subtask signal, `Q` skip episode. Pass `--auto`
-  (with `--headless` supported) to annotate termination signals without keyboard input;
+  (with `--viz none` supported) to annotate termination signals without keyboard input;
   `--signal_obs_group` selects the observation group (default `subtask_terms`). SkillGen start
   signals still require manual mode.
 

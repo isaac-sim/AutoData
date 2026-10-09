@@ -49,20 +49,20 @@ jobs:
           pip install --no-cache-dir pre-commit==4.6.0
           pre-commit run --all-files --show-diff-on-failure --verbose
 
-  test_e2e:
-    name: E2E (GPU, repo Docker)
+  run_tests:
+    name: Run tests (GPU, repo Docker)
     runs-on: [self-hosted, gpu]
     timeout-minutes: 120
     needs: [pre_commit]
     # Skip GPU work for pull requests opened from forks (no secrets, untrusted code).
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
 
-    # Premerge runs the correctness suites: e2e (GPU/Sim data-gen) plus interfaces
-    # and core (CPU unit tests). The datagen_perf/ success-rate benchmarks (500
+    # Premerge runs the correctness suites: e2e (GPU/Sim data-gen) plus interfaces,
+    # core, and utils (CPU unit tests). The datagen_perf/ success-rate benchmarks (500
     # trials each) are heavy and run in the nightly instead. No marker filter, so
     # both subprocess and unit tests run.
     env:
-      TEST_PATH: "autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/"
+      TEST_PATH: "autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/ autodata_tests/utils/"
 
     steps:
       - name: nvidia-smi
@@ -87,7 +87,7 @@ jobs:
           git lfs install --local
           git lfs pull
 
-      - name: Run E2E tests
+      - name: Run tests
         # The GPU runners are shared. Use an empty job-temporary Docker config so
         # stale credentials cannot override anonymous access to the public base image,
         # and this job cannot modify the runner's persistent Docker login.

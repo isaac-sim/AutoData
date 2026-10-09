@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from isaacteleop.retargeting_engine.interface import OutputCombiner
 
-_G1_TASK_NAME = "Isaac-PickPlace-Locomanipulation-G1-Abs-v0"
-_G1_CONFIG_MODULE = "isaaclab_tasks.manager_based.locomanipulation.pick_place.locomanipulation_g1_env_cfg"
+_G1_TASK_NAME = "IsaacContrib-PickPlace-Locomanipulation-G1-Abs"
+_G1_CONFIG_MODULE = "isaaclab_tasks.contrib.locomanip_pick_place.locomanipulation_g1_env_cfg"
 _PATCH_MARKER = "_autodata_g1_avp_teleop_patch_installed"
 _IMPORT_WRAPPER_MARKER = "_autodata_g1_avp_import_wrapper"
 
@@ -34,7 +34,12 @@ def _is_g1_avp_requested(arguments: list[str]) -> bool:
     """Return whether the current command requests AVP teleoperation for the G1 task."""
     task_name = _cli_option_value(arguments, "--task")
     cloudxr_environment = _cli_option_value(arguments, "--cloudxr_env")
-    return task_name == _G1_TASK_NAME and cloudxr_environment is not None and cloudxr_environment.lower() == "avp"
+    return (
+        task_name is not None
+        and task_name.split(":")[-1] == _G1_TASK_NAME
+        and cloudxr_environment is not None
+        and cloudxr_environment.lower() == "avp"
+    )
 
 
 def _build_g1_avp_locomanipulation_pipeline() -> OutputCombiner:

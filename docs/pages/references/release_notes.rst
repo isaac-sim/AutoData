@@ -1,6 +1,30 @@
 Release Notes
 =============
 
+Arena 0.3 / Isaac Lab 3.0 Upgrade
+-----------------------------------
+
+This checkout pins Arena 0.3.1 at ``481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7`` and its nested
+Isaac Lab commit ``28a386f063e41c04c07f50e63eefb83fd8408fbe`` (v3.0.0-EA plus 3 commits),
+with Isaac Sim 6.1.0 Docker images. See the
+:doc:`support matrix <../quickstart/support_matrix>` for the complete version set.
+
+* Workflow commands, environment profiles, and source dataset metadata use Lab's
+  ``IsaacContrib-*`` task names directly.
+* Generation and annotation default to state observations. Use AutoData's ``--enable_cameras``
+  option to include a task's configured image observations.
+* Annotation signal lengths now match action lengths. Generation and annotation preserve nonzero
+  exit status when they fail.
+* GR1 generation shares the USD-to-URDF conversion across its independent IK controllers.
+* Docker constrains runtime dependencies, checks package consistency, and supports the pinned
+  cuRobo release with Warp 1.16.
+* The conda installer uses Arena's locked Sim 6.1.0.0/Lab/PyTorch packages, supports named
+  environments with ``-n``, and includes AutoData's test tools. It checks prerequisites before
+  creating an environment and refuses to replace an existing environment with ``-c``.
+
+Rebuild the Docker image when upgrading, or rerun ``./conda_installer.sh -i -n <environment-name>``
+for a Python 3.12 conda environment. See :doc:`../quickstart/installation` for both setup paths.
+
 v0.1.0
 ------
 

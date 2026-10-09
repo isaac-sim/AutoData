@@ -43,7 +43,7 @@ the task id:
 
    from autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
 
-   config = CuroboPlannerCfg.from_task_name("Isaac-Stack-Cube-Franka-IK-Rel-v0")
+   config = CuroboPlannerCfg.from_task_name("IsaacContrib-Stack-Cube-Franka-IK-Rel")
 
 ``from_task_name()`` pattern-matches the task id to a named preset (e.g.
 ``franka_config()``, ``franka_stack_cube_bin_config()``); unknown robots fall back to the

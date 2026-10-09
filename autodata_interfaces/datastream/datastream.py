@@ -357,7 +357,7 @@ class Datastream:
 
         robot_name = getattr(self.embodiment_adapter, "robot_asset_name", "robot")
         try:
-            prim_paths = self.env.scene[robot_name].root_physx_view.prim_paths
+            prim_paths = self.env.scene[robot_name].root_view.prim_paths
             return prim_paths[env_id]
         except (KeyError, AttributeError, IndexError):
             return f"{self.get_env_prim_path(env_id)}/Robot"

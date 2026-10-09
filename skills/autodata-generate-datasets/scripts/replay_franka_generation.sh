@@ -25,6 +25,6 @@ fi
 
 exec /isaac-sim/python.sh submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
     --viz kit \
-    --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+    --task IsaacContrib-Stack-Cube-Franka-IK-Rel \
     --num_envs 1 \
     --dataset_file "$dataset_file"

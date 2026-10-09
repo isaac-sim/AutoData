@@ -20,30 +20,34 @@ Isaac Lab or Isaac Lab-Arena revisions.
      - Linux x86_64; Ubuntu 22.04 or 24.04
    * - GPU
      - NVIDIA RTX GPU with RT cores and at least 16 GB VRAM.
-       See `Isaac Sim 6.0.1 requirements
+       See `Isaac Sim requirements
        <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html>`_.
    * - NVIDIA driver
-     - Linux 595.58.03.
-       See `Isaac Sim 6.0.1 requirements
+     - NVIDIA lists Linux 595.58.03 as a tested driver. See the current
+       `Isaac Sim requirements
        <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html>`_.
    * - CPU and RAM
      - Minimum: 4 CPU cores and 32 GB RAM. Recommended: 8 or more cores and 64 GB RAM.
-       See `Isaac Sim 6.0.1 requirements
+       See `Isaac Sim requirements
        <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html>`_.
    * - Disk
      - Minimum: 100 GB SSD. Recommended: 500 GB SSD
    * - Docker installation
      - Docker Engine with the NVIDIA Container Toolkit; recommended AutoData installation
    * - Conda installation
-     - Optional Linux installation using conda, ``uv``, and Python 3.12
+     - Optional: Python 3.12, conda, uv >= 0.12.21, CMake, and a C++ compiler;
+       ``conda_installer.sh`` installs Arena's locked environment. See :doc:`installation`.
    * - Isaac Sim
-     - 6.0.1 container image; 6.0.1.0 Python package
+     - ``nvcr.io/nvidia/isaac-sim:6.1.0`` (Docker) or ``isaacsim==6.1.0.0`` (conda/pip)
    * - Isaac Lab
-     - 3.0.0 at commit ``ffff603eafc6b74264a5261cc0183d6a65390d78``
+     - 3.0.0 at commit ``28a386f063e41c04c07f50e63eefb83fd8408fbe``
    * - Isaac Lab-Arena
-     - 0.2.0 at commit ``8b82dca224f2b5af08f339f987613c59ce9cdbaa``
+     - 0.3.1 at commit ``481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7``
    * - Python and PyTorch
-     - Python 3.12 and PyTorch 2.10.0 with CUDA 12.8
+     - Python 3.12 and PyTorch 2.11.0 with CUDA 12.8
+   * - NumPy, Warp, and Newton
+     - NumPy 2.3.1, Warp 1.16.0, and Newton 1.5.2; see
+       :autodata_code_link:`<docker/runtime-constraints.txt>`
    * - Git and Git LFS
      - Git with recursive submodule support and Git LFS
    * - cuRobo and SkillGen
