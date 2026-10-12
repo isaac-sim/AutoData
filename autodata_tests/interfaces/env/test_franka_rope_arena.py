@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from isaaclab.sim import SimulationCfg
 from isaaclab_arena.assets.registries import EnvironmentRegistry
 from isaaclab_arena.tasks.task_termination_cfg import TaskTerminationCfg
+from isaaclab_arena.utils.physics_backend import PhysicsBackend
 
 import autodata_examples.envs as env_registration
 import autodata_examples.envs.isaac_lab_arena as arena_registration
@@ -23,7 +24,7 @@ from autodata_examples.envs.isaac_lab_arena.franka_rope.environment import (
     FrankaRopeArenaEnvironmentCfg,
     _configure_franka_rope_env,
 )
-from autodata_examples.envs.isaac_lab_arena.franka_rope.rope_asset import FrankaRopeAsset
+from autodata_examples.envs.isaac_lab_arena.franka_rope.rope_asset import FrankaRopeAsset, rope_newton_spawn_cfg
 from autodata_examples.envs.isaac_lab_arena.franka_rope.task import FrankaRopeTask
 
 
@@ -163,6 +164,28 @@ def test_rope_asset_uses_deformable_scene_key():
     assert object_cfg.spawn.usd_path.endswith("/isaac_lab_arena/franka_rope/assets/Rope.usd")
 
 
+def test_newton_rope_preserves_simulation_topology():
+    from pxr import Usd
+
+    physx_stage = Usd.Stage.Open(FrankaRopeAsset().object_cfg.spawn.usd_path)
+    newton_stage = Usd.Stage.Open(rope_newton_spawn_cfg().usd_path)
+    for attribute in ("points", "tetVertexIndices", "omniphysics:restShapePoints", "omniphysics:restTetVtxIndices"):
+        original = physx_stage.GetPrimAtPath("/World/simulation_mesh").GetAttribute(attribute).Get()
+        adapted = newton_stage.GetPrimAtPath("/World/simulation_mesh").GetAttribute(attribute).Get()
+        assert original is not None
+        assert original == adapted
+    assert len(newton_stage.GetPrimAtPath("/World/simulation_mesh").GetAttribute("points").Get()) == 549
+    assert physx_stage.GetPrimAtPath("/World/collision_mesh").IsActive()
+    assert not newton_stage.GetPrimAtPath("/World/collision_mesh").IsActive()
+    assert physx_stage.GetPrimAtPath("/World/Xform").IsActive()
+    assert newton_stage.GetPrimAtPath("/World/Xform").IsActive()
+    for attribute in ("points", "faceVertexCounts", "faceVertexIndices", "primvars:st"):
+        original = physx_stage.GetPrimAtPath("/World/Xform").GetAttribute(attribute).Get()
+        adapted = newton_stage.GetPrimAtPath("/World/Xform").GetAttribute(attribute).Get()
+        assert adapted == original
+    assert sum(prim.GetTypeName() == "TetMesh" for prim in newton_stage.Traverse()) == 1
+
+
 def test_rope_mdp_terms_are_owned_by_arena_package():
     arena_module_prefix = "autodata_examples.envs.isaac_lab_arena.franka_rope.mdp"
     assert mdp.object_nodal_pos.__module__.startswith(arena_module_prefix)
@@ -205,3 +228,22 @@ def test_rope_embodiment_preserves_arena_observation_names():
         camera = getattr(embodiment.camera_config, camera_name)
         assert camera.renderer_cfg.renderer_type == "isaac_rtx"
         assert camera.renderer_cfg.global_settings.antialiasing_mode == "DLSS"
+
+
+def test_newton_embodiment_compensates_gravity_without_changing_physx():
+    physx = FrankaRopeIKEmbodiment()
+    newton = FrankaRopeIKEmbodiment()
+    physx.configure_physics_backend(PhysicsBackend.PHYSX)
+    newton.configure_physics_backend(PhysicsBackend.NEWTON)
+    assert physx.scene_config.robot.spawn.rigid_props.disable_gravity is True
+    assert physx.scene_config.robot.spawn.collision_props is None
+    assert newton.scene_config.robot.spawn.rigid_props.gravcomp == 1.0
+    assert newton.scene_config.robot.spawn.make_uninstanceable is True
+    assert newton.scene_config.robot.spawn.collision_props.sdf_max_resolution == 64
+    assert physx.scene_config.robot.actuators["panda_shoulder"].stiffness == 400.0
+    assert newton.scene_config.robot.actuators["panda_shoulder"].stiffness == 800.0
+    assert physx.action_config.gripper_action.close_command_expr == {"panda_finger_.*": 0.0}
+    assert newton.action_config.gripper_action.close_command_expr == {"panda_finger_.*": 0.0}
+    for name in newton.camera_config.camera_names():
+        assert getattr(newton.camera_config, name).renderer_cfg.renderer_type == "newton_warp"
+        assert getattr(physx.camera_config, name).renderer_cfg.renderer_type == "isaac_rtx"

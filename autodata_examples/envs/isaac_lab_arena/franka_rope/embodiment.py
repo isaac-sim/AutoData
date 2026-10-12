@@ -19,6 +19,7 @@ from isaaclab_arena.assets.retargeter_library import RetargetterBase
 from isaaclab_arena.embodiments.common.arm_mode import ArmMode
 from isaaclab_arena.embodiments.franka.franka import FrankaIKEmbodiment
 from isaaclab_arena.utils.cameras import ArenaCameraCfg
+from isaaclab_arena.utils.physics_backend import PhysicsBackend
 from isaaclab_arena.utils.pose import Pose
 from isaaclab_physx.renderers import IsaacRtxRendererCfg, IsaacRtxRendererGlobalSettingsCfg
 
@@ -158,6 +159,35 @@ class FrankaRopeIKEmbodiment(FrankaIKEmbodiment):
         self.camera_config = FrankaRopeCameraCfg()
         self.event_config = FrankaRopeEventsCfg()
         self.reward_config = None
+
+    def _configure_physics_backend(self, backend: PhysicsBackend) -> None:
+        """Apply Newton gravity compensation and mesh contact settings to the Franka."""
+        if backend is PhysicsBackend.NEWTON:
+            from isaaclab_newton.renderers import NewtonWarpRendererCfg
+            from isaaclab_newton.sim.schemas import (
+                MujocoRigidBodyCfg,
+                NewtonMaterialPropertiesCfg,
+                NewtonSDFCollisionPropertiesCfg,
+            )
+
+            from .newton_cfg import spawn_rope_franka_newton
+
+            spawn = self.scene_config.robot.spawn
+            # Match the shared high-PD Franka's PhysX-only disable_gravity setting.
+            spawn.rigid_props = MujocoRigidBodyCfg(gravcomp=1.0)
+            spawn.make_uninstanceable = True
+            spawn.func = spawn_rope_franka_newton
+            # Full-surface soft contacts require SDFs for the mesh colliders.
+            spawn.collision_props = NewtonSDFCollisionPropertiesCfg(sdf_max_resolution=64)
+            spawn.physics_material = NewtonMaterialPropertiesCfg(
+                static_friction=3.0, dynamic_friction=3.0, restitution=0.0
+            )
+            # Maintain pose tracking under the deformable solver's contact feedback.
+            self.scene_config.robot.actuators["panda_shoulder"].stiffness = 800.0
+            self.scene_config.robot.actuators["panda_forearm"].stiffness = 800.0
+            # Read rigid poses and deformable triangles directly from Newton state.
+            for camera_name in self.camera_config.camera_names():
+                getattr(self.camera_config, camera_name).renderer_cfg = NewtonWarpRendererCfg()
 
 
 @register_retargeter
