@@ -26,7 +26,7 @@ replay tool:
 .. code-block:: bash
 
    python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
-       --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --task IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz kit \
        --num_envs 20 \
        --dataset_file ./datasets/generated_dataset_mimicgen_franka.hdf5

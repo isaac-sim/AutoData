@@ -7,7 +7,6 @@ from __future__ import annotations
 import math
 from typing import Never
 
-import isaaclab.envs.mdp as mdp_isaac_lab
 from isaaclab.envs.common import ViewerCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -19,7 +18,9 @@ from isaaclab_arena.assets.register import register_task
 from isaaclab_arena.embodiments.common.arm_mode import ArmMode
 from isaaclab_arena.metrics.metric_base import MetricBase
 from isaaclab_arena.metrics.success_rate import SuccessRateMetric
+from isaaclab_arena.progress_tracking.completion_criteria import CompletionCriteria
 from isaaclab_arena.tasks.task_base import TaskBase
+from isaaclab_arena.tasks.task_termination_cfg import TaskTerminationCfg
 
 from . import mdp
 
@@ -82,21 +83,6 @@ class FrankaRopeTaskEventsCfg:
     )
 
 
-@configclass
-class FrankaRopeTaskTerminationsCfg:
-    """Rope success, failure, and time-limit terms."""
-
-    time_out = DoneTerm(func=mdp_isaac_lab.time_out, time_out=True)
-    object_dropping = DoneTerm(
-        func=mdp.rope_below_minimum,
-        params={
-            "minimum_height": -0.05,
-            "object_cfg": SceneEntityCfg("object"),
-        },
-    )
-    success = DoneTerm(func=mdp.rope_ends_close_tracked)
-
-
 @register_task
 class FrankaRopeTask(TaskBase):
     """Bring the two ends of a deformable rope together with a Franka arm."""
@@ -108,7 +94,24 @@ class FrankaRopeTask(TaskBase):
         )
         self.observation_cfg = FrankaRopeTaskObservationsCfg()
         self.events_cfg = FrankaRopeTaskEventsCfg()
-        self.termination_cfg = FrankaRopeTaskTerminationsCfg()
+        self.termination_cfg = TaskTerminationCfg(
+            timeout_s=self.episode_length_s,
+            success=[
+                CompletionCriteria(
+                    name="rope_ends_close",
+                    predicate_sequence=[mdp.rope_ends_close_tracked],
+                ),
+            ],
+            failures={
+                "object_dropping": DoneTerm(
+                    func=mdp.rope_below_minimum,
+                    params={
+                        "minimum_height": -0.05,
+                        "object_cfg": SceneEntityCfg("object"),
+                    },
+                ),
+            },
+        )
 
     def get_scene_cfg(self) -> None:
         """Return no task scene additions; the environment owns all assets."""
@@ -118,7 +121,7 @@ class FrankaRopeTask(TaskBase):
 
         return self.observation_cfg
 
-    def get_termination_cfg(self) -> FrankaRopeTaskTerminationsCfg:
+    def get_termination_cfg(self) -> TaskTerminationCfg:
         """Return task termination terms."""
 
         return self.termination_cfg

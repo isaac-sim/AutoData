@@ -83,7 +83,7 @@ Still inside the **cuRobo container**, generate one successful cube-stacking dem
 .. code-block:: bash
 
    python scripts/generate_dataset.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --alg skillgen \
        --task_descriptor autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
        --embodiment autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \

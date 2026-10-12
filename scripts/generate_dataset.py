@@ -101,10 +101,16 @@ parser.add_argument(
     help="Visualize SkillGen motion plans in a Rerun viewer (env 0 only; requires the rerun package).",
 )
 
+parser.add_argument(
+    "--enable_cameras",
+    dest="record_images",
+    action="store_true",
+    help="Render and record the task's image observations.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
-app_launcher = AppLauncher(args_cli)
+app_launcher = AppLauncher(args_cli, enable_cameras=args_cli.record_images)
 simulation_app = app_launcher.app
 
 """Rest everything follows."""
@@ -294,7 +300,7 @@ def main() -> None:
 
     env_make_kwargs = register_environment_for_run(
         env_name=env_name,
-        enable_cameras=args_cli.enable_cameras,
+        enable_cameras=args_cli.record_images,
         num_envs=args_cli.num_envs,
         device=args_cli.device,
         seed=generation_policy_params.seed,
@@ -318,6 +324,7 @@ def main() -> None:
         device=args_cli.device,
         generation_policy_params=generation_policy_params,
         env_profile=env_profile,
+        enable_cameras=args_cli.record_images,
     )
 
     env = gym.make(env_name, cfg=env_cfg, **env_make_kwargs.get(env_name, {})).unwrapped
@@ -396,8 +403,15 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    exit_code = 0
     try:
         main()
     except KeyboardInterrupt:
         print("\nInterrupted; exiting.")
-    simulation_app.close()
+        exit_code = 130
+    except Exception:
+        traceback.print_exc()
+        exit_code = 1
+    finally:
+        simulation_app.close(exit_code=exit_code)
+    sys.exit(exit_code)

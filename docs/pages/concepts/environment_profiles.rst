@@ -73,7 +73,7 @@ Schema
            position: [x, y, z]               # optional, env frame [m]
            rotation: [x, y, z, w]            # optional, identity is [0, 0, 0, 1]
            scale: [x, y, z]                  # optional
-           rigid_props: {<field>: <value>}   # optional RigidBodyPropertiesCfg fields
+           rigid_props: {<field>: <value>}   # optional PhysxRigidBodyPropertiesCfg fields
        override:
          <asset_name>:
            rigid_props: {<field>: <value>}

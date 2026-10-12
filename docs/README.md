@@ -1,6 +1,8 @@
 # AutoData Documentation — Developer Guide
 
-The docs are built on the **host machine** (not inside Docker) using a dedicated Python 3.12 venv.
+Build the docs in a dedicated Python 3.12 virtual environment. They only require
+`docs/requirements.txt`; do not install Isaac Sim, Isaac Lab, Arena, or AutoData into this environment.
+The commands below run on the **host**. The same Sphinx build also works inside the dev container.
 
 ## Prerequisites
 
@@ -12,28 +14,38 @@ sudo apt-get install -y python3.12 python3.12-venv
 
 ## First-time setup
 
-From the repo root, create the venv and install dependencies:
+From a fresh terminal outside the simulation conda environment, create the venv and install dependencies.
+If a conda environment is active, run `conda deactivate` first. Use the host Python 3.12 installed above:
 
 ```bash
 cd docs
-python3.12 -m venv venv_docs
+/usr/bin/python3.12 -m venv venv_docs
 source venv_docs/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ## Build and view (current branch/changes)
 
 ```bash
-make html
+make html SPHINXOPTS="-W --keep-going"
 xdg-open _build/current/html/index.html
 ```
+
+For an existing docs environment, start at `cd docs` and `source venv_docs/bin/activate`, then run
+the build command above. `-W` makes warnings fail the build. To rebuild every page after changing
+the configuration, use `make html SPHINXOPTS="-E -a -W --keep-going"`.
+
+If Python reports `Error in sitecustomize: No module named 'autodata_utils'`, an older editable
+AutoData installation is exposing its startup hook without the renamed packages. The current
+checkout tolerates that state; using a standalone docs environment also avoids loading the
+simulation environment. No simulator reinstall is needed to build these docs.
 
 ## Multi-version docs
 
 Builds docs for committed branches only (e.g. `main`, `release`). Local uncommitted changes are **not** reflected.
 
 ```bash
-make multi-docs
+make multi-docs SPHINXOPTS="-W --keep-going"
 xdg-open _build/index.html
 ```
 

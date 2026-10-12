@@ -77,5 +77,5 @@ fi
 read -r -a TEST_PATHS <<< "${TEST_PATH}"
 PYTEST_ARGS+=("${TEST_PATHS[@]}")
 
-echo ">>> Running E2E tests (mark='${PYTEST_MARK:-<all>}', paths='${TEST_PATH}', rebuild=${FORCE_REBUILD})"
+echo ">>> Running tests (mark='${PYTEST_MARK:-<all>}', paths='${TEST_PATH}', rebuild=${FORCE_REBUILD})"
 exec ./docker/run_docker.sh "${RUN_DOCKER_ARGS[@]}" "${PYTEST_ARGS[@]}"

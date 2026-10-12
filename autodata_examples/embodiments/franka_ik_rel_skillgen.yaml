@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Embodiment descriptor for SkillGen cube-stack generation on the generic IK-Rel task
-# (Isaac-Stack-Cube-Franka-IK-Rel-v0). Identical to franka_cube_stack_embodiment.yaml except for
+# (IsaacContrib-Stack-Cube-Franka-IK-Rel). Identical to franka_cube_stack_embodiment.yaml except for
 # eef_offset: the SkillGen source dataset is annotated in the panda_hand frame (cuRobo's planning
 # link), while the generic task reports the inter-fingertip frame, so the adapter must shift the
 # reported pose back to panda_hand.

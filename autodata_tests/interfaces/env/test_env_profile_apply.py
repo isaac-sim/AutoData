@@ -16,10 +16,11 @@ pytest.importorskip("isaaclab")
 
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg  # noqa: E402
 
-from autodata_interfaces.env import EnvironmentProfile, apply_env_profile  # noqa: E402
+from autodata_interfaces.env import EnvironmentProfile, apply_env_profile, setup_env_config  # noqa: E402
+from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy  # noqa: E402
 from autodata_tests.utils.constants import TestPaths  # noqa: E402
 
-BASE_ENV = "Isaac-Stack-Cube-Franka-IK-Rel-v0"
+BASE_ENV = "IsaacContrib-Stack-Cube-Franka-IK-Rel"
 
 
 def _parse_base_cfg():
@@ -30,10 +31,47 @@ def _load_bin_profile() -> EnvironmentProfile:
     return EnvironmentProfile.from_yaml(os.path.join(TestPaths.env_profiles_dir, "franka_bin_stack.yaml"))
 
 
+@pytest.mark.parametrize(
+    "env_name",
+    ["IsaacContrib-PickPlace-GR1T2-Abs", "IsaacContrib-PickPlace-Locomanipulation-G1-Abs"],
+)
+@pytest.mark.parametrize("enable_cameras", [False, True])
+def test_setup_humanoid_image_observations(env_name, enable_cameras, tmp_path):
+    env_cfg, success_term = setup_env_config(
+        env_name=env_name,
+        output_dir=str(tmp_path),
+        output_file_name="generated",
+        num_envs=1,
+        device="cpu",
+        generation_policy_params=GenerationPolicy(),
+        enable_cameras=enable_cameras,
+    )
+    assert success_term is not None
+    assert (env_cfg.scene.robot_pov_cam is not None) == enable_cameras
+    assert (env_cfg.observations.policy.robot_pov_cam is not None) == enable_cameras
+    assert bool(env_cfg.image_obs_list) == enable_cameras
+    assert env_cfg.observations.policy.concatenate_terms is False
+
+
+def test_gr1_lazy_action_uses_shared_urdf(tmp_path):
+    """Adapt Lab's string-based action registration before the simulator instantiates it."""
+    from autodata_interfaces.env.pink_ik_action import PinkInverseKinematicsActionSharedUrdf
+
+    env_cfg, _ = setup_env_config(
+        env_name="IsaacContrib-PickPlace-GR1T2-Abs",
+        output_dir=str(tmp_path),
+        output_file_name="generated",
+        num_envs=100,
+        device="cpu",
+        generation_policy_params=GenerationPolicy(),
+    )
+    assert env_cfg.actions.upper_body_ik.class_type is PinkInverseKinematicsActionSharedUrdf
+
+
 def test_apply_bin_stack_profile_overlays_scene_and_events():
     from isaaclab.assets import RigidObjectCfg
     from isaaclab.managers import SceneEntityCfg
-    from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
+    from isaaclab_tasks.contrib.stack.mdp import franka_stack_events
 
     env_cfg = _parse_base_cfg()
     profile = _load_bin_profile()
@@ -69,7 +107,7 @@ def test_apply_bin_stack_profile_overlays_scene_and_events():
 
     # Untouched base config: success term and unrelated events survive the overlay.
     assert env_cfg.terminations.success is not None
-    assert env_cfg.events.randomize_franka_joint_state is not None
+    assert env_cfg.events.randomize_joint_state is not None
 
 
 def test_apply_rejects_base_env_mismatch():

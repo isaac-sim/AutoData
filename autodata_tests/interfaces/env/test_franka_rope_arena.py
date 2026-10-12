@@ -8,7 +8,9 @@ import sys
 from functools import partial
 from types import SimpleNamespace
 
+from isaaclab.sim import SimulationCfg
 from isaaclab_arena.assets.registries import EnvironmentRegistry
+from isaaclab_arena.tasks.task_termination_cfg import TaskTerminationCfg
 
 import autodata_examples.envs as env_registration
 import autodata_examples.envs.isaac_lab_arena as arena_registration
@@ -19,6 +21,7 @@ from autodata_examples.envs.isaac_lab_arena.franka_rope.environment import (
     FRANKA_ROPE_ARENA_ENV_ID,
     FrankaRopeArenaEnvironment,
     FrankaRopeArenaEnvironmentCfg,
+    _configure_franka_rope_env,
 )
 from autodata_examples.envs.isaac_lab_arena.franka_rope.rope_asset import FrankaRopeAsset
 from autodata_examples.envs.isaac_lab_arena.franka_rope.task import FrankaRopeTask
@@ -36,8 +39,6 @@ def test_arena_environment_factory_is_registered():
 
 
 def test_arena_registration_uses_run_configuration_and_preserves_make_kwargs(monkeypatch):
-    from isaaclab_arena.environments import arena_env_builder
-
     captured = {}
     variation_recorder = object()
 
@@ -50,7 +51,11 @@ def test_arena_registration_uses_run_configuration_and_preserves_make_kwargs(mon
             return FRANKA_ROPE_ARENA_ENV_ID, object(), {"variation_recorder": variation_recorder}
 
     monkeypatch.delitem(gym.registry, FRANKA_ROPE_ARENA_ENV_ID, raising=False)
-    monkeypatch.setattr(arena_env_builder, "ArenaEnvBuilder", FakeArenaEnvBuilder)
+    monkeypatch.setitem(
+        sys.modules,
+        "isaaclab_arena.environments.arena_env_builder",
+        SimpleNamespace(ArenaEnvBuilder=FakeArenaEnvBuilder),
+    )
     monkeypatch.setattr(
         FrankaRopeArenaEnvironment,
         "build",
@@ -166,10 +171,26 @@ def test_rope_mdp_terms_are_owned_by_arena_package():
 
 
 def test_rope_task_exposes_annotation_and_success_terms():
-    task = FrankaRopeTask()
+    task = FrankaRopeTask(episode_length_s=15.0)
     assert task.get_observation_cfg().subtask_terms.grasp is not None
-    assert task.get_termination_cfg().success is not None
+    terminations = task.get_termination_cfg()
+    assert isinstance(terminations, TaskTerminationCfg)
+    assert terminations.timeout_s == 15.0
+    assert len(terminations.success) == 1
+    assert terminations.success[0].predicate_sequence == [mdp.rope_ends_close_tracked]
+    assert terminations.failures["object_dropping"].func is mdp.rope_below_minimum
     assert task.get_events_cfg().reset_object_position is not None
+
+
+def test_rope_environment_configures_lab_timing():
+    env_cfg = SimpleNamespace(sim=SimulationCfg(), scene=SimpleNamespace(replicate_physics=True))
+
+    assert _configure_franka_rope_env(env_cfg) is env_cfg
+    assert env_cfg.decimation * env_cfg.sim.dt == 0.05
+    assert env_cfg.sim.render_interval == 2
+    assert env_cfg.num_rerenders_on_reset == 1
+    assert env_cfg.scene.replicate_physics is False
+    assert set(env_cfg.teleop_devices.devices) == {"keyboard", "spacemouse"}
 
 
 def test_rope_embodiment_preserves_arena_observation_names():
@@ -180,3 +201,7 @@ def test_rope_embodiment_preserves_arena_observation_names():
     assert embodiment.observation_config.policy.object_nodal_pos is not None
     assert embodiment.event_config.randomize_franka_joint_state.params["position_range"] == (-0.02, 0.02)
     assert embodiment.reward_config is None
+    for camera_name in embodiment.camera_config.camera_names():
+        camera = getattr(embodiment.camera_config, camera_name)
+        assert camera.renderer_cfg.renderer_type == "isaac_rtx"
+        assert camera.renderer_cfg.global_settings.antialiasing_mode == "DLSS"

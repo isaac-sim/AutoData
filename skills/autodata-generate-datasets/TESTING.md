@@ -26,7 +26,7 @@ container, where the repo is mounted at `/workspaces/autodata`.
 Executed inside the default `./docker/run_docker.sh` container on Linux with an NVIDIA RTX 3090:
 
 - Helper: `skills/autodata-generate-datasets/scripts/run_generation.sh`
-- Algorithm/environment: `mimicgen` / `Isaac-Stack-Cube-Franka-IK-Rel-v0`
+- Algorithm/environment: `mimicgen` / `IsaacContrib-Stack-Cube-Franka-IK-Rel`
 - Source: `datasets/annotated_datasets/dataset_franka_annotated.hdf5`
 - Parameters: 10 trials, 10 parallel environments, `--viz none`
 - Output: `datasets/generated_dataset_franka_base_env_smoke.hdf5`
@@ -60,7 +60,7 @@ To verify end-to-end generation:
    ```bash
    skills/autodata-generate-datasets/scripts/run_generation.sh \
        --alg mimicgen \
-       --env-name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env-name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --task autodata_examples/tasks/franka_cube_stack.yaml \
        --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
        --input datasets/annotated_datasets/dataset_franka_annotated.hdf5 \

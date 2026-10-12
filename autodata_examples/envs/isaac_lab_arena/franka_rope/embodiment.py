@@ -20,6 +20,7 @@ from isaaclab_arena.embodiments.common.arm_mode import ArmMode
 from isaaclab_arena.embodiments.franka.franka import FrankaIKEmbodiment
 from isaaclab_arena.utils.cameras import ArenaCameraCfg
 from isaaclab_arena.utils.pose import Pose
+from isaaclab_physx.renderers import IsaacRtxRendererCfg, IsaacRtxRendererGlobalSettingsCfg
 
 from . import mdp
 
@@ -57,6 +58,7 @@ class FrankaRopeCameraCfg(ArenaCameraCfg):
         height=128,
         width=128,
         data_types=["rgb"],
+        renderer_cfg=IsaacRtxRendererCfg(global_settings=IsaacRtxRendererGlobalSettingsCfg(antialiasing_mode="DLSS")),
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=24.0,
             focus_distance=400.0,
@@ -76,6 +78,7 @@ class FrankaRopeCameraCfg(ArenaCameraCfg):
         height=128,
         width=128,
         data_types=["rgb"],
+        renderer_cfg=IsaacRtxRendererCfg(global_settings=IsaacRtxRendererGlobalSettingsCfg(antialiasing_mode="DLSS")),
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=14.0,
             focus_distance=400.0,

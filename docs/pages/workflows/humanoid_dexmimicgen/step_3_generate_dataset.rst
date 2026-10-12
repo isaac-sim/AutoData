@@ -40,7 +40,7 @@ Start with a small run in a Kit window (``--viz kit``) to sanity-check the setup
       .. code-block:: bash
 
          python scripts/generate_dataset.py \
-            --env_name Isaac-PickPlace-GR1T2-Abs-v0 \
+            --env_name IsaacContrib-PickPlace-GR1T2-Abs \
             --viz kit \
             --device cpu \
             --num_envs 5 \
@@ -56,7 +56,7 @@ Start with a small run in a Kit window (``--viz kit``) to sanity-check the setup
       .. code-block:: bash
 
          python scripts/generate_dataset.py \
-            --env_name Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
+            --env_name IsaacContrib-PickPlace-Locomanipulation-G1-Abs \
             --viz kit \
             --device cpu \
             --num_envs 5 \
@@ -83,6 +83,11 @@ tally after every attempt to generate a new demonstration:
 
 The script shuts down automatically after 10 successful demonstrations are generated.
 
+These commands record state observations without the task's teleoperation preview cameras.
+Add ``--enable_cameras`` to include the configured image observations; this increases rendering,
+GPU-memory, and storage costs. A Kit window alone does not enable image recording. Start with
+``--num_envs 1`` when testing image generation.
+
 
 Full-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^
@@ -96,7 +101,7 @@ For dataset-scale generation, run headless (``--viz none``) with parallel enviro
       .. code-block:: bash
 
          python scripts/generate_dataset.py \
-            --env_name Isaac-PickPlace-GR1T2-Abs-v0 \
+            --env_name IsaacContrib-PickPlace-GR1T2-Abs \
             --viz none \
             --device cpu \
             --num_envs 50 \
@@ -112,7 +117,7 @@ For dataset-scale generation, run headless (``--viz none``) with parallel enviro
       .. code-block:: bash
 
          python scripts/generate_dataset.py \
-            --env_name Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
+            --env_name IsaacContrib-PickPlace-Locomanipulation-G1-Abs \
             --viz none \
             --device cpu \
             --num_envs 50 \
@@ -127,12 +132,12 @@ Progress is printed after every attempt (successful demonstrations, attempts, an
 
 .. note::
 
-  **Expected data generation success rate and time**
-
-  * Data generation success rate: ~70%
-  * Data generation time: ~40 minutes
-
-  *Numbers are based on using an RTX PRO 6000 Blackwell GPU with the provided command.*
+  **Upgrade validation:** the 100-environment CPU benchmarks achieved 74.7% for GR1
+  (502 successes in 672 attempts) and 74.3% for G1 (500 in 673), using the repository's test
+  datasets. These measurements are not timing or success guarantees for the commands above.
+  Runtime depends on source data, asset-cache state, hardware, and rendering. GR1 creates an
+  independent Pink IK controller per environment, so initialization and host RAM use grow
+  with ``--num_envs`` even though AutoData shares the URDF conversion.
 
 
 Key Parameters
@@ -155,6 +160,8 @@ Key Parameters
      - Number of parallel environments, each generating independently.
    * - ``--viz``
      - Visualization mode (``kit`` opens a Kit window; ``none`` runs headless).
+   * - ``--enable_cameras``
+     - Include the task's configured image observations. Omit for state-only generation.
 
 The descriptor's ``generation_policy.select_src_per_arm`` (``false`` by default) controls whether
 each arm may draw from a different source demonstration; keeping it ``false`` keeps the arms coordinated

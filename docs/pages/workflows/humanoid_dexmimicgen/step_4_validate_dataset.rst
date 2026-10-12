@@ -40,7 +40,7 @@ tool. CPU simulation matches how the humanoid demonstrations were recorded:
       .. code-block:: bash
 
          python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
-            --task Isaac-PickPlace-GR1T2-Abs-v0 \
+            --task IsaacContrib-PickPlace-GR1T2-Abs \
             --viz kit \
             --device cpu \
             --dataset_file ./datasets/generated_dataset_dexmimicgen_gr1.hdf5
@@ -50,7 +50,7 @@ tool. CPU simulation matches how the humanoid demonstrations were recorded:
       .. code-block:: bash
 
          python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
-            --task Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
+            --task IsaacContrib-PickPlace-Locomanipulation-G1-Abs \
             --viz kit \
             --device cpu \
             --dataset_file ./datasets/generated_dataset_dexmimicgen_g1.hdf5

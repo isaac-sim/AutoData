@@ -3,7 +3,7 @@
 
 """End-to-end SkillGen data-generation test for the Franka bin-stack variant.
 
-The bin variant runs on the generic ``Isaac-Stack-Cube-Franka-IK-Rel-v0`` task with the
+The bin variant runs on the generic ``IsaacContrib-Stack-Cube-Franka-IK-Rel`` task with the
 ``franka_bin_stack`` environment profile overlaying the sorting-bin scene and its reset
 distributions, and reuses the cube-stack annotated SkillGen source dataset — no specialized
 bin env id is involved.
@@ -35,7 +35,7 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
             TestPaths.python_path,
             TestPaths.generate_dataset_script,
             "--env_name",
-            "Isaac-Stack-Cube-Franka-IK-Rel-v0",
+            "IsaacContrib-Stack-Cube-Franka-IK-Rel",
             "--alg",
             "skillgen",
             "--task_descriptor",

@@ -18,6 +18,14 @@ then SkillGen.
    * - Symptom
      - Likely cause
      - Check or fix
+   * - ``Environment ... doesn't exist`` during task lookup.
+     - Lab 3.0 renamed the base task, or the command is using an old environment.
+     - Use the ``IsaacContrib-*`` name and the current Docker image. See
+       :ref:`troubleshooting-task-names`.
+   * - ``Error in sitecustomize`` / ``No module named 'autodata_utils'`` when creating a docs venv.
+     - An old editable installation exposes the startup hook without the renamed packages.
+     - Update the checkout and build docs in a dedicated virtual environment. See
+       :ref:`troubleshooting-docs-startup`.
    * - ``--viz kit`` opens no window, or reports an X11/display error.
      - ``DISPLAY`` or the X11 socket was not available when the container started, or the container
        lacks X server permission.
@@ -82,7 +90,52 @@ Both ``DISPLAY`` and ``/tmp/.X11-unix`` must be present. Check the same values i
 
 The run script captures ``DISPLAY`` when it creates the container. If the container was created
 before the display was available, stop it and start it again with ``./docker/run_docker.sh`` (or
-``./docker/run_docker.sh -c`` for SkillGen). On a machine without a display, use ``--viz none``.
+``./docker/run_docker.sh -c`` for SkillGen). On a machine without a display, use ``--viz none``
+for generation or automatic annotation. Manual annotation and the keyboard/SpaceMouse recording
+workflow use ``--viz kit``. Also unset ``HEADLESS`` in an interactive shell if it is forcing
+windowless execution.
+
+.. _troubleshooting-task-names:
+
+Task Names After the Arena Upgrade
+-------------------------------------
+
+The current base task IDs are:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Workflow
+     - Task ID
+   * - Franka cube stacking
+     - ``IsaacContrib-Stack-Cube-Franka-IK-Rel``
+   * - GR1 pick-and-place
+     - ``IsaacContrib-PickPlace-GR1T2-Abs``
+   * - G1 pick-and-place
+     - ``IsaacContrib-PickPlace-Locomanipulation-G1-Abs``
+
+Use ``--task`` with Lab's recording/replay scripts and ``--env_name`` with AutoData's generation
+and annotation scripts. Commands, environment profiles, and dataset metadata must contain the
+registered task name directly. The bundled source datasets already contain the current IDs.
+
+The recorder imports ``isaaclab_mimic.envs``, which overrides the registered SkillGen and bin-stack
+tasks. The resulting two ``Overriding environment ... already in registry`` warnings are unrelated
+to the missing base-task error.
+
+.. _troubleshooting-docs-startup:
+
+Python Startup While Building Docs
+-------------------------------------
+
+An older editable install can expose ``sitecustomize.py`` while still pointing at the old
+``isaac_autodata_*`` package names. The current startup hook skips AutoData compatibility setup
+when ``autodata_utils`` is unavailable, allowing ordinary Python and venv commands to run.
+
+Use a fresh host shell and a dedicated docs virtual environment, following
+:autodata_code_link:`<docs/README.md>`. Documentation only needs ``docs/requirements.txt``;
+it does not need the simulator stack. Preview uncommitted edits with ``make html``, then open
+``docs/_build/current/html/index.html``. The multiversion build reads committed revisions.
 
 .. _troubleshooting-cloudxr:
 
@@ -196,6 +249,11 @@ Replay with that environment, the recorded device, and one environment while dia
        --num_envs 1 \
        --viz kit \
        --dataset_file <dataset.hdf5>
+
+For an older dataset, select the corresponding current task from
+:ref:`troubleshooting-task-names`. For profile-based generation, such as the SkillGen bin scene,
+the base task alone is insufficient: replay must reconstruct the added scene objects and reset
+configuration. Lab's replay command does not accept AutoData's ``--env_profile`` option.
 
 If this works, increase ``--num_envs`` gradually. Even with matching settings, PhysX is not fully
 deterministic across resets, so action replay can diverge from the original successful generation.

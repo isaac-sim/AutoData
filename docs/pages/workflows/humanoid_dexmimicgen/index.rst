@@ -48,7 +48,7 @@ what makes this a DexMimicGen rather than a MimicGen task.
          * - **Algorithm**
            - DexMimicGen (two end-effectors)
          * - **Environment name**
-           - ``Isaac-PickPlace-GR1T2-Abs-v0``
+           - ``IsaacContrib-PickPlace-GR1T2-Abs``
          * - **Embodiment**
            - Upper-body IK with absolute-pose actions and dexterous hands per arm
          * - **Task descriptor**
@@ -72,7 +72,7 @@ what makes this a DexMimicGen rather than a MimicGen task.
          * - **Algorithm**
            - DexMimicGen (two end-effectors)
          * - **Environment name**
-           - ``Isaac-PickPlace-Locomanipulation-G1-Abs-v0``
+           - ``IsaacContrib-PickPlace-Locomanipulation-G1-Abs``
          * - **Embodiment**
            - Upper-body IK with absolute-pose actions and dexterous hands per arm. Lower body balancing policy.
          * - **Task descriptor**

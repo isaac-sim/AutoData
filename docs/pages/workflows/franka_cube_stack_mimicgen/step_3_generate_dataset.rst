@@ -24,9 +24,9 @@ Start with a small-scale run in a Kit window (``--viz kit``) to sanity-check the
 .. code-block:: bash
 
    python scripts/generate_dataset.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz kit \
-       --num_envs 20 \
+       --num_envs 5 \
        --alg mimicgen \
        --generation_num_trials 10 \
        --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
@@ -59,9 +59,9 @@ For dataset-scale generation, run headless (``--viz none``) with parallel enviro
 .. code-block:: bash
 
    python scripts/generate_dataset.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz none \
-       --num_envs 500 \
+       --num_envs 100 \
        --alg mimicgen \
        --generation_num_trials 1000 \
        --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
@@ -73,12 +73,10 @@ Progress is printed after every attempt (successful demonstrations, attempts, an
 
 .. note::
 
-  **Expected data generation success rate and time**
-
-  * Data generation success rate: ~40%
-  * Data generation time: ~15 minutes
-
-  *Numbers are based on using an RTX PRO 6000 Blackwell GPU with the provided command.*
+  **Upgrade validation:** the 100-environment GPU benchmark achieved 38.0% success
+  (501 successes in 1,319 attempts) using the repository's test dataset. This is a reference
+  measurement, not a timing or success guarantee. Start with a small run and increase
+  ``--num_envs`` according to available GPU memory and observed throughput.
 
 
 Key Parameters

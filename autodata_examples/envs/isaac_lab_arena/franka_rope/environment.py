@@ -36,7 +36,6 @@ def _configure_franka_rope_env(env_cfg: Any) -> Any:
     env_cfg.decimation = 5
     env_cfg.sim.dt = 0.01
     env_cfg.sim.render_interval = 2
-    env_cfg.sim.render.antialiasing_mode = "DLSS"
     env_cfg.num_rerenders_on_reset = 1
     env_cfg.scene.replicate_physics = False
     env_cfg.teleop_devices = DevicesCfg(

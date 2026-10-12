@@ -5,12 +5,12 @@
 set -e
 
 DOCKER_IMAGE_NAME='autodata'
-DOCKER_VERSION_TAG='sim-6.0.1'
+DOCKER_VERSION_TAG='sim-6.1.0'
 # Override with BASE_IMAGE when testing against a different compatible Isaac Sim release.
-BASE_IMAGE="${BASE_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.1}"
+BASE_IMAGE="${BASE_IMAGE:-nvcr.io/nvidia/isaac-sim:6.1.0}"
 
 INSTALL_CUROBO=false
-CUROBO_VERSION_TAG='sim-6.0.1-curobo'
+CUROBO_VERSION_TAG='sim-6.1.0-curobo'
 
 # Resolve TORCH_CUDA_ARCH_LIST for the cuRobo build. Honour an explicit override if set, else
 # auto-detect the host GPU's compute capability via nvidia-smi (e.g. "12.0" -> "12.0+PTX").
@@ -26,7 +26,7 @@ detect_cuda_arch() {
     fi
     local cc
     cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 | tr -d '[:space:]')
-    if [ -z "${cc}" ]; then
+    if ! [[ "${cc}" =~ ^[0-9]+\.[0-9]+$ ]]; then
         echo "error: could not read compute capability from nvidia-smi." >&2
         echo "       Set TORCH_CUDA_ARCH_LIST (e.g. export TORCH_CUDA_ARCH_LIST=12.0+PTX) and retry." >&2
         return 1
@@ -111,10 +111,21 @@ if [ "$(docker ps -a --quiet --filter status=exited --filter "name=^${CONTAINER_
     docker rm "${CONTAINER_NAME}" >/dev/null
 fi
 
-# If it's already running, just attach a shell as the host user.
+# Reuse a running container only if it uses the selected image.
 if [ "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ]; then
-    echo "Container already running. Attaching."
-    docker exec -it "${CONTAINER_NAME}" su "$(id -un)"
+    if [ "$(docker inspect -f '{{.Image}}' "${CONTAINER_NAME}")" != \
+         "$(docker image inspect -f '{{.Id}}' "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}")" ]; then
+        echo "error: ${CONTAINER_NAME} uses an older image. Stop it and rerun this command." >&2
+        exit 1
+    fi
+    if [ "$#" -gt 0 ]; then
+        printf -v AUTODATA_COMMAND '%q ' "$@"
+        docker exec --user "$(id -un)" --workdir "${WORKDIR}" "${CONTAINER_NAME}" \
+            bash -ic "${AUTODATA_COMMAND}"
+    else
+        echo "Container already running. Attaching."
+        docker exec -it "${CONTAINER_NAME}" su "$(id -un)"
+    fi
     exit 0
 fi
 

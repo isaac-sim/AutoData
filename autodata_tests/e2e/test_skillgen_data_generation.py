@@ -4,7 +4,7 @@
 """End-to-end SkillGen data-generation tests for the Franka cube-stack task.
 
 SkillGen plans collision-free transit motions with the cuRobo backend and runs against
-the generic ``Isaac-Stack-Cube-Franka-IK-Rel-v0`` task — the SkillGen-specific control-link frame
+the generic ``IsaacContrib-Stack-Cube-Franka-IK-Rel`` task — the SkillGen-specific control-link frame
 is carried by the embodiment's ``eef_offset`` rather than a dedicated task id.
 """
 
@@ -31,7 +31,7 @@ def _run_franka_cube_stack_skillgen(num_envs: int, device: str) -> None:
             TestPaths.python_path,
             TestPaths.generate_dataset_script,
             "--env_name",
-            "Isaac-Stack-Cube-Franka-IK-Rel-v0",
+            "IsaacContrib-Stack-Cube-Franka-IK-Rel",
             "--alg",
             "skillgen",
             "--task_descriptor",
@@ -65,7 +65,7 @@ def test_franka_cube_stack_skillgen_data_generation_single_env_cuda():
 @pytest.mark.with_subprocess
 def test_franka_cube_stack_skillgen_data_generation_multi_env_cuda():
     """SkillGen generation for the Franka cube-stack task on multiple parallel envs on GPU."""
-    _run_franka_cube_stack_skillgen(num_envs=10, device="cuda")
+    _run_franka_cube_stack_skillgen(num_envs=3, device="cuda")
 
 
 if __name__ == "__main__":

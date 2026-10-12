@@ -1,6 +1,8 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import h5py
+import numpy as np
 import os
 import tempfile
 
@@ -47,6 +49,13 @@ def _run_franka_rope_softmimicgen(num_envs: int, device: str) -> None:
         run_subprocess(args)
 
         assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
+        with h5py.File(output_file, "r") as dataset:
+            for episode in dataset["data"].values():
+                nodes = episode["states/deformable_object/object/nodal_position"][:]
+                assert nodes.shape == (len(episode["actions"]), 549, 3)
+                assert np.isfinite(nodes).all()
+                # Parallel environment origins must not leak into recorded positions.
+                assert np.abs(nodes).max() < 2.0
 
 
 @pytest.mark.with_subprocess

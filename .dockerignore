@@ -1,14 +1,3 @@
-**/.git
-**/.gitattributes
-/.agents
-/.claude
-
-**/__pycache__
-**/*.py[cod]
-*.egg-info
-**/*.egg-info
-.pytest_cache
-
 /datasets/
 /src/
 /docs/
@@ -16,5 +5,19 @@
 submodules/IsaacLab-Arena/submodules/**
 !submodules/IsaacLab-Arena/submodules/IsaacLab
 !submodules/IsaacLab-Arena/submodules/IsaacLab/**
+
+# Keep generated files excluded after the nested Lab inclusion above.
+**/.git
+**/.gitattributes
+/.agents
+/.claude
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.pytest_cache
+**/.cache
+**/_isaac_sim
+**/.vscode
+**/logs
 
 docker/**/*.log

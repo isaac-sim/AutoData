@@ -35,7 +35,7 @@ Manual Annotation
       .. code-block:: bash
 
          python scripts/annotate_demos.py \
-            --env_name Isaac-PickPlace-GR1T2-Abs-v0 \
+            --env_name IsaacContrib-PickPlace-GR1T2-Abs \
             --viz kit \
             --device cpu \
             --task_descriptor autodata_examples/tasks/gr1_pick_place.yaml \
@@ -48,13 +48,17 @@ Manual Annotation
       .. code-block:: bash
 
          python scripts/annotate_demos.py \
-            --env_name Isaac-PickPlace-Locomanipulation-G1-Abs-v0 \
+            --env_name IsaacContrib-PickPlace-Locomanipulation-G1-Abs \
             --viz kit \
             --device cpu \
             --task_descriptor autodata_examples/tasks/g1_pick_place.yaml \
             --embodiment autodata_examples/embodiments/g1_ik_abs.yaml \
             --input_file ./datasets/dataset_g1.hdf5 \
             --output_file ./datasets/dataset_g1_annotated.hdf5
+
+The default output contains state observations. Add ``--enable_cameras`` to render and record
+the task's configured image observations during annotation. Images in the input file are not
+copied automatically into the newly recorded output.
 
 Each episode replays in the Kit window and is paused at the start. The tool prints the arm currently
 being annotated and its expected signals. Control playback and mark boundaries with the keyboard:

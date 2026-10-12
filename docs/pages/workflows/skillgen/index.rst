@@ -128,7 +128,7 @@ the keyboard.
 .. code-block:: bash
 
    python scripts/annotate_demos.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz kit \
        --task_descriptor autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
        --embodiment autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
@@ -191,7 +191,7 @@ four-subtask cube-stacking task that is **7 marks** per episode, in this order:
 Task 1: Cube Stacking
 ---------------------
 
-**Environment name:** ``Isaac-Stack-Cube-Franka-IK-Rel-v0``
+**Environment name:** ``IsaacContrib-Stack-Cube-Franka-IK-Rel``
 
 A Franka arm stacks three cubes on a table — red on blue, then green on red. This is the same
 environment as the :doc:`MimicGen workflow <../franka_cube_stack_mimicgen/index>`; the
@@ -225,7 +225,7 @@ Start small to verify the setup, using the pre-annotated source dataset:
 .. code-block:: bash
 
    python scripts/generate_dataset.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --alg skillgen \
        --task_descriptor autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
        --embodiment autodata_examples/embodiments/franka_ik_rel_skillgen.yaml \
@@ -287,7 +287,7 @@ Abridged from
 .. code-block:: yaml
 
    name: franka_bin_stack
-   base_env: Isaac-Stack-Cube-Franka-IK-Rel-v0
+   base_env: IsaacContrib-Stack-Cube-Franka-IK-Rel
    planner: franka_stack_cube_bin        # planner profile tuned for the bin scene
 
    scene:
@@ -323,7 +323,7 @@ change:
 .. code-block:: bash
 
    python scripts/generate_dataset.py \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --alg skillgen \
        --task_descriptor autodata_examples/tasks/franka_bin_stack_skillgen.yaml \
        --env_profile autodata_examples/env_profiles/franka_bin_stack.yaml \

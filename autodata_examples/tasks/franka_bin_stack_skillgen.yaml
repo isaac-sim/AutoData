@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Franka bin cube stack (SkillGen). Runs on the neutral Isaac-Stack-Cube-Franka-IK-Rel-v0 task
+# Franka bin cube stack (SkillGen). Runs on the neutral IsaacContrib-Stack-Cube-Franka-IK-Rel task
 # with the franka_bin_stack environment profile (--env_profile) and reuses the cube-stack
 # annotated SkillGen source dataset. action_noise stays 0.0: the bin walls leave little
 # clearance for perturbed skill segments.

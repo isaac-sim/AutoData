@@ -14,7 +14,8 @@ Prerequisites
 * Installation is complete — repo cloned with submodules, NGC login, Docker with the NVIDIA
   Container Toolkit (see :doc:`installation`).
 * Git LFS data is pulled — the source dataset lives at
-  ``/datasets/annotated_datasets``.
+  ``./datasets/annotated_datasets`` in the repository (``/workspaces/autodata/datasets/annotated_datasets``
+  inside the container).
 
 
 Start the Dev Container
@@ -38,7 +39,7 @@ From ``/workspaces/autodata`` inside the container, run:
 
    python scripts/generate_dataset.py \
        --viz kit \
-       --env_name Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --alg mimicgen \
        --generation_num_trials 10 \
        --num_envs 10 \
@@ -114,7 +115,7 @@ Run the command to replay the generated demonstrations:
 
    python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
        --viz kit \
-       --task Isaac-Stack-Cube-Franka-IK-Rel-v0 \
+       --task IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --dataset_file datasets/generated_dataset_franka_quickstart.hdf5
 
 Each episode resets the scene to its recorded initial state and steps through its recorded
