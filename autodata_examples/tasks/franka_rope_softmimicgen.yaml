@@ -10,7 +10,7 @@ generation_policy:
   seed: 1
   num_trials: 10
   guarantee_success: true
-  keep_failed: true
+  keep_failed: false
   source_dataset_path: null
   generation_path: null
   task_name: null

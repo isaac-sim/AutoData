@@ -127,6 +127,27 @@ class DataGenInfoPool:
         object_poses_dict = ep_grp["obs"]["datagen_info"].get("object_pose")
         object_nodal_positions_dict = ep_grp["obs"]["datagen_info"].get("object_nodal_position")
         target_eef_pose = ep_grp["obs"]["datagen_info"]["target_eef_pose"]
+
+        # Legacy single-arm datasets use names such as "robot0". With exactly one
+        # recorded and one configured EEF, the correspondence is unambiguous.
+        # Normalize both pose mappings in memory without modifying the source episode.
+        expected_eefs = set(self.task_descriptor.get_eef_names())
+        recorded_eefs = set(eef_pose)
+        assert recorded_eefs == set(target_eef_pose), (
+            f"Source eef_pose names {sorted(recorded_eefs)} do not match "
+            f"target_eef_pose names {sorted(target_eef_pose)}."
+        )
+        if recorded_eefs != expected_eefs:
+            assert len(recorded_eefs) == len(expected_eefs) == 1, (
+                f"Source EEF names {sorted(recorded_eefs)} do not match configured names "
+                f"{sorted(expected_eefs)}. Automatic name matching requires exactly one "
+                "source and one configured EEF; multi-arm datasets require matching names."
+            )
+            source_eef = next(iter(recorded_eefs))
+            configured_eef = next(iter(expected_eefs))
+            eef_pose = {configured_eef: eef_pose[source_eef]}
+            target_eef_pose = {configured_eef: target_eef_pose[source_eef]}
+
         subtask_term_signals_dict = ep_grp["obs"]["datagen_info"]["subtask_term_signals"]
         subtask_start_signals_dict = ep_grp["obs"]["datagen_info"].get("subtask_start_signals")
 

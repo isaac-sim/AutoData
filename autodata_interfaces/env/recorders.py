@@ -4,43 +4,26 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
-from isaaclab.managers.recorder_manager import RecorderTerm
-
-from autodata_interfaces.env.scene_state import get_scene_state
-
-# TODO: Remove this custom recorder once upstream Lab fixes the nodal position relative scene state bug.
+from isaaclab.managers.recorder_manager import RecorderTerm, RecorderTermCfg
 
 
-class InitialStateRecorder(RecorderTerm):
-    """Record the correctly env-relative initial scene state after reset."""
+class PreStepCameraObservationsRecorder(RecorderTerm):
+    """Record image observations exposed in a separate camera group."""
 
-    def record_post_reset(self, env_ids: Sequence[int] | None):
-        """Return initial state for the reset environments."""
-
-        def select_envs(value):
-            if isinstance(value, dict):
-                return {key: select_envs(item) for key, item in value.items()}
-            return value if env_ids is None else value[env_ids]
-
-        return "initial_state", select_envs(get_scene_state(self._env.scene, is_relative=True))
+    def record_pre_step(self):
+        """Return camera observations alongside the recorded policy observations."""
+        return "obs", self._env.obs_buf.get("camera_obs", {})
 
 
-class PostStepStatesRecorder(RecorderTerm):
-    """Record correctly env-relative scene state after each environment step."""
+def make_action_state_recorder_manager_cfg(record_images: bool = False) -> ActionStateRecorderManagerCfg:
+    """Return Isaac Lab's action-state recorder with optional camera observations.
 
-    def record_post_step(self):
-        """Return state for every environment."""
-
-        return "states", get_scene_state(self._env.scene, is_relative=True)
-
-
-def make_action_state_recorder_manager_cfg() -> ActionStateRecorderManagerCfg:
-    """Return Isaac Lab's action-state recorder with corrected state terms."""
+    Args:
+        record_images: Include the separate camera observation group when present.
+    """
 
     cfg = ActionStateRecorderManagerCfg()
-    cfg.record_initial_state.class_type = InitialStateRecorder
-    cfg.record_post_step_states.class_type = PostStepStatesRecorder
+    if record_images:
+        cfg.record_pre_step_camera_observations = RecorderTermCfg(class_type=PreStepCameraObservationsRecorder)
     return cfg

@@ -9,7 +9,7 @@ Subclasses self-register at import time via :class:`_AlgorithmMeta`.
 
 The main behavioral hook is :meth:`GenerationAlgorithm.plan_subtask_trajectory`, called by
 ``DataGenerator`` every time an EEF needs a new executable trajectory. Object-state adaptation is
-routed through :meth:`GenerationAlgorithm.transform_source_eef_poses. Rigid algorithms use the
+routed through :meth:`GenerationAlgorithm.transform_source_eef_poses`. Rigid algorithms use the
 default object-pose transform while SoftMimicGen overrides it with nodal TPS registration.
 """
 

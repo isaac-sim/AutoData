@@ -14,6 +14,7 @@ def register_environment_for_run(
     num_envs: int,
     device: str,
     seed: int,
+    presets: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Register the AutoData-owned environment selected for the current run.
 
@@ -23,6 +24,7 @@ def register_environment_for_run(
         num_envs: Number of parallel environments in this run.
         device: Simulation device for this run.
         seed: Environment seed for this run.
+        presets: Optional Arena physics backend preset; None preserves the environment default.
 
     Returns:
         Gym constructor kwargs keyed by registered environment ID.
@@ -37,6 +39,7 @@ def register_environment_for_run(
         num_envs=num_envs,
         device=device,
         seed=seed,
+        presets=presets,
     )
 
 

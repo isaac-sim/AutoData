@@ -35,6 +35,7 @@ from autodata_interfaces.env.env_profile import EnvironmentProfile, convert_even
 from autodata_interfaces.env.pink_ik_action import PinkInverseKinematicsActionSharedUrdf
 from autodata_interfaces.env.recorders import make_action_state_recorder_manager_cfg
 from autodata_interfaces.env.reset_request import EnvResetRequest
+from autodata_interfaces.env.scene_state import get_scene_state
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 
 
@@ -221,7 +222,7 @@ def setup_env_config(
 
     # Setup recorders
     if recorder_cfg is None:
-        env_cfg.recorders = make_action_state_recorder_manager_cfg()
+        env_cfg.recorders = make_action_state_recorder_manager_cfg(record_images=enable_cameras)
     else:
         env_cfg.recorders = recorder_cfg
     env_cfg.recorders.dataset_export_dir_path = output_dir
@@ -352,7 +353,13 @@ def env_loop(
                 # Discard temporary settle frames, then capture the settled state as the generated
                 # episode's initial state before releasing the corresponding generators.
                 env.recorder_manager.reset(env_ids=settled_env_ids_tensor)
-                env.recorder_manager.record_post_reset(env_ids=settled_env_ids_tensor)
+                # Settling is not a reset: Arena correctly ignores post-reset callbacks here.
+                # Snapshot the actual settled state through the public recorder API instead.
+                env.recorder_manager.add_to_episodes(
+                    "initial_state",
+                    get_scene_state(env.scene, is_relative=True, env_ids=settled_env_ids_tensor),
+                    env_ids=settled_env_ids_tensor,
+                )
                 for env_id in settled_env_ids:
                     request = settling_requests.pop(env_id)
                     settling_steps_remaining.pop(env_id)

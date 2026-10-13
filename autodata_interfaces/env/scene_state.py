@@ -1,41 +1,36 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Scene-state reads with correct per-environment coordinate conversion."""
+"""Scene-state reads with optional environment selection."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 
-# TODO: Remove this custom method once upstream Lab fixes the nodal position relative scene state bug.
-def get_scene_state(scene: Any, is_relative: bool = True) -> dict:
+def get_scene_state(scene: Any, is_relative: bool = True, env_ids: Sequence[int] | None = None) -> dict:
     """Return scene state in world or per-environment coordinates.
 
-    Isaac Lab's relative-state conversion indexes deformable nodal positions as if their second
-    dimension were XYZ. Read world state first and apply the environment origin along the actual
-    ``(environment, node, xyz)`` layout here.
+    Isaac Lab owns the coordinate conversion for every supported asset type.
+    Selection is applied afterwards to retain the requested environment order.
 
     Args:
         scene: Isaac Lab interactive scene.
         is_relative: Whether positions are relative to each environment origin.
+        env_ids: Environment rows to include, in the requested order; None selects all.
 
     Returns:
         Nested scene-state mapping containing cloned tensors.
     """
 
-    state = scene.get_state(is_relative=False)
-    if not is_relative:
+    state = scene.get_state(is_relative=is_relative)
+    if env_ids is None:
         return state
 
-    env_origins = scene.env_origins
-    for asset_state in state.get("articulation", {}).values():
-        if "root_pose" in asset_state:
-            asset_state["root_pose"][:, :3] -= env_origins
-    for asset_state in state.get("deformable_object", {}).values():
-        if "nodal_position" in asset_state:
-            asset_state["nodal_position"] -= env_origins.unsqueeze(1)
-    for asset_state in state.get("rigid_object", {}).values():
-        if "root_pose" in asset_state:
-            asset_state["root_pose"][:, :3] -= env_origins
-    return state
+    def select_envs(value):
+        if isinstance(value, dict):
+            return {key: select_envs(item) for key, item in value.items()}
+        return value[env_ids]
+
+    return select_envs(state)

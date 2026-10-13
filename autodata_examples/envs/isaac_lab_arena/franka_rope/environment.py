@@ -48,6 +48,9 @@ def _configure_franka_rope_env(env_cfg: Any) -> Any:
         # Refresh Kit once per control step; the solver still advances at 1 ms.
         env_cfg.sim.render_interval = env_cfg.decimation
         env_cfg.scene.object.spawn = rope_newton_spawn_cfg()
+        # A discontinuous half-mesh reset can invert the connecting tetrahedra.
+        # Blend the same sampled poses through the middle half of the rope.
+        env_cfg.events.reset_object_position.params["transition_length"] = 0.4
         env_cfg.scene.replicate_physics = True
         env_cfg.scene.table.spawn.make_uninstanceable = True
         env_cfg.scene.table.spawn.func = spawn_rope_table_newton

@@ -44,6 +44,15 @@ parser.add_argument(
     help="Environment name. Overrides the env name recorded in the source dataset.",
 )
 parser.add_argument(
+    "--presets", choices=("physx", "newton"), default=None, help="Physics backend preset for Arena environments."
+)
+parser.add_argument(
+    "--reset_sim_buffer_each_episode",
+    action=argparse.BooleanOptionalAction,
+    default=None,
+    help="Flush simulation buffers before replay. Defaults to enabled for PhysX and disabled for Newton.",
+)
+parser.add_argument(
     "--task_descriptor",
     type=str,
     required=True,
@@ -117,6 +126,7 @@ from autodata_examples.envs import register_environment_for_run  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
+from autodata_interfaces.env.recorders import PreStepCameraObservationsRecorder  # noqa: E402
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
 is_paused = False
@@ -242,6 +252,7 @@ def main() -> int:
         num_envs=1,
         device=args_cli.device,
         seed=generation_policy.seed,
+        presets=args_cli.presets,
     )
 
     # Start signals are required only by SkillGen.
@@ -276,6 +287,16 @@ def main() -> int:
         recorder_cfg=AnnotationRecorderManagerCfg(),
         enable_cameras=args_cli.record_images,
     )
+    if args_cli.reset_sim_buffer_each_episode is None:
+        from isaaclab_newton.physics import NewtonCfg
+
+        # Preserve the established PhysX replay behavior. Newton keeps solver buffers
+        # across episode restores, as in Lab's public replay tool.
+        args_cli.reset_sim_buffer_each_episode = not isinstance(env_cfg.sim.physics, NewtonCfg)
+    if args_cli.record_images:
+        env_cfg.recorders.record_pre_step_camera_observations = RecorderTermCfg(
+            class_type=PreStepCameraObservationsRecorder
+        )
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
     env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY
 
@@ -381,8 +402,9 @@ def replay_episode(
     initial_state = episode.data["initial_state"]
     actions = episode.data["actions"]
 
-    # Reset the simulation before restoring state (use of env.sim.reset() for deterministic replay)
-    env.sim.reset()
+    # A full solver reset is distinct from restoring an episode's scene state.
+    if args_cli.reset_sim_buffer_each_episode:
+        env.sim.reset()
     env.recorder_manager.reset()
     env.reset_to(initial_state, torch.tensor([0], device=env.device), is_relative=True)
 

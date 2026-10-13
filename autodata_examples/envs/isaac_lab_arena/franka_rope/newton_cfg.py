@@ -87,8 +87,6 @@ def spawn_rope_table_newton(
     prim = spawn_from_usd(prim_path, cfg, translation, orientation, **kwargs)
     collider = prim.GetStage().GetPrimAtPath(f"{prim.GetPath()}/Collisions/Cube")
     assert collider.IsValid() and collider.GetTypeName() == "Mesh", "Expected the Seattle table's cube mesh collider"
-    # The asset already scales/transforms a unit cube. Preserve those transforms
-    # and its visual geometry; VBD can contact a native box without a sampled SDF.
     collider.SetTypeName("Cube")
     UsdGeom.Cube(collider).CreateSizeAttr(1.0)
     return prim
@@ -104,23 +102,18 @@ def rope_newton_physics_cfg() -> NewtonCfg:
                     name="rigid",
                     solver_cfg=MJWarpSolverCfg(cone="elliptic", ls_iterations=20, integrator="implicitfast"),
                     bodies=[r"/World/envs/env_[^/]+/Robot"],
-                    # Own the static colliders here so MJWarp can stop the real
-                    # gripper against the table as well as simulate the arm.
                     include_static_shapes=True,
                 ),
                 CouplerEntryCfg(
                     name="soft",
                     solver_cfg=VBDSolverCfg(
                         iterations=10,
-                        rigid_body_particle_contact_buffer_size=1024,
+                        rigid_body_particle_contact_buffer_size=4096,
                         particle_enable_self_contact=True,
                         particle_self_contact_radius=0.002,
                         particle_self_contact_margin=0.003,
                     ),
                     all_particles=True,
-                    # An empty owned-shape selection keeps static geometry visible
-                    # to VBD alongside the gripper proxies. Static shapes cannot
-                    # be owned by both entries.
                 ),
             ],
             proxies=[

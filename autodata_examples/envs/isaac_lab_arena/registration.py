@@ -44,6 +44,7 @@ def build_and_register_arena_environment(
     num_envs: int,
     device: str,
     seed: int,
+    presets: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Build and register AutoData's typed Arena environment for the current run.
 
@@ -52,6 +53,7 @@ def build_and_register_arena_environment(
         num_envs: Number of parallel environments in this run.
         device: Simulation device for this run.
         seed: Environment seed for this run.
+        presets: Optional physics backend preset; None preserves the environment default.
 
     Returns:
         Gym constructor kwargs keyed by registered environment ID.
@@ -78,6 +80,7 @@ def build_and_register_arena_environment(
             seed=seed,
             solve_relations=False,
             device=device,
+            presets=presets,
         ),
     )
     env_name, _, env_kwargs = builder.build_registered()
