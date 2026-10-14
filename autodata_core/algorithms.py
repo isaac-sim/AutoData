@@ -156,10 +156,10 @@ class MimicGen(GenerationAlgorithm):
 
 
 class DexMimicGen(GenerationAlgorithm):
-    """Two-arm MimicGen with subtask coordination constraints."""
+    """Two-arm MimicGen with subtask coordination and an optional navigation channel."""
 
     name = "dexmimicgen"
-    expected_eef_count = 2
+    expected_eef_count = (2, 3)
     requires_motion_planner = False
     uses_subtask_start_signals = False
     supports_coordination = True

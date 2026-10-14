@@ -3,13 +3,12 @@
 
 """Concrete :class:`EmbodimentAdapter` implementations, organized by morphology.
 
-Two morphology trees ship this phase: :class:`SingleArmEmbodimentAdapter`
-(with :class:`DeltaPoseIKSingleArmAdapter` for delta-pose IK control) and
-:class:`BimanualEmbodimentAdapter` (with
-:class:`AbsolutePoseWholeBodyBimanualAdapter` for absolute-pose whole-body
-IK control). YAML construction goes through :mod:`factory`.
+Single-arm and bimanual adapters provide morphology-specific control layouts.
+:class:`AbsolutePoseEmbodimentAdapter` provides configurable absolute-pose and
+passthrough channels. YAML construction goes through :mod:`factory`.
 """
 
+from autodata_interfaces.embodiments.absolute_pose_embodiment_adapter import AbsolutePoseEmbodimentAdapter
 from autodata_interfaces.embodiments.bimanual_embodiment_adapter import (
     AbsolutePoseWholeBodyBimanualAdapter,
     BimanualEefConfig,
@@ -27,6 +26,7 @@ from autodata_interfaces.embodiments.single_arm_embodiment_adapter import (
 )
 
 __all__ = [
+    "AbsolutePoseEmbodimentAdapter",
     "AbsolutePoseWholeBodyBimanualAdapter",
     "BimanualEefConfig",
     "BimanualEmbodimentAdapter",

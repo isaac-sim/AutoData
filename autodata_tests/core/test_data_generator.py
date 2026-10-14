@@ -3,16 +3,18 @@
 
 """Unit tests for :class:`autodata_core.data_generator.DataGenerator`.
 
-Only the construction-time validation is covered here. The async generation loop is
-exercised by the e2e suite.
+Construction-time validation and navigation playback decisions are covered here.
+The async generation loop is exercised by the e2e suite.
 """
 
 import dataclasses
+import torch
 
 import pytest
 
 from autodata_core.algorithms import DexMimicGen, MimicGen, SkillGen
-from autodata_core.data_generator import DataGenerator, GenerationResult
+from autodata_core.data_generator import DataGenerator, GenerationResult, _EEFGenerationState
+from autodata_core.waypoint import Waypoint
 from autodata_interfaces.tasks.subtask_spec import MimicGenSubtaskAlgoParams, Subtask
 
 
@@ -25,12 +27,13 @@ def _subtask(term_signal: str = "s", term_offset: tuple[int, int] = (0, 0)) -> S
 
 
 class _MockDatastream:
-    """Minimal stand-in exposing only what ``DataGenerator.__init__`` reads."""
+    """Minimal datastream for construction and navigation playback tests."""
 
     def __init__(self, subtasks_by_eef: dict, constraints: list | None = None) -> None:
         self.source_pool = object()
         self._subtasks = subtasks_by_eef
         self._constraints = constraints or []
+        self.navigation_state = None
 
     def get_eef_names(self):
         return list(self._subtasks)
@@ -40,6 +43,9 @@ class _MockDatastream:
 
     def get_task_constraints(self):
         return self._constraints
+
+    def get_navigation_state(self, env_id):
+        return self.navigation_state
 
 
 def _assert_constructed(generator: DataGenerator, datastream: _MockDatastream, algorithm) -> None:
@@ -114,3 +120,57 @@ def test_generation_result_fields_and_frozen():
     assert result.success is True
     with pytest.raises(dataclasses.FrozenInstanceError):
         result.success = False  # type: ignore[misc]
+
+
+def _navigation_generator(active: bool, reached: bool) -> DataGenerator:
+    datastream = _MockDatastream({name: [_subtask("")] for name in ("left", "right", "base")})
+    datastream.navigation_state = ("base", active, reached)
+    return DataGenerator(datastream=datastream, algorithm=DexMimicGen())
+
+
+def _playback_state(length: int, index: int, *, paused: bool = False, done: bool = False) -> _EEFGenerationState:
+    waypoint = Waypoint(pose=torch.eye(4), passthrough_action={})
+    return _EEFGenerationState(
+        current_trajectory=[waypoint] * length,
+        subtask_step_index=index,
+        is_currently_paused=paused,
+        subtasks_done=done,
+    )
+
+
+def test_navigation_holds_playback_until_goal_reached():
+    states = {"base": _playback_state(10, 8), "left": _playback_state(20, 8), "right": _playback_state(20, 8)}
+    generator = _navigation_generator(active=True, reached=False)
+    assert generator._synchronize_navigation(states, 0, True) == (True, True)
+    assert all(state.subtask_step_index == 8 for state in states.values())
+
+    generator.datastream.navigation_state = ("base", False, True)
+    assert generator._synchronize_navigation(states, 0, True) == (False, False)
+
+
+@pytest.mark.parametrize(
+    "length, paused, done",
+    [(20, True, False), (20, False, True), (5, False, False)],
+    ids=["paused", "completed", "last_waypoint"],
+)
+def test_navigation_completion_skips_idle_steps_without_rewinding_other_channels(length, paused, done):
+    states = {
+        "base": _playback_state(10, 4),
+        "left": _playback_state(20, 4),
+        "right": _playback_state(length, 4, paused=paused, done=done),
+    }
+    generator = _navigation_generator(active=False, reached=True)
+    assert generator._synchronize_navigation(states, 0, True) == (False, False)
+    assert {name: state.subtask_step_index for name, state in states.items()} == {"base": 8, "left": 8, "right": 4}
+
+
+@pytest.mark.parametrize("paused, reached", [(False, False), (True, True)], ids=["cancelled", "paused"])
+def test_navigation_does_not_skip_playback_after_cancellation_or_while_paused(paused, reached):
+    states = {
+        "base": _playback_state(10, 4, paused=paused),
+        "left": _playback_state(20, 4),
+        "right": _playback_state(20, 4),
+    }
+    generator = _navigation_generator(active=False, reached=reached)
+    assert generator._synchronize_navigation(states, 0, True) == (False, False)
+    assert all(state.subtask_step_index == 4 for state in states.values())

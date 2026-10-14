@@ -17,11 +17,13 @@ import yaml
 from pathlib import Path
 from typing import Any
 
+from autodata_interfaces.embodiments.absolute_pose_embodiment_adapter import AbsolutePoseEmbodimentAdapter
 from autodata_interfaces.embodiments.bimanual_embodiment_adapter import AbsolutePoseWholeBodyBimanualAdapter
 from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 from autodata_interfaces.embodiments.single_arm_embodiment_adapter import DeltaPoseIKSingleArmAdapter
 
 EMBODIMENT_TYPE_REGISTRY: dict[str, type[EmbodimentAdapter]] = {
+    "absolute_pose": AbsolutePoseEmbodimentAdapter,
     "delta_pose_ik_single_arm": DeltaPoseIKSingleArmAdapter,
     "absolute_pose_whole_body_bimanual": AbsolutePoseWholeBodyBimanualAdapter,
 }

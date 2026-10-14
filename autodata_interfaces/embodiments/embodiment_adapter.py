@@ -38,6 +38,16 @@ class EmbodimentAdapter(ABC):
     env: Any = None
     robot_asset_name: str = "robot"
 
+    def get_navigation_state(self, env_id: int) -> tuple[str, bool, bool] | None:
+        """Return a navigation channel and its active/goal flags, or None when unavailable."""
+
+    def get_reference_frame_pose(self, env_ids: Sequence[int] | None = None) -> torch.Tensor | None:
+        """Return the controller frame in environment coordinates, or None for environment coordinates.
+
+        Args:
+            env_ids: Environment indices to query. None selects all environments.
+        """
+
     def bind_env(self, env: Any) -> None:
         """Attach the env after construction.
 

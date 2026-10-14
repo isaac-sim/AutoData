@@ -1,0 +1,25 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+type: absolute_pose
+name: g1_wbc_pink
+description: Bimanual wrist pose control in the pelvis frame, scalar grippers, and locomotion commands.
+action_dim: 23
+reference_frame: {asset_name: robot, body_name: pelvis}
+eefs:
+  left:
+    pose_obs_keys: {pos: left_eef_pos, quat: left_eef_quat}
+    pose_action_slice: [2, 9]
+    passthrough_action_slice: [0, 1]
+  right:
+    pose_obs_keys: {pos: right_eef_pos, quat: right_eef_quat}
+    pose_action_slice: [9, 16]
+    passthrough_action_slice: [1, 2]
+  body:
+    pose_obs_keys: {pos: body_eef_pos, quat: body_eef_quat}
+    passthrough_action_slice: [16, 23]
+navigation:
+  eef_name: body
+  observation_group: wbc
+  active_key: is_navigating
+  goal_reached_key: navigation_goal_reached

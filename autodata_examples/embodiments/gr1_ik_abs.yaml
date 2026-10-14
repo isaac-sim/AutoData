@@ -8,8 +8,7 @@
 #   [3..7)    left EEF quaternion (x, y, z, w)
 #   [7..10)   right EEF position [m]
 #   [10..14)  right EEF quaternion (x, y, z, w)
-#   [14..25)  left hand joint positions (11 DOF)
-#   [25..36)  right hand joint positions (11 DOF)
+#   [14..36)  hand joint positions (22 DOF, interleaved by the controller's joint order)
 #
 # Pose is absolute; tracked by the whole-body PinkIK controller.
 # EEF poses are read from the `left_hand_roll_link` / `right_hand_roll_link` frames.

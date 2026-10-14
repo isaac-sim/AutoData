@@ -242,17 +242,33 @@ class Datastream:
     # Other runtime queries
     # ------------------------------------------------------------------
 
+    def get_navigation_state(self, env_id: int) -> tuple[str, bool, bool] | None:
+        """Return the navigation channel and its controller's active and goal-reached flags.
+
+        Args:
+            env_id: Environment index to query.
+
+        Returns:
+            Channel name, active flag, and goal-reached flag, or None when unavailable.
+        """
+        return self.embodiment_adapter.get_navigation_state(env_id)
+
     def get_object_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
-        """Get all rigid object poses from the environment."""
+        """Get rigid and articulated object poses in the embodiment's reference frame."""
 
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
         scene = self.env.scene
         env_origins = scene.env_origins[index]
         object_pose_matrix: dict[str, torch.Tensor] = {}
-        for obj_name, obj in scene.rigid_objects.items():
+        assets = {**scene.rigid_objects, **getattr(scene, "articulations", {})}
+        reference_pose = self.embodiment_adapter.get_reference_frame_pose(env_ids)
+        reference_inverse = torch.linalg.inv(reference_pose) if reference_pose is not None else None
+        for obj_name, obj in assets.items():
             pos_rel = as_torch(obj.data.root_pos_w)[index] - env_origins
             quat = as_torch(obj.data.root_quat_w)[index]
             object_pose_matrix[obj_name] = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
+            if reference_inverse is not None:
+                object_pose_matrix[obj_name] = reference_inverse @ object_pose_matrix[obj_name]
         return object_pose_matrix
 
     def get_subtask_term_signals(
