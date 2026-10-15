@@ -82,13 +82,38 @@ if [ "$INSTALL_CUROBO" = "true" ]; then
     DOCKER_VERSION_TAG="${CUROBO_VERSION_TAG}"
 fi
 
-CONTAINER_NAME="${DOCKER_IMAGE_NAME}-${DOCKER_VERSION_TAG}"
+# The container bind-mounts this checkout, so each checkout gets its own container.
+CHECKOUT_NAME="${REPO_ROOT##*/}"
+CONTAINER_NAME="${DOCKER_IMAGE_NAME}-${DOCKER_VERSION_TAG}-${CHECKOUT_NAME//[^a-zA-Z0-9_.-]/-}-$(printf '%s' "${REPO_ROOT}" | sha256sum | cut -c1-8)"
 
-echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BASE_IMAGE})"
+# The image copies Arena and its nested Isaac Lab, so both must be at the commits this checkout pins.
+while read -r status path _; do
+    case "${path}" in
+        submodules/IsaacLab-Arena | submodules/IsaacLab-Arena/submodules/IsaacLab) ;;
+        *) continue ;;
+    esac
+    case "${status:0:1}" in
+        -) echo "error: ${path} is not initialized. Run: git submodule update --init --recursive" >&2; exit 1 ;;
+        +) echo "warning: ${path} is not at the pinned commit. Run: git submodule update --init --recursive" >&2 ;;
+    esac
+done < <(git -C "${REPO_ROOT}" submodule status --recursive -- submodules/IsaacLab-Arena)
+
+# Fingerprint what the image bakes in. Sources are bind-mounted at run time, so they are not inputs.
+IMAGE_INPUTS=$(cd "${REPO_ROOT}" && {
+    sha256sum docker/Dockerfile.autodata docker/runtime-constraints.txt docker/setup/*.sh .dockerignore setup.py pyproject.toml
+    git -C submodules/IsaacLab-Arena rev-parse HEAD
+    git -C submodules/IsaacLab-Arena/submodules/IsaacLab rev-parse HEAD
+    echo "${BASE_IMAGE}"
+} | sha256sum | cut -c1-12)
+
+echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BASE_IMAGE}), container: ${CONTAINER_NAME}"
 
 # Build the image if it doesn't exist yet, or if a rebuild was requested.
 if [ "$(docker images -q "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ]; then
     echo "Image ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} already exists. Use -r to force a rebuild."
+    if [ "$(docker image inspect -f '{{index .Config.Labels "autodata.inputs"}}' "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}")" != "${IMAGE_INPUTS}" ]; then
+        echo "warning: the image was not built from this checkout's Docker files and submodule commits. Rebuild with -r." >&2
+    fi
 else
     BUILD_ARGS=("--build-arg" "WORKDIR=${WORKDIR}" "--build-arg" "BASE_IMAGE=${BASE_IMAGE}")
     if [ "$INSTALL_CUROBO" = "true" ]; then
@@ -100,6 +125,7 @@ else
     docker build --pull \
         $NO_CACHE \
         --progress=plain \
+        --label "autodata.inputs=${IMAGE_INPUTS}" \
         "${BUILD_ARGS[@]}" \
         -t "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" \
         --file "${SCRIPT_DIR}/Dockerfile.autodata" \
