@@ -87,6 +87,10 @@ CHECKOUT_NAME="${REPO_ROOT##*/}"
 CONTAINER_NAME="${DOCKER_IMAGE_NAME}-${DOCKER_VERSION_TAG}-${CHECKOUT_NAME//[^a-zA-Z0-9_.-]/-}-$(printf '%s' "${REPO_ROOT}" | sha256sum | cut -c1-8)"
 
 # The image copies Arena and its nested Isaac Lab, so both must be at the commits this checkout pins.
+SUBMODULE_STATUS=$(git -C "${REPO_ROOT}" submodule status --recursive -- submodules/IsaacLab-Arena) || {
+    echo "error: could not read the submodule status." >&2
+    exit 1
+}
 while read -r status path _; do
     case "${path}" in
         submodules/IsaacLab-Arena | submodules/IsaacLab-Arena/submodules/IsaacLab) ;;
@@ -96,15 +100,18 @@ while read -r status path _; do
         -) echo "error: ${path} is not initialized. Run: git submodule update --init --recursive" >&2; exit 1 ;;
         +) echo "warning: ${path} is not at the pinned commit. Run: git submodule update --init --recursive" >&2 ;;
     esac
-done < <(git -C "${REPO_ROOT}" submodule status --recursive -- submodules/IsaacLab-Arena)
+done <<< "${SUBMODULE_STATUS}"
 
 # Fingerprint what the image bakes in. Sources are bind-mounted at run time, so they are not inputs.
-IMAGE_INPUTS=$(cd "${REPO_ROOT}" && {
-    sha256sum docker/Dockerfile.autodata docker/runtime-constraints.txt docker/setup/*.sh .dockerignore setup.py pyproject.toml
-    git -C submodules/IsaacLab-Arena rev-parse HEAD
-    git -C submodules/IsaacLab-Arena/submodules/IsaacLab rev-parse HEAD
-    echo "${BASE_IMAGE}"
-} | sha256sum | cut -c1-12)
+IMAGE_INPUTS=$(set -o pipefail; cd "${REPO_ROOT}" && {
+    sha256sum docker/Dockerfile.autodata docker/runtime-constraints.txt docker/setup/*.sh .dockerignore setup.py pyproject.toml &&
+        git -C submodules/IsaacLab-Arena rev-parse HEAD &&
+        git -C submodules/IsaacLab-Arena/submodules/IsaacLab rev-parse HEAD &&
+        echo "${BASE_IMAGE}"
+} | sha256sum | cut -c1-12) || {
+    echo "error: could not fingerprint the Docker image inputs." >&2
+    exit 1
+}
 
 echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BASE_IMAGE}), container: ${CONTAINER_NAME}"
 
