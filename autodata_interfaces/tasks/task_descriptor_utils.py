@@ -119,11 +119,12 @@ def resolve_task_algorithm(algorithm: str | None, task_descriptor_path: str) -> 
     with open(task_descriptor_path) as f:
         data = yaml.safe_load(f)
     validate_task_dict(data)
+    declared = data["algo"]
     assert algorithm in (
         None,
-        data["algo"],
-    ), f"Requested algorithm {algorithm!r} does not match algo {data['algo']!r} in {task_descriptor_path}"
-    return data["algo"]
+        declared,
+    ), f"Requested algorithm {algorithm!r} does not match algo {declared!r} in {task_descriptor_path}"
+    return declared
 
 
 def _coerce_enum(value: Any, enum_cls: type[enum.IntEnum]) -> enum.IntEnum:

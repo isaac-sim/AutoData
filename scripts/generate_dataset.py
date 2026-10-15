@@ -17,8 +17,8 @@ Usage::
         --generation_num_trials <N> \\
         --num_envs <N>
 
-The task descriptor's ``algo`` selects the :class:`GenerationAlgorithm` plug-in driving the run.
-``--alg`` is optional and must match it when given:
+The task descriptor's ``algo`` selects the :class:`GenerationAlgorithm` plug-in driving the run
+(``--alg`` is optional and must match it):
 
 * ``mimicgen`` — single-arm MimicGen.
 * ``dexmimicgen`` — two-arm MimicGen with subtask coordination constraints.
@@ -55,7 +55,7 @@ parser.add_argument(
     choices=_ALG_CHOICES,
     default=None,
     help=(
-        "Generation algorithm. Defaults to the task descriptor's algo and must match it when given. "
+        "Generation algorithm. Defaults to the task descriptor's algo, which it must match. "
         "skillgen needs a motion planner (auto-wired from upstream curobo)."
     ),
 )
