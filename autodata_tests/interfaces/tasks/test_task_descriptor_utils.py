@@ -205,7 +205,7 @@ def test_resolve_task_algorithm_returns_descriptor_algo(tmp_path, requested):
 def test_resolve_task_algorithm_rejects_mismatch(tmp_path):
     path = tmp_path / "task.yaml"
     path.write_text(yaml.safe_dump(_minimal_valid()))
-    with pytest.raises(AssertionError, match="does not match algo 'mimicgen'"):
+    with pytest.raises(ValueError, match="does not match algo 'mimicgen'"):
         resolve_task_algorithm("skillgen", str(path))
 
 

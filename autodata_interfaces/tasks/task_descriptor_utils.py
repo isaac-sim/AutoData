@@ -120,10 +120,10 @@ def resolve_task_algorithm(algorithm: str | None, task_descriptor_path: str) -> 
         data = yaml.safe_load(f)
     validate_task_dict(data)
     declared = data["algo"]
-    assert algorithm in (
-        None,
-        declared,
-    ), f"Requested algorithm {algorithm!r} does not match algo {declared!r} in {task_descriptor_path}"
+    if algorithm not in (None, declared):
+        raise ValueError(
+            f"Requested algorithm {algorithm!r} does not match algo {declared!r} in {task_descriptor_path}"
+        )
     return declared
 
 
