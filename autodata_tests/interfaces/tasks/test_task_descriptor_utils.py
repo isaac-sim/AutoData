@@ -8,12 +8,18 @@ The private ``_coerce_enum`` / ``_coerce_tuples`` helpers are exercised through 
 """
 
 import copy
+import yaml
 
 import pytest
 
 from autodata_interfaces.tasks.subtask_constraint_spec import SubTaskConstraintCoordinationScheme, SubTaskConstraintType
 from autodata_interfaces.tasks.subtask_spec import MimicGenSubtaskAlgoParams, SkillGenSubtaskAlgoParams, Subtask
-from autodata_interfaces.tasks.task_descriptor_utils import build_constraint, build_subtask, validate_task_dict
+from autodata_interfaces.tasks.task_descriptor_utils import (
+    build_constraint,
+    build_subtask,
+    resolve_task_algorithm,
+    validate_task_dict,
+)
 
 
 def _minimal_valid() -> dict:
@@ -184,6 +190,23 @@ def test_validate_does_not_mutate_input():
     snapshot = copy.deepcopy(data)
     validate_task_dict(data)
     assert data == snapshot
+
+
+# ---------------------------------------------------------------------------------------------------
+# resolve_task_algorithm
+# ---------------------------------------------------------------------------------------------------
+@pytest.mark.parametrize("requested", [None, "mimicgen"])
+def test_resolve_task_algorithm_returns_descriptor_algo(tmp_path, requested):
+    path = tmp_path / "task.yaml"
+    path.write_text(yaml.safe_dump(_minimal_valid()))
+    assert resolve_task_algorithm(requested, str(path)) == "mimicgen"
+
+
+def test_resolve_task_algorithm_rejects_mismatch(tmp_path):
+    path = tmp_path / "task.yaml"
+    path.write_text(yaml.safe_dump(_minimal_valid()))
+    with pytest.raises(AssertionError, match="does not match algo 'mimicgen'"):
+        resolve_task_algorithm("skillgen", str(path))
 
 
 # ---------------------------------------------------------------------------------------------------

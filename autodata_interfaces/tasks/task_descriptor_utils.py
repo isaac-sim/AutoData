@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import enum
+import yaml
 from dataclasses import fields
 from typing import Any, get_origin, get_type_hints
 
@@ -103,6 +104,26 @@ def validate_task_dict(data: dict[str, Any]) -> None:
     assert (
         not policy_unknown
     ), f"'generation_policy' has unknown keys {sorted(policy_unknown)}. Allowed: {sorted(policy_keys)}"
+
+
+def resolve_task_algorithm(algorithm: str | None, task_descriptor_path: str) -> str:
+    """Validate a task descriptor YAML and return its ``algo``.
+
+    Imports no simulator modules, so it can run before Isaac Sim launches.
+
+    Args:
+        algorithm: Requested algorithm, or ``None`` to use the descriptor's ``algo``.
+        task_descriptor_path: Path to the task descriptor YAML.
+    """
+
+    with open(task_descriptor_path) as f:
+        data = yaml.safe_load(f)
+    validate_task_dict(data)
+    assert algorithm in (
+        None,
+        data["algo"],
+    ), f"Requested algorithm {algorithm!r} does not match algo {data['algo']!r} in {task_descriptor_path}"
+    return data["algo"]
 
 
 def _coerce_enum(value: Any, enum_cls: type[enum.IntEnum]) -> enum.IntEnum:

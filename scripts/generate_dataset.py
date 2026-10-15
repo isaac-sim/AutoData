@@ -8,7 +8,7 @@ Usage::
 
     python scripts/generate_dataset.py \\
         --env_name <env_id> \\
-        --alg {mimicgen|dexmimicgen|skillgen} \\
+        [--alg {mimicgen|dexmimicgen|skillgen}] \\
         --task_descriptor <task_descriptor.yaml> \\
         --embodiment <embodiment.yaml> \\
         --env_profile <environment_profile.yaml> \\
@@ -17,7 +17,8 @@ Usage::
         --generation_num_trials <N> \\
         --num_envs <N>
 
-The ``--alg`` choice selects the :class:`GenerationAlgorithm` plug-in driving the run:
+The task descriptor's ``algo`` selects the :class:`GenerationAlgorithm` plug-in driving the run.
+``--alg`` is optional and must match it when given:
 
 * ``mimicgen`` — single-arm MimicGen.
 * ``dexmimicgen`` — two-arm MimicGen with subtask coordination constraints.
@@ -35,6 +36,8 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
+from autodata_interfaces.tasks.task_descriptor_utils import resolve_task_algorithm
+
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in autodata_core.algorithms.
 _ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
@@ -50,8 +53,11 @@ parser.add_argument(
     "--alg",
     type=str,
     choices=_ALG_CHOICES,
-    required=True,
-    help="Generation algorithm. skillgen needs a motion planner (auto-wired from upstream curobo).",
+    default=None,
+    help=(
+        "Generation algorithm. Defaults to the task descriptor's algo and must match it when given. "
+        "skillgen needs a motion planner (auto-wired from upstream curobo)."
+    ),
 )
 parser.add_argument(
     "--task_descriptor",
@@ -108,6 +114,7 @@ parser.add_argument(
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+args_cli.alg = resolve_task_algorithm(args_cli.alg, args_cli.task_descriptor)
 
 app_launcher = AppLauncher(args_cli, enable_cameras=args_cli.record_images)
 simulation_app = app_launcher.app
