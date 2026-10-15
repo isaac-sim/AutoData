@@ -104,6 +104,12 @@ Useful flags of ``./docker/run_docker.sh``:
      - Host datasets directory to mount at ``/datasets`` (default ``$HOME/datasets``).
    * - ``-r`` / ``-R``
      - Force rebuild of the image (``-R`` additionally disables the Docker cache).
+   * - ``-u``
+     - Rebuild the image only if it was not built from this checkout's Docker files and submodule
+       commits.
+   * - ``-s``
+     - Use the existing image even if it was not built from this checkout's Docker files and
+       submodule commits.
    * - ``-v``
      - Verbose.
    * - ``-h``
@@ -115,18 +121,25 @@ For a missing Kit window or an X11 error, see :ref:`troubleshooting-display`.
 Updating an Existing Checkout
 ------------------------------
 
-After updating AutoData, synchronize the nested submodules and rebuild the image from the host:
+The image is built from the checkout's Docker files and its Isaac Lab-Arena and Isaac Lab submodule
+commits. After updating AutoData, synchronize the nested submodules and start the launcher with ``-u``
+from the host. It rebuilds the image only if those inputs changed:
 
 .. code-block:: bash
 
    git submodule update --init --recursive
-   ./docker/run_docker.sh -r
+   ./docker/run_docker.sh -u
 
-For SkillGen, use ``./docker/run_docker.sh -c -r`` instead. The current image tags are
-``autodata:sim-6.1.0`` and ``autodata:sim-6.1.0-curobo``. A rebuild does not replace an already
-running container. Finish its work, stop the matching container with
-``docker stop autodata-sim-6.1.0`` or ``docker stop autodata-sim-6.1.0-curobo``, and rerun the
-launcher. The launcher reports an error if a running container still uses the previous image.
+For SkillGen, use ``./docker/run_docker.sh -c -u`` instead. The image tags are ``autodata:sim-6.1.0``
+and ``autodata:sim-6.1.0-curobo``. Without ``-u``, the launcher stops when the image was not built
+from this checkout's Docker files and submodule commits. Use ``-r`` to rebuild it, or ``-s`` to use
+it anyway. The launcher also stops if Isaac Lab-Arena or its nested Isaac Lab is not initialized,
+and it warns if either is not at its pinned commit.
+
+Each checkout gets its own container, named ``autodata-<image tag>-<checkout directory>-<hash>``.
+The launcher prints the name when it starts. A rebuild does not replace an already running
+container. Finish its work, stop it with ``docker stop <container name>``, and rerun the launcher.
+The launcher reports an error if a running container still uses the previous image.
 
 Source edits are live through the repository bind mount. Dependency changes require rebuilding.
 The checked-in example datasets are under ``./datasets/`` relative to the repository. The separate
