@@ -46,13 +46,17 @@ DATASETS_HOST_MOUNT_DIRECTORY="$HOME/datasets"
 
 FORCE_REBUILD=false
 NO_CACHE=""
+ALLOW_STALE_IMAGE=false
+REBUILD_STALE_IMAGE=false
 
-while getopts ":d:crRvh" OPTION; do
+while getopts ":d:crRsuvh" OPTION; do
     case $OPTION in
         d) DATASETS_HOST_MOUNT_DIRECTORY=$OPTARG ;;
         c) INSTALL_CUROBO=true ;;
         r) FORCE_REBUILD=true ;;
         R) FORCE_REBUILD=true; NO_CACHE="--no-cache" ;;
+        s) ALLOW_STALE_IMAGE=true ;;
+        u) REBUILD_STALE_IMAGE=true ;;
         v) set -x ;;
         h)
             script_name=$(basename "$0")
@@ -65,6 +69,8 @@ while getopts ":d:crRvh" OPTION; do
             echo "  -c        Install cuRobo, auto-detects the GPU arch (override with the TORCH_CUDA_ARCH_LIST env var)."
             echo "  -r        Force rebuilding the image."
             echo "  -R        Force rebuilding the image without cache."
+            echo "  -s        Use the existing image even if it was not built from this checkout."
+            echo "  -u        Rebuild the image only if it was not built from this checkout."
             echo "  -v        Verbose (set -x)."
             echo "  -h        Show this help."
             echo ""
@@ -115,12 +121,24 @@ IMAGE_INPUTS=$(set -o pipefail; cd "${REPO_ROOT}" && {
 
 echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BASE_IMAGE}), container: ${CONTAINER_NAME}"
 
+# An existing image must match this checkout's Docker inputs unless -s or -u is given.
+if [ "$(docker images -q "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ] &&
+    [ "$(docker image inspect -f '{{index .Config.Labels "autodata.inputs"}}' "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}")" != "${IMAGE_INPUTS}" ]; then
+    STALE_IMAGE="${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} was not built from this checkout's Docker files and submodule commits"
+    if [ "$REBUILD_STALE_IMAGE" = true ]; then
+        echo "${STALE_IMAGE}. Rebuilding."
+        FORCE_REBUILD=true
+    elif [ "$ALLOW_STALE_IMAGE" = true ]; then
+        echo "warning: ${STALE_IMAGE}." >&2
+    else
+        echo "error: ${STALE_IMAGE}. Rebuild with -r, or pass -s to use it anyway." >&2
+        exit 1
+    fi
+fi
+
 # Build the image if it doesn't exist yet, or if a rebuild was requested.
 if [ "$(docker images -q "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ]; then
     echo "Image ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} already exists. Use -r to force a rebuild."
-    if [ "$(docker image inspect -f '{{index .Config.Labels "autodata.inputs"}}' "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}")" != "${IMAGE_INPUTS}" ]; then
-        echo "warning: the image was not built from this checkout's Docker files and submodule commits. Rebuild with -r." >&2
-    fi
 else
     BUILD_ARGS=("--build-arg" "WORKDIR=${WORKDIR}" "--build-arg" "BASE_IMAGE=${BASE_IMAGE}")
     if [ "$INSTALL_CUROBO" = "true" ]; then
