@@ -629,7 +629,7 @@ class DataGenerator:
     def _synchronize_navigation(
         self, eef_states: dict[str, _EEFGenerationState], env_id: int, was_navigating: bool
     ) -> tuple[bool, bool]:
-        """Wait for an unfinished goal or hold its endpoint while other channels finish playback."""
+        """Hold playback for an unfinished navigation goal or skip its remaining recorded idle steps."""
         navigation = self.datastream.get_navigation_state(env_id)
         assert navigation is not None, "Navigation generation requires an embodiment navigation configuration."
         channel, is_navigating, goal_reached = navigation
@@ -641,10 +641,16 @@ class DataGenerator:
             # Keep all channels synchronized while the controller finishes a segment.
             return True, is_navigating
         if was_navigating and not is_navigating and goal_reached:
-            # Stop replaying navigation commands that could start the next goal. Preserve
-            # the segment duration so manipulation channels still execute every waypoint.
-            remaining = len(state.current_trajectory) - state.subtask_step_index - 1
-            state.current_trajectory[state.subtask_step_index + 1 :] = [state.current_trajectory[-1]] * remaining
+            steps_to_skip = max(0, len(state.current_trajectory) - state.subtask_step_index - 2)
+            for other_state in eef_states.values():
+                if (
+                    other_state.subtask_step_index is not None
+                    and not other_state.is_currently_paused
+                    and not other_state.subtasks_done
+                ):
+                    index = other_state.subtask_step_index
+                    last_index = max(index, len(other_state.current_trajectory) - 2)
+                    other_state.subtask_step_index = min(index + steps_to_skip, last_index)
         return False, is_navigating
 
     async def _reset_environment_for_generation(

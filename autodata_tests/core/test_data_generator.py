@@ -168,28 +168,20 @@ def test_navigation_holds_playback_until_goal_reached():
     assert generator._synchronize_navigation(states, 0, True) == (False, False)
 
 
-@pytest.mark.parametrize("command", ["pose", "gripper"])
-def test_navigation_completion_preserves_manipulation_commands(command):
-    states = {name: _playback_state(10, 4) for name in ("base", "left", "right")}
-    endpoint = Waypoint(pose=torch.eye(4), passthrough_action={"base": torch.zeros(3)})
-    states["base"].current_trajectory[-1] = endpoint
-    pose = torch.eye(4)
-    gripper = torch.zeros(1)
-    if command == "pose":
-        pose[0, 3] = 0.25
-    else:
-        gripper[0] = 1.0
-    next_arm_waypoint = Waypoint(pose=pose, passthrough_action={"left": gripper})
-    states["left"].current_trajectory[5] = next_arm_waypoint
-
+@pytest.mark.parametrize(
+    "length, paused, done",
+    [(20, True, False), (20, False, True), (5, False, False)],
+    ids=["paused", "completed", "last_waypoint"],
+)
+def test_navigation_completion_skips_idle_steps_without_rewinding_other_channels(length, paused, done):
+    states = {
+        "base": _playback_state(10, 4),
+        "left": _playback_state(20, 4),
+        "right": _playback_state(length, 4, paused=paused, done=done),
+    }
     generator = _navigation_generator(active=False, reached=True)
     assert generator._synchronize_navigation(states, 0, True) == (False, False)
-    assert all(state.subtask_step_index == 4 for state in states.values())
-    assert all(waypoint is endpoint for waypoint in states["base"].current_trajectory[5:])
-
-    generator._advance_subtask_progress(states, {}, pause_subtask=False)
-    assert states["left"].subtask_step_index == 5
-    assert states["left"].current_trajectory[5] is next_arm_waypoint
+    assert {name: state.subtask_step_index for name, state in states.items()} == {"base": 8, "left": 8, "right": 4}
 
 
 @pytest.mark.parametrize("paused, reached", [(False, False), (True, True)], ids=["cancelled", "paused"])
