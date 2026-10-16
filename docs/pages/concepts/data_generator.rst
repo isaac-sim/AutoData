@@ -123,7 +123,10 @@ Results and Statistics
 
 Three layers report what happened:
 
-* **Per attempt** — ``GenerationResult``: ``success`` and ``initial_state``.
+* **Per attempt** — ``GenerationResult``: ``success``, ``failure_cause``, ``failed_subtask``,
+  ``num_steps``, ``planner_calls`` and ``initial_state``. With
+  ``--result_file``, each completed attempt is also written as one line of
+  ``<result_file stem>.attempts.jsonl``.
 * **Per run, in memory** — the ``stats`` counters: ``num_success``, ``num_failures``,
   ``num_attempts`` (``num_success + num_failures = num_attempts``).
 * **Per run, on disk** — with ``--result_file``, a JSON sidecar is written atomically at the
@@ -146,7 +149,9 @@ Three layers report what happened:
 
   ``env_profile`` appears only when an :doc:`environment profile <environment_profiles>` was
   applied — the generated dataset itself records only the base env id, so the sidecar is
-  what documents that the scene was modified.
+  what documents that the scene was modified. A ``run`` block records how the run was
+  configured and how long it took. :doc:`../references/kpis` describes it and the report
+  computed from these files.
 
 The GenerationAlgorithm Plug-In
 -------------------------------

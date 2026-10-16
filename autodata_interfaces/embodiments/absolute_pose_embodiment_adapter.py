@@ -80,6 +80,9 @@ class AbsolutePoseEmbodimentAdapter(EmbodimentAdapter):
     def get_eef_names(self) -> tuple[str, ...]:
         return tuple(self.eefs)
 
+    def get_eef_names_with_pose_action(self) -> tuple[str, ...]:
+        return tuple(name for name, spec in self.eefs.items() if spec.get("pose_action_slice") is not None)
+
     def get_eef_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
         assert self.env is not None, "Call bind_env(env) before reading state."
         index = slice(None) if env_ids is None else env_ids

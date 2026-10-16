@@ -33,6 +33,7 @@ live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import time
 
 from isaaclab.app import AppLauncher
 
@@ -41,6 +42,9 @@ from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor
 from autodata_interfaces.tasks.task_descriptor_utils import resolve_task_algorithm
 from autodata_utils.cli import callable_path
+
+# Taken before the simulator launches, so the recorded setup time includes its startup.
+PROCESS_START_TIME = time.monotonic()
 
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in autodata_core.algorithms.
@@ -97,7 +101,10 @@ parser.add_argument(
     "--result_file",
     type=str,
     default=None,
-    help="Optional JSON path for the final structured generation result.",
+    help=(
+        "Optional JSON path for the final structured generation result. An attempt log with one JSON "
+        "line per attempt is written next to it (<result_file stem>.attempts.jsonl)."
+    ),
 )
 parser.add_argument(
     "--pause_subtask",
@@ -141,10 +148,12 @@ import random  # noqa: E402
 import sys  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
+from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
 
 from autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
+from autodata_core.data_generator import GenerationResult  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.env import (  # noqa: E402
     EnvironmentProfile,
@@ -154,7 +163,14 @@ from autodata_interfaces.env import (  # noqa: E402
     setup_output_paths,
 )
 from autodata_interfaces.env.registration import load_callable, register_external_environment  # noqa: E402
-from autodata_utils.generation_result import write_generation_result  # noqa: E402
+from autodata_utils import pose_math  # noqa: E402
+from autodata_utils.generation_result import (  # noqa: E402
+    AttemptLog,
+    attempts_file_for,
+    file_sha256,
+    write_generation_result,
+)
+from autodata_utils.tensor_utils import as_torch  # noqa: E402
 
 
 async def run_data_generator(
@@ -166,9 +182,14 @@ async def run_data_generator(
     success_term,
     pause_subtask: bool,
     stats: dict,
+    timing: dict,
+    attempt_log: AttemptLog | None,
 ) -> None:
-    """Repeatedly call ``data_generator.generate`` and tally outcomes into ``stats``."""
+    """Repeatedly call ``data_generator.generate``, tally outcomes into ``stats`` and log each attempt."""
     while True:
+        attempt_start = time.monotonic()
+        if timing["generation_start"] is None:
+            timing["generation_start"] = attempt_start
         try:
             result = await data_generator.generate(
                 env_id=env_id,
@@ -187,6 +208,67 @@ async def run_data_generator(
         else:
             stats["num_failures"] += 1
         stats["num_attempts"] += 1
+        if attempt_log is not None:
+            attempt_log.write(_attempt_record(env_id, result, attempt_start, time.monotonic()))
+
+
+def _attempt_record(env_id: int, result: GenerationResult, start_time: float, end_time: float) -> dict:
+    """One attempt-log line; times [s] are measured from process start."""
+    return {
+        "env_id": env_id,
+        "success": result.success,
+        "failure_cause": result.failure_cause,
+        "failed_subtask": result.failed_subtask,
+        "num_steps": result.num_steps,
+        "start_time_s": start_time - PROCESS_START_TIME,
+        "end_time_s": end_time - PROCESS_START_TIME,
+        "initial_object_poses": _initial_object_poses(result.initial_state, env_id),
+        "planner_calls": list(result.planner_calls),
+    }
+
+
+def _initial_object_poses(initial_state: dict, env_id: int) -> dict[str, list[float]]:
+    """``[x, y, yaw]`` [m, m, rad] of each rigid object in the env frame at the start of the attempt."""
+    poses = {}
+    for name, object_state in initial_state.get("rigid_object", {}).items():
+        root_pose = as_torch(object_state["root_pose"])[env_id]
+        rotation = pose_math.matrix_from_quat(root_pose[3:7])
+        yaw = torch.atan2(rotation[1, 0], rotation[0, 0])
+        poses[name] = [float(root_pose[0]), float(root_pose[1]), float(yaw)]
+    return poses
+
+
+def _reset_ranges(env_cfg: Any) -> list[dict]:
+    """Reset event terms that sample object poses from a ``pose_range``.
+
+    ``default_positions`` lets a reader resolve ranges that are offsets from an asset's default pose.
+    """
+    ranges = []
+    events = getattr(env_cfg, "events", None)
+    for term_name, term in (vars(events) if events is not None else {}).items():
+        params = getattr(term, "params", None)
+        if getattr(term, "mode", None) != "reset" or not params or not isinstance(params.get("pose_range"), dict):
+            continue
+        func = (
+            term.func
+            if isinstance(term.func, str)
+            else f"{getattr(term.func, '__module__', '')}:{getattr(term.func, '__name__', '')}"
+        )
+        asset_cfgs = list(params.get("asset_cfgs", [])) + ([params["asset_cfg"]] if "asset_cfg" in params else [])
+        assets = [asset_cfg.name for asset_cfg in asset_cfgs]
+        default_positions = {}
+        for name in assets:
+            init_state = getattr(getattr(env_cfg.scene, name, None), "init_state", None)
+            if init_state is not None:
+                default_positions[name] = [float(value) for value in init_state.pos]
+        ranges.append({
+            "term": term_name,
+            "func": func,
+            "assets": assets,
+            "pose_range": {axis: [float(bounds[0]), float(bounds[1])] for axis, bounds in params["pose_range"].items()},
+            "default_positions": default_positions,
+        })
+    return ranges
 
 
 def build_datastream(
@@ -216,6 +298,7 @@ def setup_async_generation(
     success_term,
     algorithm,
     pause_subtask: bool,
+    attempt_log: AttemptLog | None = None,
 ) -> dict:
     """Build a single :class:`DataGenerator` over ``datastream`` and ``num_envs`` async tasks."""
     asyncio_event_loop = asyncio.get_event_loop()
@@ -225,6 +308,7 @@ def setup_async_generation(
 
     data_generator = DataGenerator(datastream=datastream, algorithm=algorithm)
     stats = {"num_success": 0, "num_failures": 0, "num_attempts": 0}
+    timing = {"generation_start": None}
 
     tasks = []
     for env_id in range(num_envs):
@@ -238,6 +322,8 @@ def setup_async_generation(
                 success_term=success_term,
                 pause_subtask=pause_subtask,
                 stats=stats,
+                timing=timing,
+                attempt_log=attempt_log,
             )
         )
         tasks.append(task)
@@ -249,6 +335,7 @@ def setup_async_generation(
         "action_queue": env_action_queue,
         "info_pool": datastream.source_pool,
         "stats": stats,
+        "timing": timing,
     }
 
 
@@ -362,6 +449,8 @@ def main() -> None:
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 
+    attempts_file = attempts_file_for(args_cli.result_file) if args_cli.result_file else None
+    attempt_log = AttemptLog(attempts_file) if attempts_file else None
     try:
         async_components = setup_async_generation(
             datastream=datastream,
@@ -369,10 +458,12 @@ def main() -> None:
             success_term=success_term,
             algorithm=algorithm,
             pause_subtask=args_cli.pause_subtask,
+            attempt_log=attempt_log,
         )
 
         data_gen_tasks = asyncio.ensure_future(asyncio.gather(*async_components["tasks"]))
         generation_completed = False
+        generation_end = None
         try:
             generation_completed = env_loop(
                 env,
@@ -383,6 +474,7 @@ def main() -> None:
                 stats=async_components["stats"],
                 data_gen_tasks=data_gen_tasks,
             )
+            generation_end = time.monotonic()
         except asyncio.CancelledError:
             print("Async tasks cancelled.")
         finally:
@@ -396,6 +488,7 @@ def main() -> None:
             _close_motion_planners(motion_planners)
 
         if generation_completed and args_cli.result_file:
+            generation_start = async_components["timing"]["generation_start"]
             write_generation_result(
                 result_file=args_cli.result_file,
                 algorithm=args_cli.alg,
@@ -406,6 +499,22 @@ def main() -> None:
                     if env_profile
                     else None
                 ),
+                run_metadata={
+                    "seed": generation_policy_params.seed,
+                    "stop_rule": "successes" if generation_policy_params.guarantee_success else "attempts",
+                    "device": args_cli.device,
+                    "num_envs": args_cli.num_envs,
+                    "step_dt": float(env.step_dt),
+                    "setup_time_s": generation_start - PROCESS_START_TIME,
+                    "generation_time_s": generation_end - generation_start,
+                    "source": {
+                        "path": args_cli.input_file,
+                        "sha256": file_sha256(args_cli.input_file),
+                        "num_episodes": datastream.num_source_demos,
+                    },
+                    "reset_ranges": _reset_ranges(env_cfg),
+                    "attempts_file": Path(attempts_file).name,
+                },
             )
     finally:
         env.close()

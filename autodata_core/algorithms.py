@@ -185,7 +185,8 @@ class SkillGen(GenerationAlgorithm):
             motion_planners: One planner per env_id. Planners must expose
                 ``update_world_and_plan_motion(target_pose, expected_attached_object, env_id, ...)``
                 and ``get_planned_poses() -> list[torch.Tensor[4, 4]]``. ``config.motion_noise_scale``
-                is read if present.
+                is read if present, and so is ``last_plan_summary``, a dict describing the latest
+                planning call, which is copied into the attempt's ``planner_calls``.
         """
         assert motion_planners, "SkillGen requires at least one motion planner"
         self.motion_planners = motion_planners
@@ -245,6 +246,11 @@ class SkillGen(GenerationAlgorithm):
             step_size=getattr(planner, "step_size", None),
             enable_retiming=(hasattr(planner, "step_size") and planner.step_size is not None),
         )
+        plan_summary = getattr(planner, "last_plan_summary", None)
+        if plan_summary is not None:
+            eef_state.planner_calls.append(
+                {"eef": eef_name, "subtask": eef_state.current_subtask_index, **plan_summary}
+            )
         if not planning_success:
             return None
 

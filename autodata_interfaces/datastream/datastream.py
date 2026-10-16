@@ -191,6 +191,11 @@ class Datastream:
 
         return self.embodiment_adapter.get_eef_poses(env_ids=env_ids)[eef_name]
 
+    def get_eef_names_with_pose_action(self) -> tuple[str, ...]:
+        """Return the EEFs whose target pose the action commands, excluding tracking-only channels."""
+
+        return self.embodiment_adapter.get_eef_names_with_pose_action()
+
     def get_robot_joint_positions(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
         """Read the robot's current joint positions [rad] via the embodiment adapter.
 
@@ -271,16 +276,38 @@ class Datastream:
                 object_pose_matrix[obj_name] = reference_inverse @ object_pose_matrix[obj_name]
         return object_pose_matrix
 
+    def _boundary_signal_names(self) -> list[str]:
+        """Termination-signal names of every non-final subtask, across EEFs.
+
+        The final subtask ends with the trajectory, so its signal never marks a boundary.
+        """
+
+        return [name for eef in self.get_eef_names() for name in self.get_term_signal_names(eef)[:-1] if name]
+
+    def has_subtask_term_signals(self, obs_group: str = "subtask_terms") -> bool:
+        """Whether :meth:`get_subtask_term_signals` can read every subtask-boundary signal.
+
+        True when ``env.obs_buf[obs_group]`` is a non-concatenated group holding one term per
+        boundary signal. Not every env publishes such a group.
+        """
+
+        obs_buf = getattr(self.env, "obs_buf", None)
+        group = obs_buf.get(obs_group) if isinstance(obs_buf, dict) else None
+        if not isinstance(group, dict):
+            return False
+        signal_names = self._boundary_signal_names()
+        return bool(signal_names) and all(name in group for name in signal_names)
+
     def get_subtask_term_signals(
         self, env_ids: Sequence[int] | None = None, obs_group: str = "subtask_terms"
     ) -> dict[str, torch.Tensor]:
-        """Read the current per-subtask termination signals from the env observation buffer.
+        """Read the current subtask-boundary signals from the env observation buffer.
 
-        For every non-empty termination-signal name declared by the task descriptor (across all
-        EEFs), reads the identically named boolean observation term from
-        ``env.obs_buf[obs_group]``. The env must therefore publish one observation term per
-        term-signal name in a non-concatenated group. Auto annotation samples this each replay
-        step to locate subtask boundaries without a human in the loop.
+        For the termination signal of every non-final subtask (across all EEFs), reads the
+        identically named boolean observation term from ``env.obs_buf[obs_group]``. The env must
+        therefore publish one observation term per boundary signal in a non-concatenated group.
+        Auto annotation samples this each replay step to locate subtask boundaries without a human
+        in the loop.
 
         Args:
             env_ids: Environments to read; ``None`` reads all.
@@ -302,15 +329,12 @@ class Datastream:
             "signal reads require the group to set 'concatenate_terms = False'."
         )
         signals: dict[str, torch.Tensor] = {}
-        for eef_name in self.get_eef_names():
-            for signal_name in self.get_term_signal_names(eef_name):
-                if not signal_name:
-                    continue
-                assert signal_name in group, (
-                    f"Termination signal {signal_name!r} has no matching observation term in "
-                    f"group {obs_group!r}. Available terms: {sorted(group.keys())}"
-                )
-                signals[signal_name] = as_torch(group[signal_name])[index].reshape(-1).bool()
+        for signal_name in self._boundary_signal_names():
+            assert signal_name in group, (
+                f"Termination signal {signal_name!r} has no matching observation term in "
+                f"group {obs_group!r}. Available terms: {sorted(group.keys())}"
+            )
+            signals[signal_name] = as_torch(group[signal_name])[index].reshape(-1).bool()
         return signals
 
     def get_robot_root_pose(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:

@@ -25,7 +25,7 @@ YAML, live env, and HDF5 source dataset, then runs the selected generation algor
 | `--output_file <path.hdf5>` | no | `./datasets/output_dataset.hdf5` | Destination for generated demos. |
 | `--generation_num_trials <N>` | no | `None` | Number of demos to generate. |
 | `--num_envs <N>` | no | `1` | Number of parallel simulation environments. |
-| `--result_file <path>` | no | — | Where to write the generation result summary. |
+| `--result_file <path>` | no | — | Where to write the generation result summary. An attempt log (`<stem>.attempts.jsonl`) is written next to it. |
 | `--pause_subtask` | no | off | Pause at subtask boundaries (debugging). |
 | `--visualize_plan` | no | off | Visualize the motion plan (SkillGen debugging). |
 
@@ -44,6 +44,7 @@ Annotate source demonstrations with subtask signals.
 | `--output_file <path.hdf5>` | Annotated output. |
 | `--auto` | Annotate termination signals without keyboard input (`--viz none` supported). |
 | `--signal_obs_group <name>` | Observation group holding per-subtask boolean terms (default `subtask_terms`). |
+| `--summary_file <path.json>` | Write processed/exported counts and rejection reasons as JSON. |
 
 Interactive controls: `N` play/resume, `B` pause, `S` mark subtask signal, `Q` skip episode.
 SkillGen start signals still require manual mode.
@@ -60,3 +61,11 @@ python scripts/validate_dataset.py directory/*.hdf5
 
 Required demo fields checked: `actions` (dataset), `initial_state` (group), `obs` (group).
 The command exits non-zero if any file is invalid, so workflows can gate on a clean exit code.
+
+Add `--report` to print the KPIs of one generated dataset (see the KPIs docs page):
+
+```bash
+python scripts/validate_dataset.py <generated.hdf5> --report --result_file <result.json> \
+    --source <source.hdf5> --embodiment <embodiment.yaml> [--annotation_summary <summary.json>] \
+    [--report_file <kpis.json>]
+```

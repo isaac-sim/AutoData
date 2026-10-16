@@ -3,8 +3,8 @@
 
 """Unit tests for :class:`autodata_core.data_generator.DataGenerator`.
 
-Construction-time validation and navigation playback decisions are covered here.
-Simulation integration is covered by the e2e suite.
+Construction-time validation, navigation playback decisions and the planner-failure path of the
+generation loop are covered here. Simulation integration is covered by the e2e suite.
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from autodata_core.algorithms import DexMimicGen, MimicGen, SkillGen
+from autodata_core.algorithms import DexMimicGen, GenerationAlgorithm, MimicGen, SkillGen
 from autodata_core.data_generator import DataGenerator, GenerationResult, _EEFGenerationState
 from autodata_core.waypoint import MultiWaypoint, Waypoint
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
@@ -65,6 +65,15 @@ class _MockDatastream:
 
     def get_env(self):
         return self.env
+
+    def has_subtask_term_signals(self):
+        return False
+
+    def get_eef_names_with_pose_action(self):
+        return tuple(self._subtasks)
+
+    def get_robot_eef_pose(self, env_ids, eef_name):
+        return torch.eye(4).unsqueeze(0)
 
 
 def _assert_constructed(generator: DataGenerator, datastream: _MockDatastream, algorithm) -> None:
@@ -131,6 +140,59 @@ def test_skillgen_coordination_unsupported_error():
     datastream = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("")]}, constraints=[object()])
     with pytest.raises(ValueError, match="does not support coordination"):
         DataGenerator(datastream=datastream, algorithm=SkillGen(motion_planners={0: object()}))
+
+
+class _PlanningFails(GenerationAlgorithm):
+    """Unregistered algorithm whose planner never finds a trajectory."""
+
+    def plan_subtask_trajectory(self, **kwargs):
+        return None
+
+
+class _GenerationDatastream(_MockDatastream):
+    """Adds the reads ``DataGenerator.generate`` makes before the first plan."""
+
+    def __init__(self, subtasks_by_eef: dict) -> None:
+        super().__init__(subtasks_by_eef)
+        self.source_pool.subtask_boundaries = {eef: [[(0, 5), (5, 10)]] for eef in subtasks_by_eef}
+        self.env = SimpleNamespace(recorder_manager=SimpleNamespace(reset=lambda env_ids: None))
+
+    def get_scene_state(self, is_relative: bool = True):
+        return {"rigid_object": {}}
+
+
+def test_planner_failure_records_cause_and_subtask():
+    datastream = _GenerationDatastream({"franka": [_subtask("grasp_1"), _subtask("")]})
+    generator = DataGenerator(datastream=datastream, algorithm=_PlanningFails())
+
+    async def run_attempt() -> GenerationResult:
+        reset_queue: asyncio.Queue = asyncio.Queue()
+
+        async def serve_reset() -> None:
+            await reset_queue.get()
+            reset_queue.task_done()
+
+        server = asyncio.create_task(serve_reset())
+        result = await generator.generate(
+            env_id=0, success_term=None, env_reset_queue=reset_queue, env_action_queue=asyncio.Queue()
+        )
+        await server
+        return result
+
+    result = asyncio.run(run_attempt())
+
+    assert result.success is False
+    assert result.failure_cause == "planner"
+    assert result.failed_subtask == {"franka": 0}
+    assert result.num_steps == 0
+
+
+def test_execution_failure_is_attributed_to_the_first_unfinished_subtask():
+    datastream = _MockDatastream({"franka": [_subtask("grasp_1"), _subtask("stack_1"), _subtask("")]})
+    generator = DataGenerator(datastream=datastream, algorithm=MimicGen())
+
+    assert generator._failed_subtasks({"grasp_1"}) == {"franka": 1}
+    assert generator._failed_subtasks({"grasp_1", "stack_1"}) == {"franka": 2}
 
 
 def test_generation_result_fields_and_frozen():

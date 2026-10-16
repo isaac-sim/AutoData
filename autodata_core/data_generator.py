@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from isaaclab.managers import TerminationTermCfg
 
@@ -47,10 +47,26 @@ async def _optional_lock(lock: asyncio.Lock | None):
 
 @dataclass(frozen=True)
 class GenerationResult:
-    """Output of one :meth:`DataGenerator.generate` invocation."""
+    """Output of one :meth:`DataGenerator.generate` invocation.
+
+    Attributes:
+        initial_state: Scene state of every env right after this env's reset.
+        success: Whether the task succeeded at any step of the attempt.
+        failure_cause: ``"planner"`` when planning aborted the attempt, ``"execution"`` when every
+            subtask ran but the task never succeeded, None on success.
+        failed_subtask: Per-EEF index of the subtask where the attempt failed. For a planner failure,
+            the subtask being planned; for an execution failure, the first subtask whose termination
+            signal never fired (the last subtask if all fired). None when unknown.
+        num_steps: Number of env steps executed.
+        planner_calls: One summary per motion-planner call made during the attempt.
+    """
 
     initial_state: dict
     success: bool
+    failure_cause: Literal["planner", "execution"] | None = None
+    failed_subtask: dict[str, int] | None = None
+    num_steps: int = 0
+    planner_calls: tuple[dict, ...] = ()
 
 
 @dataclass
@@ -76,6 +92,7 @@ class _EEFGenerationState:
     # subtask trajectory here so the follow-up call splices it in.
     pending_subtask_trajectory: WaypointTrajectory | None = None
     is_in_motion_plan: bool = False
+    planner_calls: list[dict] = field(default_factory=list)
 
 
 class DataGenerator:
@@ -107,6 +124,8 @@ class DataGenerator:
         self.algorithm = algorithm
         self.src_demo_datagen_info_pool = datastream.source_pool
         self.demo_keys = demo_keys
+        # Resolved on the first attempt, once the env has produced observations.
+        self._track_term_signals: bool | None = None
 
         self._validate_eef_count_for_algorithm()
         self._validate_coordination_for_algorithm()
@@ -537,6 +556,10 @@ class DataGenerator:
         eef_states = self._initialize_eef_states()
         selected_src_demo_inds: dict[str, int | None] = {name: None for name in self.datastream.get_eef_names()}
         buffers = _GenerationBuffers()
+        if self._track_term_signals is None:
+            self._track_term_signals = self.datastream.has_subtask_term_signals()
+        fired_term_signals: set[str] = set()
+        num_steps = 0
 
         randomized_subtask_boundaries: dict[str, np.ndarray] | None = None
         prev_pool_size = 0
@@ -569,7 +592,14 @@ class DataGenerator:
                     )
                     if result is None:
                         # Planning failure (e.g. SkillGen motion planner). Abort with no success.
-                        return GenerationResult(initial_state=initial_state, success=False)
+                        return GenerationResult(
+                            initial_state=initial_state,
+                            success=False,
+                            failure_cause="planner",
+                            failed_subtask={eef_name: eef_state.current_subtask_index},
+                            num_steps=num_steps,
+                            planner_calls=self._collect_planner_calls(eef_states),
+                        )
                     next_trajectory, _is_motion_plan = result
                     eef_state.current_trajectory = next_trajectory
                     eef_state.subtask_step_index = 0
@@ -579,6 +609,7 @@ class DataGenerator:
                 eef_states=eef_states,
             )
             multi_waypoint = MultiWaypoint(eef_waypoints)
+            self._record_step_poses(env_id, eef_waypoints)
 
             await asyncio.sleep(0)
 
@@ -588,6 +619,11 @@ class DataGenerator:
                 env_id=env_id,
                 env_action_queue=env_action_queue,
             )
+            num_steps += 1
+            if self._track_term_signals:
+                signals = self.datastream.get_subtask_term_signals(env_ids=[env_id])
+                fired_now = torch.stack([value[0] for value in signals.values()]).tolist()
+                fired_term_signals.update(name for name, fired in zip(signals, fired_now) if fired)
             buffers.success = buffers.success or exec_success
             if generation_policy.use_navigation_controller:
                 hold, was_navigating = self._synchronize_navigation(eef_states, env_id, was_navigating)
@@ -617,9 +653,14 @@ class DataGenerator:
         if export_demo:
             env.recorder_manager.export_episodes(env_id_tensor)
 
+        failed = not buffers.success
         return GenerationResult(
             initial_state=initial_state,
             success=buffers.success,
+            failure_cause="execution" if failed else None,
+            failed_subtask=self._failed_subtasks(fired_term_signals) if failed and self._track_term_signals else None,
+            num_steps=num_steps,
+            planner_calls=self._collect_planner_calls(eef_states),
         )
 
     # ------------------------------------------------------------------
@@ -674,6 +715,37 @@ class DataGenerator:
 
     def _initialize_eef_states(self) -> dict[str, _EEFGenerationState]:
         return {name: _EEFGenerationState() for name in self.datastream.get_eef_names()}
+
+    def _record_step_poses(self, env_id: int, eef_waypoints: dict[str, Waypoint]) -> None:
+        """Append the noise-free waypoint pose commanded at this step, and the EEF pose before it, to the episode.
+
+        Tracking-only channels command no pose, so they record no intended pose.
+        """
+        commanded = self.datastream.get_eef_names_with_pose_action()
+        intended = {name: waypoint.pose.unsqueeze(0) for name, waypoint in eef_waypoints.items() if name in commanded}
+        achieved = {name: self.datastream.get_robot_eef_pose(env_ids=[env_id], eef_name=name) for name in eef_waypoints}
+        self.datastream.get_env().recorder_manager.add_to_episodes(
+            "obs/datagen_info", {"intended_eef_pose": intended, "eef_pose": achieved}, env_ids=[env_id]
+        )
+
+    def _failed_subtasks(self, fired_term_signals: set[str]) -> dict[str, int]:
+        """Per EEF, the first subtask whose termination signal never fired, else the last subtask."""
+        failed: dict[str, int] = {}
+        for eef_name in self.datastream.get_eef_names():
+            subtasks = self.datastream.get_subtasks(eef_name)
+            failed[eef_name] = next(
+                (
+                    index
+                    for index, subtask in enumerate(subtasks)
+                    if subtask.subtask_term_signal and subtask.subtask_term_signal not in fired_term_signals
+                ),
+                len(subtasks) - 1,
+            )
+        return failed
+
+    @staticmethod
+    def _collect_planner_calls(eef_states: dict[str, _EEFGenerationState]) -> tuple[dict, ...]:
+        return tuple(call for eef_state in eef_states.values() for call in eef_state.planner_calls)
 
     def _maybe_refresh_randomized_subtask_boundaries(
         self,

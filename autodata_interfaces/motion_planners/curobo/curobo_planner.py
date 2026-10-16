@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import numpy as np
+import time
 import torch
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -286,6 +287,9 @@ class CuroboPlanner(MotionPlannerBase):
         # Initialize planning state
         self._current_plan: JointState | None = None
         self._plan_index: int = 0
+        # One record per cuRobo plan_single call of the current update_world_and_plan_motion call.
+        self._plan_phase_results: list[dict[str, Any]] = []
+        self.last_plan_summary: dict[str, Any] | None = None
 
         # Initialize visualization state
         self.frame_counter: int = 0
@@ -1307,8 +1311,9 @@ class CuroboPlanner(MotionPlannerBase):
         )
 
         planning_success = False
+        result: Any = None
         try:
-            result: Any = self.motion_gen.plan_single(start_state, goal_pose, self.plan_config)
+            result = self.motion_gen.plan_single(start_state, goal_pose, self.plan_config)
 
             if result.success.item():
                 if result.optimized_plan is not None and len(result.optimized_plan.position) != 0:
@@ -1332,6 +1337,13 @@ class CuroboPlanner(MotionPlannerBase):
 
         except Exception as e:
             self.logger.debug(f"Error during planning: {e}")
+        # Telemetry must never change the planning outcome or skip the sphere restore below.
+        try:
+            phase_summary = self._summarize_plan_phase(result, planning_success)
+        except Exception as e:
+            self.logger.debug(f"Error summarizing the planning phase: {e}")
+            phase_summary = {"success": planning_success, "status": "Success" if planning_success else "exception"}
+        self._plan_phase_results.append(phase_summary)
 
         # Always restore sphere state after planning, regardless of success
         if contact:
@@ -1843,7 +1855,9 @@ class CuroboPlanner(MotionPlannerBase):
 
         Provides a high-level interface that handles the complete planning workflow:
         world synchronization, object attachment/detachment, gripper configuration,
-        and motion planning.
+        and motion planning. Afterwards :attr:`last_plan_summary` holds the call's outcome, the
+        cuRobo status of the first failed phase, wall-clock time [s], summed cuRobo solve, IK and
+        trajectory-optimization times [s], and summed cuRobo attempts.
 
         Args:
             target_pose: Target end-effector pose as 4x4 transformation matrix
@@ -1855,6 +1869,8 @@ class CuroboPlanner(MotionPlannerBase):
         Returns:
             True if complete planning pipeline succeeded, False if any step failed
         """
+        start_time = time.perf_counter()
+        self._plan_phase_results = []
         # Always reset the plan before starting a new one to ensure a clean state
         self.reset_plan()
 
@@ -1919,7 +1935,41 @@ class CuroboPlanner(MotionPlannerBase):
 
         self._detach_objects()
 
+        failed_phase = next((phase for phase in self._plan_phase_results if not phase["success"]), None)
+        self.last_plan_summary = {
+            "success": plan_success,
+            "status": "Success" if plan_success else (failed_phase["status"] if failed_phase else "unknown"),
+            "wall_time_s": time.perf_counter() - start_time,
+            "num_phases": len(self._plan_phase_results),
+            **{
+                key: sum(phase.get(key, 0) for phase in self._plan_phase_results)
+                for key in ("solve_time_s", "ik_time_s", "trajopt_time_s", "attempts")
+            },
+        }
         return plan_success
+
+    @staticmethod
+    def _summarize_plan_phase(result: Any, success: bool) -> dict[str, Any]:
+        """Outcome, cuRobo status, timing [s] and attempt count of one planning phase.
+
+        ``result`` is None when ``plan_single`` raised. A phase whose cuRobo result succeeded but whose
+        post-processing raised is reported with status ``exception``.
+        """
+        if success:
+            status = "Success"
+        elif result is None or (result.success is not None and bool(result.success.item())):
+            status = "exception"
+        elif result.status is None:
+            status = "unknown"
+        else:
+            status = str(getattr(result.status, "value", result.status))
+        summary: dict[str, Any] = {"success": success, "status": status}
+        if result is not None:
+            summary["solve_time_s"] = float(result.solve_time)
+            summary["ik_time_s"] = float(result.ik_time)
+            summary["trajopt_time_s"] = float(result.trajopt_time)
+            summary["attempts"] = int(result.attempts)
+        return summary
 
     # =====================================================================================
     # UTILITY METHODS

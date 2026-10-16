@@ -25,6 +25,9 @@ Automatic mode:
 Pass ``--auto`` to annotate subtask termination signals without keyboard input (``--viz none``
 supported). ``--signal_obs_group`` selects the observation group holding the per-subtask boolean
 terms (default ``subtask_terms``). SkillGen start signals still require manual mode.
+
+Pass ``--summary_file`` to save the processed and exported episode counts, the rejection reasons and
+the number of manual re-marks as JSON.
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -81,6 +84,12 @@ parser.add_argument(
     default="subtask_terms",
     help="Observation group holding the per-subtask boolean terms read in --auto mode.",
 )
+parser.add_argument(
+    "--summary_file",
+    type=str,
+    default=None,
+    help="Optional JSON path for the annotation summary (processed and exported counts, rejection reasons).",
+)
 
 parser.add_argument(
     "--enable_cameras",
@@ -101,11 +110,13 @@ simulation_app = app_launcher.app
 
 import contextlib  # noqa: E402
 import gymnasium as gym  # noqa: E402
+import json  # noqa: E402
 import math  # noqa: E402
 import os  # noqa: E402
 import sys  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
+from collections import Counter  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401, E402  (registers gym envs)
@@ -126,6 +137,8 @@ is_paused = False
 current_action_index = 0
 marked_subtask_action_indices: list[int] = []
 skip_episode = False
+rejection_counts: Counter[str] = Counter()
+manual_remark_count = 0
 
 _datastream: Datastream | None = None
 
@@ -315,7 +328,6 @@ def main() -> int:
             for episode_index, episode_name in enumerate(episode_names):
                 if not simulation_app.is_running() or simulation_app.is_exiting():
                     break
-                processed_episode_count += 1
                 print(f"\nAnnotating episode #{episode_index} ({episode_name})")
                 episode = dataset_file_handler.load_episode(episode_name, env.device)
 
@@ -327,6 +339,7 @@ def main() -> int:
                     annotated = annotate_episode_in_manual_mode(
                         env, episode, success_term, term_signal_names, start_signal_names, annotate_start_signals
                     )
+                processed_episode_count += 1
 
                 if annotated and not skip_episode:
                     env.recorder_manager.set_success_to_episodes(
@@ -342,6 +355,17 @@ def main() -> int:
             f"\nExported {exported_episode_count} (out of {processed_episode_count}) annotated"
             f" episode{'s' if exported_episode_count != 1 else ''} to {args_cli.output_file}."
         )
+        if args_cli.summary_file:
+            summary = {
+                "mode": "auto" if args_cli.auto else "manual",
+                "num_processed": processed_episode_count,
+                "num_exported": exported_episode_count,
+                "rejections": dict(rejection_counts),
+                "manual_remarks": manual_remark_count,
+            }
+            with open(args_cli.summary_file, "w", encoding="utf-8") as summary_handle:
+                json.dump(summary, summary_handle, indent=2, sort_keys=True)
+                summary_handle.write("\n")
         print("Exiting the app.")
         return exported_episode_count
     finally:
@@ -427,7 +451,7 @@ def annotate_episode_in_manual_mode(
     Returns:
         True if the episode was fully annotated, False if it was skipped or never succeeded.
     """
-    global is_paused, marked_subtask_action_indices, skip_episode
+    global is_paused, marked_subtask_action_indices, skip_episode, manual_remark_count
 
     term_signal_action_indices: dict[str, int] = {}
     start_signal_action_indices: dict[str, int] = {}
@@ -455,6 +479,7 @@ def annotate_episode_in_manual_mode(
             task_succeeded = replay_episode(env, episode, success_term)
             if skip_episode:
                 print("\tSkipping the episode.")
+                rejection_counts["skipped"] += 1
                 return False
 
             print(f"\tSubtasks marked at action indices: {marked_subtask_action_indices}")
@@ -480,12 +505,14 @@ def annotate_episode_in_manual_mode(
 
             if not task_succeeded:
                 print("\tThe final task was not completed.")
+                rejection_counts["task_not_completed"] += 1
                 return False
 
             print(
                 f"\tOnly {len(marked_subtask_action_indices)} out of {expected_count} subtask signals"
                 f' for eef "{eef_name}" were annotated.'
             )
+            manual_remark_count += 1
             print(f'\tThe episode will be replayed again for re-marking subtask signals for eef "{eef_name}".\n')
 
     num_steps = len(episode.data["actions"])
@@ -580,6 +607,7 @@ def annotate_episode_in_auto_mode(
     task_succeeded = replay_episode(env, episode, success_term, on_step=sample_signals)
     if not task_succeeded:
         print("\tThe final task was not completed.")
+        rejection_counts["task_not_completed"] += 1
         return False
 
     num_steps = len(episode.data["actions"])
@@ -591,18 +619,22 @@ def annotate_episode_in_auto_mode(
             signal = torch.stack([step[signal_name][0] for step in sampled_signals])
             edge = _first_rising_edge(signal)
             if edge is None:
-                reason = "already active at episode start" if bool(signal[0]) else "never fired"
+                active_at_start = bool(signal[0])
+                reason = "already active at episode start" if active_at_start else "never fired"
                 print(f'\tSubtask signal "{signal_name}" (eef "{eef_name}") {reason}.')
+                rejection_counts["signal_active_at_start" if active_at_start else "signal_never_fired"] += 1
                 return False
             eef_edges.append(edge)
 
         if any(later <= earlier for earlier, later in zip(eef_edges, eef_edges[1:])):
             print(f'\tSubtask signals for eef "{eef_name}" fired out of order: {dict(zip(eef_term_names, eef_edges))}.')
+            rejection_counts["signals_out_of_order"] += 1
             return False
 
         spacing_error = _validate_boundary_spacing(task_descriptor, eef_name, eef_edges, num_steps)
         if spacing_error is not None:
             print(f'\tRejected annotations for eef "{eef_name}": {spacing_error}.')
+            rejection_counts["boundaries_too_close"] += 1
             return False
 
         print(f'\tDetected subtask signals for eef "{eef_name}": {dict(zip(eef_term_names, eef_edges))}')
