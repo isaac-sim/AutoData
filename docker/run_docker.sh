@@ -46,13 +46,17 @@ DATASETS_HOST_MOUNT_DIRECTORY="$HOME/datasets"
 
 FORCE_REBUILD=false
 NO_CACHE=""
+ALLOW_STALE_IMAGE=false
+REBUILD_STALE_IMAGE=false
 
-while getopts ":d:crRvh" OPTION; do
+while getopts ":d:crRsuvh" OPTION; do
     case $OPTION in
         d) DATASETS_HOST_MOUNT_DIRECTORY=$OPTARG ;;
         c) INSTALL_CUROBO=true ;;
         r) FORCE_REBUILD=true ;;
         R) FORCE_REBUILD=true; NO_CACHE="--no-cache" ;;
+        s) ALLOW_STALE_IMAGE=true ;;
+        u) REBUILD_STALE_IMAGE=true ;;
         v) set -x ;;
         h)
             script_name=$(basename "$0")
@@ -65,6 +69,8 @@ while getopts ":d:crRvh" OPTION; do
             echo "  -c        Install cuRobo, auto-detects the GPU arch (override with the TORCH_CUDA_ARCH_LIST env var)."
             echo "  -r        Force rebuilding the image."
             echo "  -R        Force rebuilding the image without cache."
+            echo "  -s        Use the existing image even if it was not built from this checkout."
+            echo "  -u        Rebuild the image only if it was not built from this checkout."
             echo "  -v        Verbose (set -x)."
             echo "  -h        Show this help."
             echo ""
@@ -82,9 +88,53 @@ if [ "$INSTALL_CUROBO" = "true" ]; then
     DOCKER_VERSION_TAG="${CUROBO_VERSION_TAG}"
 fi
 
-CONTAINER_NAME="${DOCKER_IMAGE_NAME}-${DOCKER_VERSION_TAG}"
+# The container bind-mounts this checkout, so each checkout gets its own container.
+CHECKOUT_NAME="${REPO_ROOT##*/}"
+CONTAINER_NAME="${DOCKER_IMAGE_NAME}-${DOCKER_VERSION_TAG}-${CHECKOUT_NAME//[^a-zA-Z0-9_.-]/-}-$(printf '%s' "${REPO_ROOT}" | sha256sum | cut -c1-8)"
 
-echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BASE_IMAGE})"
+# The image copies Arena and its nested Isaac Lab, so both must be at the commits this checkout pins.
+SUBMODULE_STATUS=$(git -C "${REPO_ROOT}" submodule status --recursive -- submodules/IsaacLab-Arena) || {
+    echo "error: could not read the submodule status." >&2
+    exit 1
+}
+while read -r status path _; do
+    case "${path}" in
+        submodules/IsaacLab-Arena | submodules/IsaacLab-Arena/submodules/IsaacLab) ;;
+        *) continue ;;
+    esac
+    case "${status:0:1}" in
+        -) echo "error: ${path} is not initialized. Run: git submodule update --init --recursive" >&2; exit 1 ;;
+        +) echo "warning: ${path} is not at the pinned commit. Run: git submodule update --init --recursive" >&2 ;;
+    esac
+done <<< "${SUBMODULE_STATUS}"
+
+# Fingerprint what the image bakes in. Sources are bind-mounted at run time, so they are not inputs.
+IMAGE_INPUTS=$(set -o pipefail; cd "${REPO_ROOT}" && {
+    sha256sum docker/Dockerfile.autodata docker/runtime-constraints.txt docker/setup/*.sh .dockerignore setup.py pyproject.toml &&
+        git -C submodules/IsaacLab-Arena rev-parse HEAD &&
+        git -C submodules/IsaacLab-Arena/submodules/IsaacLab rev-parse HEAD &&
+        echo "${BASE_IMAGE}"
+} | sha256sum | cut -c1-12) || {
+    echo "error: could not fingerprint the Docker image inputs." >&2
+    exit 1
+}
+
+echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BASE_IMAGE}), container: ${CONTAINER_NAME}"
+
+# An existing image must match this checkout's Docker inputs unless -s or -u is given.
+if [ "$(docker images -q "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ] &&
+    [ "$(docker image inspect -f '{{index .Config.Labels "autodata.inputs"}}' "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}")" != "${IMAGE_INPUTS}" ]; then
+    STALE_IMAGE="${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} was not built from this checkout's Docker files and submodule commits"
+    if [ "$REBUILD_STALE_IMAGE" = true ]; then
+        echo "${STALE_IMAGE}. Rebuilding."
+        FORCE_REBUILD=true
+    elif [ "$ALLOW_STALE_IMAGE" = true ]; then
+        echo "warning: ${STALE_IMAGE}." >&2
+    else
+        echo "error: ${STALE_IMAGE}. Rebuild with -r, or pass -s to use it anyway." >&2
+        exit 1
+    fi
+fi
 
 # Build the image if it doesn't exist yet, or if a rebuild was requested.
 if [ "$(docker images -q "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ]; then
@@ -100,6 +150,7 @@ else
     docker build --pull \
         $NO_CACHE \
         --progress=plain \
+        --label "autodata.inputs=${IMAGE_INPUTS}" \
         "${BUILD_ARGS[@]}" \
         -t "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" \
         --file "${SCRIPT_DIR}/Dockerfile.autodata" \
