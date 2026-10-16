@@ -108,6 +108,10 @@ class AbsolutePoseEmbodimentAdapter(EmbodimentAdapter):
             position, quat = state[..., :3], state[..., 3:7]
         return pose_math.make_pose(position - self.env.scene.env_origins[index], pose_math.matrix_from_quat(quat))
 
+    def get_navigation_eef_name(self) -> str | None:
+        """Return the navigation channel declared by the descriptor, if any."""
+        return self.navigation["eef_name"] if self.navigation is not None else None
+
     def get_navigation_state(self, env_id: int) -> tuple[str, bool, bool] | None:
         """Return the navigation channel, active flag, and goal flag from standard observations."""
         if self.navigation is None:

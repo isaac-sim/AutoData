@@ -38,6 +38,9 @@ class EmbodimentAdapter(ABC):
     env: Any = None
     robot_asset_name: str = "robot"
 
+    def get_navigation_eef_name(self) -> str | None:
+        """Return the configured navigation channel without requiring a live environment."""
+
     def get_navigation_state(self, env_id: int) -> tuple[str, bool, bool] | None:
         """Return a navigation channel and its active/goal flags, or None when unavailable."""
 

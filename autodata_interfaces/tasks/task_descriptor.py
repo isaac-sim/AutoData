@@ -6,12 +6,15 @@ from __future__ import annotations
 import yaml
 from dataclasses import MISSING, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint
 from autodata_interfaces.tasks.subtask_spec import ALGO_PARAMS_REGISTRY, Subtask, SubtaskAlgoParams
 from autodata_interfaces.tasks.task_descriptor_utils import build_constraint, build_subtask, validate_task_dict
+
+if TYPE_CHECKING:
+    from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 
 
 @dataclass
@@ -42,6 +45,23 @@ class TaskDescriptor:
 
         assert self.env is None, "env already bound"
         self.env = env
+
+    def validate_embodiment(self, embodiment_adapter: EmbodimentAdapter) -> None:
+        """Validate task/embodiment compatibility without starting the simulator.
+
+        Args:
+            embodiment_adapter: Adapter whose channels and navigation configuration must match this task.
+        """
+        task_eefs = set(self.get_eef_names())
+        adapter_eefs = set(embodiment_adapter.get_eef_names())
+        assert task_eefs == adapter_eefs, (
+            f"EEF mismatch: task descriptor declares {sorted(task_eefs)}, "
+            f"embodiment adapter exposes {sorted(adapter_eefs)}"
+        )
+        has_navigation = embodiment_adapter.get_navigation_eef_name() is not None
+        assert self.generation_policy.use_navigation_controller == has_navigation, (
+            "Set generation_policy.use_navigation_controller exactly when the embodiment declares navigation."
+        )
 
     def get_eef_names(self) -> list[str]:
         """Return the end-effector names declared by this task."""
