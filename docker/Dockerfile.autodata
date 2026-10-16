@@ -54,10 +54,10 @@ RUN ${ISAACLAB_PATH}/isaaclab.sh -i
 
 # --- IsaacLab - Arena ---
 COPY docker/runtime-constraints.txt /opt/autodata/runtime-constraints.txt
-# Lab's pip installer can resolve a newer NumPy than Isaac Sim supports.
-# Apply Arena's validated pins to all remaining build-time pip installations.
+# Lab's installer can resolve NumPy/TensorDict versions incompatible with Isaac Sim.
+# Apply the runtime pins to all remaining build-time pip installations.
 ARG PIP_CONSTRAINT=/opt/autodata/runtime-constraints.txt
-RUN /isaac-sim/python.sh -m pip install numpy==2.3.1
+RUN /isaac-sim/python.sh -m pip install numpy==2.3.1 tensordict
 COPY submodules/IsaacLab-Arena ${WORKDIR}/submodules/IsaacLab-Arena
 RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
 # Complete the dependencies omitted from Isaac Sim's bundled package metadata.
