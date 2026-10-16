@@ -8,7 +8,7 @@ Usage::
 
     python scripts/generate_dataset.py \\
         --env_name <env_id> \\
-        [--alg {mimicgen|dexmimicgen|skillgen}] \\
+        [--alg {mimicgen|dexmimicgen|skillgen|softmimicgen}] \\
         --task_descriptor <task_descriptor.yaml> \\
         --embodiment <embodiment.yaml> \\
         --env_profile <environment_profile.yaml> \\
@@ -25,6 +25,7 @@ The task descriptor's ``algo`` selects the :class:`GenerationAlgorithm` plug-in 
 * ``skillgen`` — single-arm SkillGen. SkillGen depends on a motion-planner interface; until the
   planner code is ported into this repo, the CLI satisfies that interface with the upstream Arena
   ``CuroboPlanner``.
+* ``softmimicgen`` — one- or two-arm MimicGen with deformable-object nodal registration.
 
 The CLI composes a :class:`Datastream` from the task descriptor YAML, the embodiment YAML, the
 live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
@@ -44,7 +45,7 @@ from autodata_utils.cli import callable_path
 
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in autodata_core.algorithms.
-_ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
+_ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen", "softmimicgen"]
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument(
@@ -86,6 +87,9 @@ parser.add_argument(
 )
 parser.add_argument("--generation_num_trials", type=int, default=None, help="Number of demos to generate.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
+parser.add_argument(
+    "--presets", choices=("physx", "newton"), default=None, help="Physics backend preset for Arena environments."
+)
 parser.add_argument("--input_file", type=str, required=True, help="Source dataset HDF5 file.")
 parser.add_argument(
     "--output_file",
@@ -145,6 +149,7 @@ from typing import Any  # noqa: E402
 
 from autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
+from autodata_examples.envs import register_environment_for_run  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.env import (  # noqa: E402
     EnvironmentProfile,
@@ -310,6 +315,19 @@ def main() -> None:
     if args_cli.generation_num_trials is not None:
         generation_policy_params.num_trials = args_cli.generation_num_trials
 
+    random.seed(generation_policy_params.seed)
+    np.random.seed(generation_policy_params.seed)
+    torch.manual_seed(generation_policy_params.seed)
+
+    env_make_kwargs = register_environment_for_run(
+        env_name=env_name,
+        enable_cameras=args_cli.record_images,
+        num_envs=args_cli.num_envs,
+        device=args_cli.device,
+        seed=generation_policy_params.seed,
+        presets=args_cli.presets,
+    )
+
     # The algorithm's start-signal expectation is a class attribute, so we resolve it before
     # instantiating (the Datastream needs it, and SkillGen can only be instantiated once the
     # planners exist, which in turn need the Datastream).
@@ -332,11 +350,7 @@ def main() -> None:
         enable_cameras=args_cli.record_images,
     )
 
-    env = gym.make(env_name, cfg=env_cfg).unwrapped
-
-    random.seed(generation_policy_params.seed)
-    np.random.seed(generation_policy_params.seed)
-    torch.manual_seed(generation_policy_params.seed)
+    env = gym.make(env_name, cfg=env_cfg, **env_make_kwargs.get(env_name, {})).unwrapped
 
     env.reset()
 
