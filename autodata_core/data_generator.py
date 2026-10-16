@@ -540,6 +540,9 @@ class DataGenerator:
 
         randomized_subtask_boundaries: dict[str, np.ndarray] | None = None
         prev_pool_size = 0
+        was_navigating = False
+        navigation_hold_steps = 0
+        generation_policy = self.datastream.get_generation_policy()
 
         while True:
             await asyncio.sleep(0)
@@ -586,6 +589,15 @@ class DataGenerator:
                 env_action_queue=env_action_queue,
             )
             buffers.success = buffers.success or exec_success
+            if generation_policy.use_navigation_controller:
+                hold, was_navigating = self._synchronize_navigation(eef_states, env_id, was_navigating)
+                navigation_hold_steps = navigation_hold_steps + 1 if hold else 0
+                if hold:
+                    if navigation_hold_steps >= generation_policy.max_navigation_hold_steps:
+                        print(f"Navigation hold limit reached for env {env_id} after {navigation_hold_steps} steps.")
+                        buffers.success = False
+                        break
+                    continue
             self._advance_subtask_progress(
                 eef_states=eef_states,
                 runtime_constraints=runtime_constraints,
@@ -613,6 +625,33 @@ class DataGenerator:
     # ------------------------------------------------------------------
     # Generation loop helpers
     # ------------------------------------------------------------------
+
+    def _synchronize_navigation(
+        self, eef_states: dict[str, _EEFGenerationState], env_id: int, was_navigating: bool
+    ) -> tuple[bool, bool]:
+        """Hold playback for an unfinished navigation goal or skip its remaining recorded idle steps."""
+        navigation = self.datastream.get_navigation_state(env_id)
+        assert navigation is not None, "Navigation generation requires an embodiment navigation configuration."
+        channel, is_navigating, goal_reached = navigation
+        state = eef_states[channel]
+        assert state.subtask_step_index is not None
+        if state.subtasks_done or state.is_currently_paused:
+            return False, is_navigating
+        if is_navigating and not goal_reached and state.subtask_step_index + 1 >= len(state.current_trajectory) - 1:
+            # Keep all channels synchronized while the controller finishes a segment.
+            return True, is_navigating
+        if was_navigating and not is_navigating and goal_reached:
+            steps_to_skip = max(0, len(state.current_trajectory) - state.subtask_step_index - 2)
+            for other_state in eef_states.values():
+                if (
+                    other_state.subtask_step_index is not None
+                    and not other_state.is_currently_paused
+                    and not other_state.subtasks_done
+                ):
+                    index = other_state.subtask_step_index
+                    last_index = max(index, len(other_state.current_trajectory) - 2)
+                    other_state.subtask_step_index = min(index + steps_to_skip, last_index)
+        return False, is_navigating
 
     async def _reset_environment_for_generation(
         self,

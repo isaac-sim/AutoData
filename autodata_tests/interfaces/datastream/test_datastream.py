@@ -232,6 +232,48 @@ def test_get_object_poses_subtracts_env_origin():
     assert torch.allclose(pose[0, :3, 3], torch.tensor([0.0, 0.0, 0.05]))
 
 
+def test_articulated_object_poses_use_controller_frame():
+    """A moving controller frame must transform articulated roots just like rigid objects."""
+    datastream, _, adapter, env = _datastream()
+    env.scene.articulations = {
+        "robot": env.scene["robot"],
+        "door": MockAsset(
+            MockArticulationData(
+                root_pos_w=torch.tensor([[2.0, 3.0, 0.5]]),
+                root_quat_w=torch.tensor([[0.0, 0.0, 0.0, 1.0]]),
+            )
+        ),
+    }
+    reference = torch.tensor([
+        [0.0, -1.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, 2.0],
+        [0.0, 0.0, 1.0, 0.5],
+        [0.0, 0.0, 0.0, 1.0],
+    ]).unsqueeze(0)
+    adapter.get_reference_frame_pose = lambda env_ids: reference
+    poses = datastream.get_object_poses()
+    assert set(poses) == {"cube_1", "door"}
+    assert torch.allclose(
+        poses["door"][0],
+        torch.tensor([
+            [0.0, 1.0, 0.0, 1.0],
+            [-1.0, 0.0, 0.0, -1.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]),
+    )
+    assert torch.allclose(poses["cube_1"][0, :3, 3], torch.tensor([-1.0, 0.0, -0.45]))
+    assert torch.allclose(
+        datastream.get_robot_root_pose(env_ids=[0])[0],
+        torch.tensor([
+            [0.0, 1.0, 0.0, -2.0],
+            [-1.0, 0.0, 0.0, 0.5],
+            [0.0, 0.0, 1.0, -0.4],
+            [0.0, 0.0, 0.0, 1.0],
+        ]),
+    )
+
+
 def test_get_robot_root_pose():
     datastream, _, _, _ = _datastream()
     pose = datastream.get_robot_root_pose(env_ids=[0])

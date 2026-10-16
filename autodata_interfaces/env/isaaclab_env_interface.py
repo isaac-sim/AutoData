@@ -83,6 +83,14 @@ def apply_env_profile(env_cfg: Any, profile: EnvironmentProfile, env_name: str) 
         f"but is being applied to {env_name!r}."
     )
 
+    # Actions: override controller settings before the manager constructs its terms.
+    for term_name, overrides in profile.actions.items():
+        term_cfg = getattr(env_cfg.actions, term_name, None)
+        assert term_cfg is not None, f"Cannot override unknown action term {term_name!r}."
+        for parameter, value in overrides.items():
+            assert hasattr(term_cfg, parameter), f"Action term {term_name!r} has no parameter {parameter!r}."
+            setattr(term_cfg, parameter, value)
+
     # Scene: add rigid objects.
     for asset_name, add_spec in profile.scene.rigid_objects.add.items():
         assert (
