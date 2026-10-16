@@ -242,7 +242,7 @@ def test_articulated_object_poses_use_controller_frame():
                 root_pos_w=torch.tensor([[2.0, 3.0, 0.5]]),
                 root_quat_w=torch.tensor([[0.0, 0.0, 0.0, 1.0]]),
             )
-        )
+        ),
     }
     reference = torch.tensor([
         [0.0, -1.0, 0.0, 1.0],

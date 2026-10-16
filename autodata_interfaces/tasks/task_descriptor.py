@@ -59,9 +59,9 @@ class TaskDescriptor:
             f"embodiment adapter exposes {sorted(adapter_eefs)}"
         )
         has_navigation = embodiment_adapter.get_navigation_eef_name() is not None
-        assert self.generation_policy.use_navigation_controller == has_navigation, (
-            "Set generation_policy.use_navigation_controller exactly when the embodiment declares navigation."
-        )
+        assert (
+            self.generation_policy.use_navigation_controller == has_navigation
+        ), "Set generation_policy.use_navigation_controller exactly when the embodiment declares navigation."
 
     def get_eef_names(self) -> list[str]:
         """Return the end-effector names declared by this task."""
