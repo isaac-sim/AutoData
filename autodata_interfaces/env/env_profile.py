@@ -257,8 +257,9 @@ def validate_profile_dict(data: dict[str, Any]) -> None:
     actions = data.get("actions", {})
     assert isinstance(actions, dict), "'actions' must map action term names to parameter overrides."
     assert all(
-        isinstance(name, str) and isinstance(params, dict) for name, params in actions.items()
-    ), "Each action override must map a term name to a parameter dict."
+        isinstance(name, str) and isinstance(params, dict) and all(isinstance(key, str) for key in params)
+        for name, params in actions.items()
+    ), "Each action override must map a term name to a parameter dict with string keys."
 
 
 def _validate_scene_dict(scene: dict[str, Any]) -> None:
