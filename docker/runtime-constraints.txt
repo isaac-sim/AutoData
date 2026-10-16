@@ -14,3 +14,5 @@ websockets==16.1.1
 rerun-sdk==0.31.4
 ipython==9.10.1
 psutil==5.9.8
+# TensorDict 0.15 requires PyTorch >=2.13; Isaac Sim uses 2.11.
+tensordict==0.14.3
