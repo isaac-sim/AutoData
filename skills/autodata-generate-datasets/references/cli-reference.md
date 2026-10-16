@@ -16,7 +16,7 @@ YAML, live env, and HDF5 source dataset, then runs the selected generation algor
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--alg {mimicgen,dexmimicgen,skillgen}` | yes | — | Generation algorithm. `skillgen` needs a motion planner (auto-wired from upstream cuRobo) and the `-c` container. |
+| `--alg {mimicgen,dexmimicgen,skillgen}` | no | descriptor `algo` | Generation algorithm; must match the task descriptor's `algo`. `skillgen` needs a motion planner (auto-wired from upstream cuRobo) and the `-c` container. |
 | `--input_file <path.hdf5>` | yes | — | Source (annotated) dataset. |
 | `--env_name <env_id>` | no | from dataset | Environment name; overrides the env recorded in the source dataset. |
 | `--task_descriptor <yaml>` | yes | — | Task semantics: subtask order, signals, object refs, algo params. |
