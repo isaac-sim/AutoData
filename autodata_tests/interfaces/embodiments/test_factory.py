@@ -14,6 +14,7 @@ from autodata_interfaces.embodiments import (
     embodiment_adapter_from_dict,
     embodiment_adapter_from_yaml,
 )
+from autodata_interfaces.embodiments.absolute_pose_embodiment_adapter import AbsolutePoseEmbodimentAdapter
 from autodata_tests.interfaces.mocks import MockEnv
 from autodata_tests.utils.constants import TestPaths
 
@@ -28,6 +29,7 @@ _SINGLE_ARM_DICT = {
 
 def test_registry_contents():
     assert EMBODIMENT_TYPE_REGISTRY == {
+        "absolute_pose": AbsolutePoseEmbodimentAdapter,
         "delta_pose_ik_single_arm": DeltaPoseIKSingleArmAdapter,
         "absolute_pose_whole_body_bimanual": AbsolutePoseWholeBodyBimanualAdapter,
     }

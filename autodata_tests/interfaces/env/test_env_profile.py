@@ -26,6 +26,7 @@ def _full_valid() -> dict:
         "description": "d",
         "base_env": "IsaacContrib-Stack-Cube-Franka-IK-Rel",
         "planner": "franka_stack_cube_bin",
+        "actions": {"controller": {"gain": 2.0}},
         "scene": {
             "rigid_objects": {
                 "add": {
@@ -64,6 +65,13 @@ def test_validate_minimal_valid_passes():
 
 def test_validate_full_valid_passes():
     validate_profile_dict(_full_valid())  # must not raise
+
+
+def test_action_override_parameter_names_must_be_strings():
+    data = _minimal_valid()
+    data["actions"] = {"controller": {1: 2.0}}
+    with pytest.raises(AssertionError, match="string keys"):
+        EnvironmentProfile.from_dict(data)
 
 
 def test_validate_missing_required_keys_fails():

@@ -9,6 +9,7 @@ config modules (no simulation app); skipped where they are unavailable.
 
 import copy
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,6 +22,24 @@ from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy  #
 from autodata_tests.utils.constants import TestPaths  # noqa: E402
 
 BASE_ENV = "IsaacContrib-Stack-Cube-Franka-IK-Rel"
+
+
+def test_profile_action_overrides_are_applied_before_construction():
+    profile = EnvironmentProfile.from_dict(
+        {"name": "controller", "base_env": "external-task", "actions": {"controller": {"gain": 2.0}}}
+    )
+    cfg = SimpleNamespace(actions=SimpleNamespace(controller=SimpleNamespace(gain=1.0)), events=SimpleNamespace())
+    apply_env_profile(cfg, profile, "external-task")
+    assert cfg.actions.controller.gain == 2.0
+
+
+def test_profile_rejects_unknown_action_parameters():
+    profile = EnvironmentProfile.from_dict(
+        {"name": "controller", "base_env": "external-task", "actions": {"controller": {"unknown": 2.0}}}
+    )
+    cfg = SimpleNamespace(actions=SimpleNamespace(controller=SimpleNamespace(gain=1.0)))
+    with pytest.raises(AssertionError, match="has no parameter"):
+        apply_env_profile(cfg, profile, "external-task")
 
 
 def _parse_base_cfg():

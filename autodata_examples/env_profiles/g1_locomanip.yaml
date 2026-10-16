@@ -1,0 +1,14 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: g1_locomanip_navigation
+base_env: galileo_g1_locomanip_pick_and_place
+description: Closed-loop navigation for the recorded table-to-bin manipulation route.
+actions:
+  g1_action:
+    use_p_control: true
+    navigation_subgoals:
+      - [[0.18, 0.18, 0.0], false]
+      - [[0.18, 0.18, -1.78], true]
+      - [[-0.0955, -1.1070, -1.78], false]
+      - [[-0.0955, -1.1070, -1.78], false]

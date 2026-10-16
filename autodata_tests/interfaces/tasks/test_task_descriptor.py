@@ -7,6 +7,7 @@ import os
 
 import pytest
 
+from autodata_interfaces.embodiments import embodiment_adapter_from_yaml
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint, SubTaskConstraintType
 from autodata_interfaces.tasks.subtask_spec import MimicGenSubtaskAlgoParams, SkillGenSubtaskAlgoParams
@@ -205,6 +206,27 @@ def test_constraints_parsed_and_exposed():
     # The exposed constraint expands to the runtime form the generator consumes.
     runtime = c.generate_runtime_subtask_constraints()
     assert set(runtime) == {("left", 0), ("right", 0)}
+
+
+# ---------------------------------------------------------------------------------------------------
+# Task/embodiment compatibility before simulation startup
+# ---------------------------------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "uses_navigation, has_navigation",
+    [(False, False), (True, True), (True, False), (False, True)],
+)
+def test_navigation_setup_requires_matching_task_and_embodiment(uses_navigation, has_navigation):
+    task = TaskDescriptor.from_yaml(os.path.join(TestPaths.tasks_dir, "g1_locomanip.yaml"))
+    adapter = embodiment_adapter_from_yaml(os.path.join(TestPaths.embodiments_dir, "g1_wbc_pink.yaml"))
+    task.generation_policy.use_navigation_controller = uses_navigation
+    if not has_navigation:
+        adapter.navigation = None
+
+    if uses_navigation == has_navigation:
+        task.validate_embodiment(adapter)
+    else:
+        with pytest.raises(AssertionError, match="use_navigation_controller"):
+            task.validate_embodiment(adapter)
 
 
 # ---------------------------------------------------------------------------------------------------

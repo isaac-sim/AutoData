@@ -1,0 +1,34 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: gr1_open_microwave
+description: Reach the microwave handle with the right hand and open its door.
+algo: dexmimicgen
+generation_policy:
+  name: gr1_open_microwave
+  num_trials: 50
+  guarantee_success: false
+  select_src_per_subtask: true
+subtasks:
+  right:
+    - &door
+      object_ref: microwave
+      description: Reach the door handle.
+      subtask_term_signal: move_to_door
+      subtask_term_offset_range: [10, 20]
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs: {nn_k: 3}
+      action_noise: 0.005
+      num_interpolation_steps: 5
+      num_fixed_steps: 0
+      apply_noise_during_interpolation: false
+    - <<: *door
+      description: Open the door.
+      subtask_term_signal: null
+      subtask_term_offset_range: [0, 0]
+  left:
+    - <<: *door
+      description: Hold the supporting arm steady.
+      subtask_term_signal: null
+      subtask_term_offset_range: [0, 0]
+      num_interpolation_steps: 0

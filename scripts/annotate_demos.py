@@ -33,6 +33,8 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
+from autodata_utils.cli import callable_path
+
 parser = argparse.ArgumentParser(
     description="Manually annotate AutoData source demonstrations with subtask signals.",
     formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -96,7 +98,10 @@ parser.add_argument(
     help="Render and record the task's image observations.",
 )
 AppLauncher.add_app_launcher_args(parser)
-args_cli = parser.parse_args()
+parser.add_argument("--external_callback", type=callable_path, help="Callable registering environments after startup.")
+args_cli, environment_args = parser.parse_known_args()
+if environment_args and args_cli.external_callback is None:
+    parser.error(f"unrecognized arguments: {' '.join(environment_args)}")
 
 app_launcher = AppLauncher(args_cli, enable_cameras=args_cli.record_images)
 simulation_app = app_launcher.app
@@ -127,6 +132,7 @@ from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
 from autodata_interfaces.env.recorders import PreStepCameraObservationsRecorder  # noqa: E402
+from autodata_interfaces.env.registration import register_external_environment  # noqa: E402
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
 is_paused = False
@@ -228,6 +234,7 @@ def main() -> int:
     """Annotate the source dataset and export the annotated copy."""
     global _datastream, is_paused, skip_episode, marked_subtask_action_indices
 
+    register_external_environment(args_cli, environment_args)
     assert args_cli.auto or app_launcher.has_window, (
         "annotate_demos.py performs manual keyboard annotation and cannot run headless. "
         "Re-run with a window (--viz kit), or pass --auto."

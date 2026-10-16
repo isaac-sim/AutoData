@@ -124,6 +124,7 @@ class EnvironmentProfile:
         base_env: Env id the profile is written against; must equal the id used at apply time.
         scene: Scene changes (:class:`SceneSpec`).
         events: Event-term changes (:class:`EventsSpec`).
+        actions: Parameter overrides for existing action terms.
         planner: Name of the motion-planner profile tuned for this scene (key into
             :meth:`CuroboPlannerCfg.from_profile`), or None to fall back to task-name matching.
     """
@@ -134,6 +135,8 @@ class EnvironmentProfile:
     scene: SceneSpec = field(default_factory=SceneSpec)
     events: EventsSpec = field(default_factory=EventsSpec)
     planner: str | None = None
+    actions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    """Action-term parameter overrides, applied before the action manager is built."""
 
     @classmethod
     def from_yaml(cls, path: str) -> EnvironmentProfile:
@@ -148,6 +151,8 @@ class EnvironmentProfile:
             description: <str>                  # optional
             base_env: <env id>
             planner: <planner profile name>     # optional
+            actions:                            # optional
+              <action_term_name>: {<parameter>: <value>}
             scene:                              # optional
               rigid_objects:
                 add:
@@ -211,6 +216,7 @@ class EnvironmentProfile:
             scene=scene,
             events=events,
             planner=data.get("planner"),
+            actions=data.get("actions", {}),
         )
 
     def referenced_asset_names(self) -> set[str]:
@@ -231,7 +237,7 @@ def validate_profile_dict(data: dict[str, Any]) -> None:
     assert isinstance(data, dict), f"Expected top-level dict, got {type(data).__name__}"
 
     required_keys = {"name", "base_env"}
-    optional_keys = {"description", "planner", "scene", "events"}
+    optional_keys = {"description", "planner", "scene", "events", "actions"}
     keys = set(data)
     missing = required_keys - keys
     assert not missing, f"Missing required top-level keys: {sorted(missing)}"
@@ -248,6 +254,12 @@ def validate_profile_dict(data: dict[str, Any]) -> None:
 
     _validate_scene_dict(data.get("scene", {}))
     _validate_events_dict(data.get("events", {}))
+    actions = data.get("actions", {})
+    assert isinstance(actions, dict), "'actions' must map action term names to parameter overrides."
+    assert all(
+        isinstance(name, str) and isinstance(params, dict) and all(isinstance(key, str) for key in params)
+        for name, params in actions.items()
+    ), "Each action override must map a term name to a parameter dict with string keys."
 
 
 def _validate_scene_dict(scene: dict[str, Any]) -> None:

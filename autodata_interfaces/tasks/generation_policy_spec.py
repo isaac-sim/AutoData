@@ -26,6 +26,8 @@ class GenerationPolicy:
         reset_settling_steps: Number of ordinary batched environment steps to run after reset
             before generation begins. During these steps, the resetting environment receives zero
             actions while other environments continue executing their generated actions.
+        max_navigation_hold_steps: Maximum consecutive simulation steps spent waiting for a
+            navigation goal at the end of its recorded segment. Reaching the limit fails the attempt.
 
     Segment stitching parameters:
         select_src_per_subtask: If True, re-select a source demo for every subtask. If False, the
@@ -51,9 +53,13 @@ class GenerationPolicy:
     use_skillgen: bool = False
     use_navigation_controller: bool = False
     reset_settling_steps: int = 0
+    max_navigation_hold_steps: int = 1000
 
     # --- segment stitching ---
     select_src_per_subtask: bool = False
     select_src_per_arm: bool = False
     transform_first_robot_pose: bool = False
     interpolate_from_last_target_pose: bool = True
+
+    def __post_init__(self) -> None:
+        assert self.max_navigation_hold_steps > 0, "max_navigation_hold_steps must be positive."

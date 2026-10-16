@@ -3,6 +3,8 @@
 
 """Unit tests for :mod:`autodata_interfaces.tasks.generation_policy_spec`."""
 
+import pytest
+
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 
 
@@ -52,3 +54,9 @@ def test_generation_policy_instances_are_independent():
     b = GenerationPolicy()
     a.num_trials = 999
     assert b.num_trials == 10
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+def test_navigation_hold_limit_must_be_positive(limit):
+    with pytest.raises(AssertionError, match="max_navigation_hold_steps must be positive"):
+        GenerationPolicy(max_navigation_hold_steps=limit)

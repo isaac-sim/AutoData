@@ -80,13 +80,7 @@ class Datastream:
                 "the embodiment adapter env unset before creating the Datastream."
             )
 
-        # Ensure that task descriptor and embodiment adapter declare the same EEFs.
-        task_eefs = set(task_descriptor.get_eef_names())
-        adapter_eefs = set(embodiment_adapter.get_eef_names())
-        assert task_eefs == adapter_eefs, (
-            f"EEF mismatch: task descriptor declares {sorted(task_eefs)}, "
-            f"embodiment adapter exposes {sorted(adapter_eefs)}"
-        )
+        task_descriptor.validate_embodiment(embodiment_adapter)
 
         # Initialize the source-demo pool.
         assert (source_pool is None) != (
@@ -242,17 +236,39 @@ class Datastream:
     # Other runtime queries
     # ------------------------------------------------------------------
 
+    def get_navigation_state(self, env_id: int) -> tuple[str, bool, bool] | None:
+        """Return the navigation channel and its controller's active and goal-reached flags.
+
+        Args:
+            env_id: Environment index to query.
+
+        Returns:
+            Channel name, active flag, and goal-reached flag, or None when unavailable.
+        """
+        return self.embodiment_adapter.get_navigation_state(env_id)
+
+    def _reference_frame_inverse(self, env_ids: Sequence[int] | None) -> torch.Tensor | None:
+        reference = self.embodiment_adapter.get_reference_frame_pose(env_ids)
+        return None if reference is None else torch.linalg.inv(reference)
+
     def get_object_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
-        """Get all rigid object poses from the environment."""
+        """Get non-robot rigid and articulated object poses in the embodiment's reference frame."""
 
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
         scene = self.env.scene
         env_origins = scene.env_origins[index]
         object_pose_matrix: dict[str, torch.Tensor] = {}
-        for obj_name, obj in scene.rigid_objects.items():
+        assets = {**scene.rigid_objects, **getattr(scene, "articulations", {})}
+        reference_inverse = self._reference_frame_inverse(env_ids)
+        robot_name = getattr(self.embodiment_adapter, "robot_asset_name", "robot")
+        for obj_name, obj in assets.items():
+            if obj_name == robot_name:
+                continue
             pos_rel = as_torch(obj.data.root_pos_w)[index] - env_origins
             quat = as_torch(obj.data.root_quat_w)[index]
             object_pose_matrix[obj_name] = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
+            if reference_inverse is not None:
+                object_pose_matrix[obj_name] = reference_inverse @ object_pose_matrix[obj_name]
         return object_pose_matrix
 
     def get_object_nodal_positions(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
@@ -319,12 +335,12 @@ class Datastream:
         return signals
 
     def get_robot_root_pose(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
-        """Get the robot articulation root pose in the env-relative frame.
+        """Get the robot articulation root pose in the embodiment's reference frame.
 
         Returns a tensor of shape ``(len(env_ids), 4, 4)`` using the same frame convention as
-        :meth:`get_object_poses` (per-env origin subtracted). Motion planners read this to
-        reconcile the env-relative frame they exchange with callers and the robot base frame
-        their solver plans in.
+        :meth:`get_object_poses`. Without a configured controller frame, both queries return
+        environment-relative poses. Motion planners use this pose to transform between the
+        embodiment frame and the robot base frame their solver plans in.
         """
 
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
@@ -333,7 +349,9 @@ class Datastream:
         robot = scene[robot_name]
         pos_rel = as_torch(robot.data.root_pos_w)[index] - scene.env_origins[index]
         quat = as_torch(robot.data.root_quat_w)[index]
-        return pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
+        pose = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
+        reference_inverse = self._reference_frame_inverse(env_ids)
+        return reference_inverse @ pose if reference_inverse is not None else pose
 
     def get_scene_state(self, is_relative: bool = True) -> dict:
         """Return the raw scene-state snapshot from the underlying env.
@@ -351,7 +369,7 @@ class Datastream:
     # Motion planners build their collision world from the live scene. The Datastream is the
     # single owner of that simulator-facing access so the planners stay backend-agnostic: a
     # cuRobo planner feeds the stage + prim scoping below into its own USD parser, and per-step
-    # obstacle pose sync goes through :meth:`get_object_poses` (env-relative frame).
+    # obstacle pose sync goes through :meth:`get_object_poses` (embodiment reference frame).
 
     def get_usd_stage(self) -> Any:
         """Return the live USD stage backing the scene.

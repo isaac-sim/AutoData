@@ -61,7 +61,7 @@ def test_mimicgen_attributes():
 def test_dexmimicgen_attributes():
     algo = DexMimicGen()
     assert algo.name == "dexmimicgen"
-    assert algo.expected_eef_count == 2
+    assert algo.expected_eef_count == (2, 3)
     assert algo.supports_coordination is True
     assert algo.requires_motion_planner is False
 

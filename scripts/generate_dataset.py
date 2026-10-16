@@ -37,7 +37,11 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
+from autodata_interfaces.embodiments import embodiment_adapter_from_yaml
+from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+from autodata_interfaces.tasks.task_descriptor import TaskDescriptor
 from autodata_interfaces.tasks.task_descriptor_utils import resolve_task_algorithm
+from autodata_utils.cli import callable_path
 
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in autodata_core.algorithms.
@@ -117,8 +121,17 @@ parser.add_argument(
     help="Render and record the task's image observations.",
 )
 AppLauncher.add_app_launcher_args(parser)
-args_cli = parser.parse_args()
+parser.add_argument("--external_callback", type=callable_path, help="Callable registering environments after startup.")
+parser.add_argument(
+    "--recorder_cfg", type=callable_path, help="Callable returning an Isaac Lab recorder configuration."
+)
+args_cli, environment_args = parser.parse_known_args()
+if environment_args and args_cli.external_callback is None:
+    parser.error(f"unrecognized arguments: {' '.join(environment_args)}")
 args_cli.alg = resolve_task_algorithm(args_cli.alg, args_cli.task_descriptor)
+task_descriptor = TaskDescriptor.from_yaml(args_cli.task_descriptor)
+embodiment_adapter = embodiment_adapter_from_yaml(args_cli.embodiment)
+task_descriptor.validate_embodiment(embodiment_adapter)
 
 app_launcher = AppLauncher(args_cli, enable_cameras=args_cli.record_images)
 simulation_app = app_launcher.app
@@ -138,7 +151,6 @@ from autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
 from autodata_examples.envs import register_environment_for_run  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
-from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from autodata_interfaces.env import (  # noqa: E402
     EnvironmentProfile,
     env_loop,
@@ -146,7 +158,7 @@ from autodata_interfaces.env import (  # noqa: E402
     setup_env_config,
     setup_output_paths,
 )
-from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
+from autodata_interfaces.env.registration import load_callable, register_external_environment  # noqa: E402
 from autodata_utils.generation_result import write_generation_result  # noqa: E402
 
 
@@ -186,13 +198,12 @@ def build_datastream(
     env: Any,
     input_file: str,
     task_descriptor: TaskDescriptor,
-    embodiment_yaml: str,
+    embodiment_adapter: EmbodimentAdapter,
 ) -> Datastream:
     """Compose the read interface (task + embodiment + source pool) over the live env.
 
     Built before the motion planners so the planners can read all world state through it.
     """
-    embodiment_adapter = embodiment_adapter_from_yaml(embodiment_yaml)
     datastream = Datastream(
         env=env,
         task_descriptor=task_descriptor,
@@ -292,12 +303,12 @@ def _close_motion_planners(planners: dict | None) -> None:
 
 
 def main() -> None:
+    register_external_environment(args_cli, environment_args)
     output_dir, output_file_name = setup_output_paths(args_cli.output_file)
     # The env name (CLI override) falls back to the name recorded in the source dataset.
     env_name = args_cli.env_name.split(":")[-1] if args_cli.env_name else get_env_name_from_dataset(args_cli.input_file)
 
     # The task descriptor's GenerationPolicy is the source for generation policy parameters.
-    task_descriptor = TaskDescriptor.from_yaml(args_cli.task_descriptor)
     generation_policy_params = task_descriptor.get_generation_policy()
 
     # The CLI --generation_num_trials, when given, overrides the descriptor's num_trials.
@@ -334,6 +345,7 @@ def main() -> None:
         num_envs=args_cli.num_envs,
         device=args_cli.device,
         generation_policy_params=generation_policy_params,
+        recorder_cfg=load_callable(args_cli.recorder_cfg)() if args_cli.recorder_cfg else None,
         env_profile=env_profile,
         enable_cameras=args_cli.record_images,
     )
@@ -347,7 +359,7 @@ def main() -> None:
         env=env,
         input_file=args_cli.input_file,
         task_descriptor=task_descriptor,
-        embodiment_yaml=args_cli.embodiment,
+        embodiment_adapter=embodiment_adapter,
     )
 
     # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.

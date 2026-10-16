@@ -10,6 +10,7 @@ Two morphology trees ship this phase: :class:`SingleArmEmbodimentAdapter`
 IK control). YAML construction goes through :mod:`factory`.
 """
 
+from autodata_interfaces.embodiments.absolute_pose_embodiment_adapter import AbsolutePoseEmbodimentAdapter
 from autodata_interfaces.embodiments.bimanual_embodiment_adapter import (
     AbsolutePoseWholeBodyBimanualAdapter,
     BimanualEefConfig,
@@ -27,6 +28,7 @@ from autodata_interfaces.embodiments.single_arm_embodiment_adapter import (
 )
 
 __all__ = [
+    "AbsolutePoseEmbodimentAdapter",
     "AbsolutePoseWholeBodyBimanualAdapter",
     "BimanualEefConfig",
     "BimanualEmbodimentAdapter",
