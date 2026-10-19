@@ -46,6 +46,9 @@ parser.add_argument(
     help="Environment name. Overrides the env name recorded in the source dataset.",
 )
 parser.add_argument(
+    "--presets", choices=("physx",), default=None, help="Physics backend preset for Arena environments."
+)
+parser.add_argument(
     "--task_descriptor",
     type=str,
     required=True,
@@ -102,7 +105,9 @@ simulation_app = app_launcher.app
 import contextlib  # noqa: E402
 import gymnasium as gym  # noqa: E402
 import math  # noqa: E402
+import numpy as np  # noqa: E402
 import os  # noqa: E402
+import random  # noqa: E402
 import sys  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
@@ -116,9 +121,11 @@ from isaaclab.utils import configclass  # noqa: E402
 from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa: E402
 
 from autodata_core.pool import DataGenInfoPool  # noqa: E402
+from autodata_examples.envs import register_environment_for_run  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
+from autodata_interfaces.env.recorders import PreStepCameraObservationsRecorder  # noqa: E402
 from autodata_interfaces.env.registration import register_external_environment  # noqa: E402
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
@@ -236,6 +243,19 @@ def main() -> int:
     task_descriptor = TaskDescriptor.from_yaml(args_cli.task_descriptor)
     generation_policy = task_descriptor.get_generation_policy()
 
+    random.seed(generation_policy.seed)
+    np.random.seed(generation_policy.seed)
+    torch.manual_seed(generation_policy.seed)
+
+    env_make_kwargs = register_environment_for_run(
+        env_name=env_name,
+        enable_cameras=args_cli.record_images,
+        num_envs=1,
+        device=args_cli.device,
+        seed=generation_policy.seed,
+        presets=args_cli.presets,
+    )
+
     # Start signals are required only by SkillGen.
     annotate_start_signals = generation_policy.use_skillgen
 
@@ -268,10 +288,14 @@ def main() -> int:
         recorder_cfg=AnnotationRecorderManagerCfg(),
         enable_cameras=args_cli.record_images,
     )
+    if args_cli.record_images:
+        env_cfg.recorders.record_pre_step_camera_observations = RecorderTermCfg(
+            class_type=PreStepCameraObservationsRecorder
+        )
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
     env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY
 
-    env = gym.make(env_name, cfg=env_cfg).unwrapped
+    env = gym.make(env_name, cfg=env_cfg, **env_make_kwargs.get(env_name, {})).unwrapped
     try:
         # Create the Datastream
         embodiment_adapter = embodiment_adapter_from_yaml(args_cli.embodiment)

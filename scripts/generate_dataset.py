@@ -87,6 +87,9 @@ parser.add_argument(
 )
 parser.add_argument("--generation_num_trials", type=int, default=None, help="Number of demos to generate.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
+parser.add_argument(
+    "--presets", choices=("physx",), default=None, help="Physics backend preset for Arena environments."
+)
 parser.add_argument("--input_file", type=str, required=True, help="Source dataset HDF5 file.")
 parser.add_argument(
     "--output_file",
@@ -146,6 +149,7 @@ from typing import Any  # noqa: E402
 
 from autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
+from autodata_examples.envs import register_environment_for_run  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.env import (  # noqa: E402
     EnvironmentProfile,
@@ -311,6 +315,19 @@ def main() -> None:
     if args_cli.generation_num_trials is not None:
         generation_policy_params.num_trials = args_cli.generation_num_trials
 
+    random.seed(generation_policy_params.seed)
+    np.random.seed(generation_policy_params.seed)
+    torch.manual_seed(generation_policy_params.seed)
+
+    env_make_kwargs = register_environment_for_run(
+        env_name=env_name,
+        enable_cameras=args_cli.record_images,
+        num_envs=args_cli.num_envs,
+        device=args_cli.device,
+        seed=generation_policy_params.seed,
+        presets=args_cli.presets,
+    )
+
     # The algorithm's start-signal expectation is a class attribute, so we resolve it before
     # instantiating (the Datastream needs it, and SkillGen can only be instantiated once the
     # planners exist, which in turn need the Datastream).
@@ -333,11 +350,7 @@ def main() -> None:
         enable_cameras=args_cli.record_images,
     )
 
-    env = gym.make(env_name, cfg=env_cfg).unwrapped
-
-    random.seed(generation_policy_params.seed)
-    np.random.seed(generation_policy_params.seed)
-    torch.manual_seed(generation_policy_params.seed)
+    env = gym.make(env_name, cfg=env_cfg, **env_make_kwargs.get(env_name, {})).unwrapped
 
     env.reset()
 
