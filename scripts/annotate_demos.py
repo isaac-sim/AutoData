@@ -159,6 +159,7 @@ class PreStepDatagenInfoRecorder(RecorderTerm):
         assert _datastream is not None, "Datastream must be initialized before recording."
         datagen_info = {
             "object_pose": _datastream.get_object_poses(),
+            "object_nodal_position": _datastream.get_object_nodal_positions(),
             "eef_pose": _datastream.embodiment_adapter.get_eef_poses(env_ids=None),
             "target_eef_pose": _datastream.action_to_target_eef_pose(self._env.action_manager.action),
         }
