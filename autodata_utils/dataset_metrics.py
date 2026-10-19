@@ -272,7 +272,7 @@ def _demos_per_human_demo(result: dict | None) -> dict:
     return _kpi(result["num_success"] / num_source, "ratio", num_source, note=note)
 
 
-def _annotation_yield(source_episodes: list[dict] | None, recorded_dataset: str | None) -> dict:
+def _annotation_pass_rate(source_episodes: list[dict] | None, recorded_dataset: str | None) -> dict:
     if source_episodes is None or recorded_dataset is None:
         return _not_applicable("needs --source and --recorded_dataset")
     with h5py.File(recorded_dataset, "r") as h5_file:
@@ -476,7 +476,7 @@ def build_report(
         result_file: Generation result JSON (``--result_file`` of ``generate_dataset.py``).
         source: Annotated source HDF5 dataset the generation started from; enables source baselines.
         embodiment: Embodiment YAML used for generation; needed for action saturation.
-        recorded_dataset: Teleoperated HDF5 dataset that was annotated into ``source``; enables annotation yield.
+        recorded_dataset: Teleoperated HDF5 dataset that was annotated into ``source``; enables the annotation pass rate.
     """
     episodes, env_args = load_episodes(dataset)
     source_episodes, source_env_args = load_episodes(source) if source else (None, {})
@@ -503,7 +503,7 @@ def build_report(
         "success_rate": _success_rate(result, stop_attempts),
         "demos_per_hour": _demos_per_hour(result),
         "demos_per_human_demo": _demos_per_human_demo(result),
-        "annotation_yield": _annotation_yield(source_episodes, recorded_dataset),
+        "annotation_pass_rate": _annotation_pass_rate(source_episodes, recorded_dataset),
         "tracking_error": _tracking_error(episodes, source_episodes),
         "action_saturation": _action_saturation(
             episodes, source_episodes, embodiment_clips_pose_actions(embodiment) if embodiment else None

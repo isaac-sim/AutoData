@@ -18,7 +18,7 @@ Inputs
 - **Source dataset** (``--source``): enables the source baselines.
 - **Embodiment YAML** (``--embodiment``): needed for ``action_saturation``.
 - **Recorded dataset** (``--recorded_dataset``): the teleoperated demonstrations annotated into
-  ``--source``; needed for ``annotation_yield``.
+  ``--source``; needed for ``annotation_pass_rate``.
 
 .. code-block:: bash
 
@@ -48,8 +48,8 @@ Definitions
        or the CPU for ``--device cpu``) and env count. Compare only on the same hardware and env count.
    * - ``demos_per_human_demo``
      - Successful demonstrations over source demonstrations.
-   * - ``annotation_yield``
-     - Annotated demonstrations over recorded demonstrations.
+   * - ``annotation_pass_rate``
+     - Share of recorded demonstrations that pass annotation into the source dataset.
    * - ``tracking_error``
      - p50 and p95 distance [mm] from each achieved end-effector position to the commanded path.
        Tracking-only channels, which command no pose, are skipped.

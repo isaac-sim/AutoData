@@ -171,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", help="Annotated source HDF5 the generation started from; enables baselines.")
     parser.add_argument("--embodiment", help="Embodiment YAML used for generation; needed for action saturation.")
     parser.add_argument(
-        "--recorded_dataset", help="Teleoperated HDF5 annotated into --source; enables annotation yield."
+        "--recorded_dataset", help="Teleoperated HDF5 annotated into --source; enables the annotation pass rate."
     )
     parser.add_argument("--report_file", help="Also write the KPI report to this JSON file.")
     args = parser.parse_args(argv)
