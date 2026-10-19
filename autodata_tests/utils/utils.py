@@ -5,6 +5,7 @@
 
 import h5py
 import json
+import math
 import os
 
 
@@ -41,3 +42,22 @@ def read_generation_result(result_file: str) -> tuple[int, int]:
     assert num_attempts > 0, f"Generation result has invalid num_attempts: {num_attempts}."
     assert num_success + num_failures == num_attempts, "Generation result counts do not add up."
     return num_success, num_attempts
+
+
+def assert_kpi_report(report_file: str, applicable: set[str]) -> dict:
+    """Assert every KPI is reported or explained, and the ``applicable`` ones carry finite values.
+
+    Returns:
+        The report's KPIs.
+    """
+
+    with open(report_file, encoding="utf-8") as report_handle:
+        kpis = json.load(report_handle)["kpis"]
+    for name, kpi in kpis.items():
+        assert "value" in kpi or kpi.get("not_applicable"), f"KPI {name} has neither a value nor a reason: {kpi}"
+    for name in applicable:
+        assert "value" in kpis[name], f"KPI {name} is not applicable: {kpis[name].get('not_applicable')}"
+        value = kpis[name]["value"]
+        numbers = value.values() if isinstance(value, dict) else [value]
+        assert all(math.isfinite(number) for number in numbers), f"KPI {name} is not finite: {value}"
+    return kpis

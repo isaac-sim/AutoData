@@ -15,6 +15,7 @@ SkillGen overrides this to insert a motion-planned transit ahead of the merge.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -238,6 +239,7 @@ class SkillGen(GenerationAlgorithm):
         )
 
         planner = self.motion_planners[env_id]
+        start_time = time.perf_counter()
         planning_success = planner.update_world_and_plan_motion(
             target_pose=target_pose,
             expected_attached_object=expected_attached_object,
@@ -245,6 +247,7 @@ class SkillGen(GenerationAlgorithm):
             step_size=getattr(planner, "step_size", None),
             enable_retiming=(hasattr(planner, "step_size") and planner.step_size is not None),
         )
+        eef_state.planning_time_s += time.perf_counter() - start_time
         if not planning_success:
             return None
 

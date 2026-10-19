@@ -17,10 +17,12 @@ import pytest
 
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_valid_dataset
+from autodata_tests.utils.utils import assert_kpi_report, assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
+# KPIs that a one-demo SkillGen run with a result file must produce.
+APPLICABLE_KPIS = {"success_rate", "failure_share", "planning_time"}
 
 
 def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
@@ -29,6 +31,7 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         output_file = os.path.join(temp_dir, "generated.hdf5")
         result_file = os.path.join(temp_dir, "generation_result.json")
+        report_file = os.path.join(temp_dir, "kpis.json")
         env_profile = os.path.join(TestPaths.env_profiles_dir, "franka_bin_stack.yaml")
 
         args = [
@@ -70,6 +73,18 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
             "path": env_profile,
             "planner": "franka_stack_cube_bin",
         }
+
+        run_subprocess([
+            TestPaths.python_path,
+            os.path.join(TestPaths.scripts_dir, "validate_dataset.py"),
+            output_file,
+            "--report",
+            "--result_file",
+            result_file,
+            "--report_file",
+            report_file,
+        ])
+        assert_kpi_report(report_file, APPLICABLE_KPIS)
 
 
 @pytest.mark.with_subprocess

@@ -9,6 +9,7 @@ Usage::
 
     python scripts/validate_dataset.py <file.hdf5> [<file2.hdf5> ...]
     python scripts/validate_dataset.py directory/*.hdf5
+    python scripts/validate_dataset.py <generated.hdf5> --report --result_file <result.json>  # KPIs
 
 The command exits nonzero if any supplied file is invalid.
 """
@@ -20,6 +21,8 @@ import h5py
 import json
 import os
 import sys
+
+from autodata_utils.dataset_metrics import build_report, format_report
 
 REQUIRED_DEMO_FIELDS = {
     "actions": h5py.Dataset,
@@ -163,7 +166,17 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="Validate AutoData demonstration HDF5 datasets.")
     parser.add_argument("files", nargs="+", help="HDF5 dataset file(s) to validate.")
+    parser.add_argument("--report", action="store_true", help="Also report the KPIs of a single generated dataset.")
+    parser.add_argument("--result_file", help="Generation result JSON written by generate_dataset.py --result_file.")
+    parser.add_argument("--source", help="Annotated source HDF5 the generation started from; enables baselines.")
+    parser.add_argument("--embodiment", help="Embodiment YAML used for generation; needed for action saturation.")
+    parser.add_argument(
+        "--recorded_dataset", help="Teleoperated HDF5 annotated into --source; enables the annotation pass rate."
+    )
+    parser.add_argument("--report_file", help="Also write the KPI report to this JSON file.")
     args = parser.parse_args(argv)
+    if args.report and len(args.files) != 1:
+        parser.error("--report takes exactly one dataset")
 
     results = [validate_file(path) for path in args.files]
     print_results(results)
@@ -172,6 +185,25 @@ def main(argv: list[str] | None = None) -> int:
     total = len(results)
     print()
     print(f"All {total} file(s) valid." if num_invalid == 0 else f"{num_invalid} of {total} file(s) invalid.")
+
+    # A run whose every attempt failed leaves an empty dataset; its outcome KPIs are still worth reporting.
+    only_empty = results[0].num_episodes == 0 and len(results[0].issues) == 1
+    if args.report and not (num_invalid == 0 or only_empty):
+        print("\nKPI report skipped: the dataset is invalid.")
+    elif args.report:
+        report = build_report(
+            dataset=args.files[0],
+            result_file=args.result_file,
+            source=args.source,
+            embodiment=args.embodiment,
+            recorded_dataset=args.recorded_dataset,
+        )
+        print()
+        print(format_report(report))
+        if args.report_file:
+            with open(args.report_file, "w", encoding="utf-8") as report_handle:
+                json.dump(report, report_handle, indent=2)
+                report_handle.write("\n")
 
     return 1 if num_invalid else 0
 

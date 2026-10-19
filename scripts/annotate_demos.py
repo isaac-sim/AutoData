@@ -110,15 +110,17 @@ from collections.abc import Callable  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401, E402  (registers gym envs)
 from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg  # noqa: E402
-from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg  # noqa: E402
-from isaaclab.managers import DatasetExportMode, RecorderTerm, RecorderTermCfg, TerminationTermCfg  # noqa: E402
-from isaaclab.utils import configclass  # noqa: E402
+from isaaclab.managers import DatasetExportMode, TerminationTermCfg  # noqa: E402
 from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa: E402
 
 from autodata_core.pool import DataGenInfoPool  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
+from autodata_interfaces.env.datagen_info_recorder import (  # noqa: E402
+    DatagenInfoRecorderManagerCfg,
+    PreStepDatagenInfoRecorder,
+)
 from autodata_interfaces.env.registration import register_external_environment  # noqa: E402
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
@@ -149,34 +151,6 @@ def mark_subtask_cb() -> None:
     global current_action_index, marked_subtask_action_indices
     marked_subtask_action_indices.append(current_action_index)
     print(f"Marked a subtask signal at action index: {current_action_index}")
-
-
-# Recorder term that writes per-step datagen info read through the Datastream.
-class PreStepDatagenInfoRecorder(RecorderTerm):
-    """Recorder term that records ``obs/datagen_info`` from the Datastream on each step."""
-
-    def record_pre_step(self):
-        assert _datastream is not None, "Datastream must be initialized before recording."
-        datagen_info = {
-            "object_pose": _datastream.get_object_poses(),
-            "eef_pose": _datastream.embodiment_adapter.get_eef_poses(env_ids=None),
-            "target_eef_pose": _datastream.action_to_target_eef_pose(self._env.action_manager.action),
-        }
-        return "obs/datagen_info", datagen_info
-
-
-@configclass
-class PreStepDatagenInfoRecorderCfg(RecorderTermCfg):
-    """Configuration for :class:`PreStepDatagenInfoRecorder`."""
-
-    class_type: type[RecorderTerm] = PreStepDatagenInfoRecorder
-
-
-@configclass
-class AnnotationRecorderManagerCfg(ActionStateRecorderManagerCfg):
-    """Action/state recorder plus the datagen-info term used during annotation."""
-
-    record_pre_step_datagen_info = PreStepDatagenInfoRecorderCfg()
 
 
 def _build_signal_names(
@@ -264,7 +238,7 @@ def main() -> int:
         num_envs=1,
         device=args_cli.device,
         generation_policy_params=generation_policy,
-        recorder_cfg=AnnotationRecorderManagerCfg(),
+        recorder_cfg=DatagenInfoRecorderManagerCfg(),
         enable_cameras=args_cli.record_images,
     )
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
@@ -287,6 +261,7 @@ def main() -> int:
             source_pool=empty_pool,
             uses_start_signals=annotate_start_signals,
         )
+        PreStepDatagenInfoRecorder.datastream = _datastream
 
         env.reset()
 
