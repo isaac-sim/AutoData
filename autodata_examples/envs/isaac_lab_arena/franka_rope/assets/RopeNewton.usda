@@ -1,0 +1,19 @@
+#usda 1.0
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+(
+    defaultPrim = "World"
+)
+
+# Keep the shared simulation topology, round visual mesh, and material.
+# Newton uses the simulation tetrahedra directly; the PhysX collision mesh is redundant.
+def Xform "World" (
+    prepend references = @Rope.usd@
+)
+{
+    over "collision_mesh" (
+        active = false
+    )
+    {
+    }
+}

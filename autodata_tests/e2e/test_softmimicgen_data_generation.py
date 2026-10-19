@@ -21,6 +21,7 @@ def _run_franka_rope_softmimicgen(num_envs: int, device: str, presets: str = "ph
 
     with tempfile.TemporaryDirectory() as temp_dir:
         output_file = os.path.join(temp_dir, "generated.hdf5")
+        dataset_suffix = "_newton" if presets == "newton" else ""
 
         args = [
             TestPaths.python_path,
@@ -36,7 +37,7 @@ def _run_franka_rope_softmimicgen(num_envs: int, device: str, presets: str = "ph
             "--embodiment",
             os.path.join(TestPaths.embodiments_dir, "franka_ik_rel.yaml"),
             "--input_file",
-            os.path.join(TestPaths.test_data_dir, "annotated_dataset_franka_rope_softmimicgen.hdf5"),
+            os.path.join(TestPaths.test_data_dir, f"annotated_dataset_franka_rope_softmimicgen{dataset_suffix}.hdf5"),
             "--output_file",
             output_file,
             "--generation_num_trials",
@@ -66,20 +67,20 @@ def _run_franka_rope_softmimicgen(num_envs: int, device: str, presets: str = "ph
 
 
 @pytest.mark.with_subprocess
-@pytest.mark.parametrize("presets", ["physx"])
+@pytest.mark.parametrize("presets", ["physx", "newton"])
 def test_franka_rope_softmimicgen_data_generation_single_env_cuda(presets):
     """SoftMimicGen generation for the Franka rope task on a single env on GPU."""
     _run_franka_rope_softmimicgen(num_envs=1, device="cuda", presets=presets)
 
 
 @pytest.mark.with_subprocess
-@pytest.mark.parametrize("presets", ["physx"])
+@pytest.mark.parametrize("presets", ["physx", "newton"])
 def test_franka_rope_softmimicgen_data_generation_multi_env_cuda(presets):
     """SoftMimicGen generation for the Franka rope task on multiple parallel envs on GPU."""
     _run_franka_rope_softmimicgen(num_envs=10, device="cuda", presets=presets)
 
 
 if __name__ == "__main__":
-    for presets in ("physx",):
+    for presets in ("physx", "newton"):
         test_franka_rope_softmimicgen_data_generation_single_env_cuda(presets)
         test_franka_rope_softmimicgen_data_generation_multi_env_cuda(presets)
