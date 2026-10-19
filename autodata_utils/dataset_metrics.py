@@ -24,13 +24,9 @@ MIN_ATTEMPTS_PER_ENV_FOR_STOP_CORRECTION = 3
 """Below this many completed attempts in some env, the stop correction is itself biased."""
 SAMPLES_PER_COVERAGE_CELL = 5
 PATH_DEVIATION_WINDOW = 20
-"""Achieved steps are matched to intended path segments at most this many steps away."""
-RANGE_TOLERANCE = 1e-3
-"""Starts farther than this [m] outside their reset range mean the range frame was resolved wrongly."""
-
-# Isaac Lab reset functions whose pose_range semantics are known.
-_OFFSET_RANGE_FUNCS = ("reset_root_state_uniform",)
-_ABSOLUTE_RANGE_FUNCS = ("randomize_object_pose",)
+"""Achieved steps are matched to commanded path segments at most this many steps away."""
+MIN_START_EXTENT = 0.01
+"""Objects whose attempted starts span less than this [m] along an axis do not vary along it."""
 
 
 def binomial_cdf(successes: int, trials: int, rate: float) -> float:
@@ -77,18 +73,18 @@ def saturated_fraction(pose_actions: np.ndarray) -> float:
     return float(np.mean(np.isclose(np.abs(pose_actions), 1.0, rtol=0.0, atol=1e-6)))
 
 
-def path_deviation(achieved: np.ndarray, intended: np.ndarray, window: int = PATH_DEVIATION_WINDOW) -> np.ndarray:
-    """Distance [m] from each achieved position to the intended path near the same step.
+def path_deviation(achieved: np.ndarray, commanded: np.ndarray, window: int = PATH_DEVIATION_WINDOW) -> np.ndarray:
+    """Distance [m] from each achieved position to the commanded path near the same step.
 
     Args:
         achieved: ``[T, 3]`` achieved end-effector positions [m].
-        intended: ``[T, 3]`` intended end-effector positions [m], step-aligned with ``achieved``.
-        window: Steps on either side whose intended segments are candidates.
+        commanded: ``[T, 3]`` commanded end-effector positions [m], step-aligned with ``achieved``.
+        window: Steps on either side whose commanded segments are candidates.
     """
-    assert len(achieved) == len(intended), "achieved and intended positions must be step-aligned"
-    if len(intended) < 2:
-        return np.linalg.norm(achieved - intended, axis=1)
-    starts, ends = intended[:-1], intended[1:]
+    assert len(achieved) == len(commanded), "achieved and commanded positions must be step-aligned"
+    if len(commanded) < 2:
+        return np.linalg.norm(achieved - commanded, axis=1)
+    starts, ends = commanded[:-1], commanded[1:]
     deviations = np.empty(len(achieved))
     for step, point in enumerate(achieved):
         lo, hi = max(0, step - window), min(len(starts), step + window + 1)
@@ -123,10 +119,9 @@ def coverage_ratio(
     does not drive the ratio.
 
     Args:
-        success_points: ``[S, D]`` starts of successful attempts, in range coordinates, with
-            ``S >= min_coverage_successes(D)``.
-        attempt_points: ``[A, D]`` starts of all attempts, ``A >= S``.
-        bounds: Per-dimension ``(lo, hi)`` of the reset range.
+        success_points: ``[S, D]`` starts of successful attempts [m], with ``S >= min_coverage_successes(D)``.
+        attempt_points: ``[A, D]`` starts of all attempts [m], ``A >= S``.
+        bounds: Per-dimension ``(lo, hi)`` of the attempted starts [m].
         seed: Seed of the random attempt subsets.
     """
     num_success = len(success_points)
@@ -158,7 +153,8 @@ def embodiment_clips_pose_actions(path: str) -> bool:
 def load_episodes(path: str) -> tuple[list[dict], dict]:
     """Per-episode actions and ``obs/datagen_info`` positions, plus the dataset's ``env_args``.
 
-    Annotation and generation both record ``eef_pose`` before each step, so source and generated data share a frame.
+    Annotation and generation record ``obs/datagen_info`` with the same recorder term before each step, so
+    source and generated data share a frame and a step.
     """
     episodes = []
     with h5py.File(path, "r") as h5_file:
@@ -170,7 +166,7 @@ def load_episodes(path: str) -> tuple[list[dict], dict]:
             episode: dict[str, Any] = {"actions": demo["actions"][:]}
             datagen_info = demo["obs"].get("datagen_info")
             if datagen_info is not None:
-                for group in ("intended_eef_pose", "target_eef_pose", "eef_pose"):
+                for group in ("target_eef_pose", "eef_pose"):
                     if group in datagen_info:
                         episode[group] = {eef: datagen_info[group][eef][:][:, :3, 3] for eef in datagen_info[group]}
                 if "eef_pose" in episode:
@@ -246,14 +242,7 @@ def _success_rate(result: dict | None, stop_attempts: list[dict] | None) -> dict
         successes, attempts = sum(attempt["success"] for attempt in stop_attempts), len(stop_attempts)
         note = _CORRECTED_NOTE
     lo, hi = wilson_interval(successes, attempts)
-    return _kpi(
-        successes / attempts,
-        "fraction",
-        attempts,
-        interval_95=[lo, hi],
-        raw_rate=raw_rate,
-        note=note,
-    )
+    return _kpi(successes / attempts, "fraction", attempts, interval_95=[lo, hi], raw_rate=raw_rate, note=note)
 
 
 def _demos_per_hour(result: dict | None) -> dict:
@@ -283,27 +272,25 @@ def _demos_per_human_demo(result: dict | None) -> dict:
     return _kpi(result["num_success"] / num_source, "ratio", num_source, note=note)
 
 
-def _annotation_yield(annotation_summary: dict | None) -> dict:
-    if annotation_summary is None:
-        return _not_applicable("needs --annotation_summary")
-    processed = annotation_summary["num_processed"]
-    if processed == 0:
-        return _not_applicable("no episodes were processed")
-    return _kpi(
-        annotation_summary["num_exported"] / processed,
-        "fraction",
-        processed,
-        rejections=annotation_summary["rejections"],
-    )
+def _annotation_yield(source_episodes: list[dict] | None, recorded_dataset: str | None) -> dict:
+    if source_episodes is None or recorded_dataset is None:
+        return _not_applicable("needs --source and --recorded_dataset")
+    with h5py.File(recorded_dataset, "r") as h5_file:
+        num_recorded = len(h5_file["data"])
+    if num_recorded == 0:
+        return _not_applicable("the recorded dataset has no episodes")
+    note = "assumes --source is the annotation output of --recorded_dataset"
+    return _kpi(len(source_episodes) / num_recorded, "fraction", num_recorded, note=note)
 
 
-def _pooled_path_deviation(episodes: list[dict], intended_key: str, eefs: set[str] | None = None) -> np.ndarray:
+def _pooled_path_deviation(episodes: list[dict]) -> np.ndarray:
     deviations = [
-        path_deviation(episode["eef_pose"][eef], episode[intended_key][eef])
+        path_deviation(episode["eef_pose"][eef], target)
         for episode in episodes
-        if intended_key in episode and "eef_pose" in episode
-        for eef in episode[intended_key]
-        if eefs is None or eef in eefs
+        if "target_eef_pose" in episode and "eef_pose" in episode
+        for eef, target in episode["target_eef_pose"].items()
+        # Tracking-only channels command no pose; their adapter writes an identity placeholder.
+        if np.any(target)
     ]
     return np.concatenate(deviations) if deviations else np.empty(0)
 
@@ -311,22 +298,16 @@ def _pooled_path_deviation(episodes: list[dict], intended_key: str, eefs: set[st
 def _tracking_error(episodes: list[dict], source_episodes: list[dict] | None) -> dict:
     if not episodes:
         return _not_applicable("the dataset has no episodes")
-    deviations = _pooled_path_deviation(episodes, "intended_eef_pose")
+    deviations = _pooled_path_deviation(episodes)
     if not len(deviations):
-        return _not_applicable("dataset has no obs/datagen_info/intended_eef_pose")
-    baseline = None
-    if source_episodes is not None:
-        # Generation records intended poses only for commanded EEFs; the source's target poses include
-        # placeholders for tracking-only channels.
-        commanded = {eef for episode in episodes for eef in episode.get("intended_eef_pose", {})}
-        source_deviations = _pooled_path_deviation(source_episodes, "target_eef_pose", commanded)
-        baseline = _percentiles(source_deviations, 1000.0) if len(source_deviations) else None
+        return _not_applicable("dataset has no obs/datagen_info/target_eef_pose")
+    source_deviations = _pooled_path_deviation(source_episodes) if source_episodes is not None else np.empty(0)
+    baseline = _percentiles(source_deviations, 1000.0) if len(source_deviations) else None
     return _kpi(
         _percentiles(deviations, 1000.0),
-        "mm from the noise-free intended path (position)",
+        "mm from the commanded path (position)",
         len(deviations),
         source_baseline=baseline,
-        note="generated values include injected action noise; the source baseline is against executed commands",
     )
 
 
@@ -361,7 +342,7 @@ def _motion_smoothness(
     source_step_dt: float | None,
 ) -> dict:
     if step_dt is None:
-        return _not_applicable("no step_dt in the result file or dataset sim_args")
+        return _not_applicable("the dataset has no sim_args")
     if not episodes:
         return _not_applicable("the dataset has no episodes")
     jerk = _pooled_jerk(episodes, step_dt)
@@ -379,71 +360,30 @@ def _motion_smoothness(
         note=(
             None
             if source_episodes is None or source_step_dt is not None
-            else "source has no sim_args; its baseline assumes the generated step_dt"
+            else "source has no sim_args; its baseline assumes the generated control step"
         ),
     )
 
 
-def _range_points(reset_range: dict, asset: str, attempts: list[dict]) -> tuple | str:
-    """Starts of ``asset`` in reset-range coordinates over the range's non-zero-width x/y axes."""
-    func_name = reset_range["func"].rsplit(":", 1)[-1]
-    if func_name in _OFFSET_RANGE_FUNCS:
-        origin = reset_range["default_positions"].get(asset)
-        if origin is None:
-            return f"no default position recorded for {asset}"
-    elif func_name in _ABSOLUTE_RANGE_FUNCS:
-        origin = [0.0, 0.0, 0.0]
-    else:
-        return f"unknown pose_range semantics of {reset_range['func']}"
-    axes = [
-        (index, axis)
-        for index, axis in enumerate(("x", "y"))
-        if axis in reset_range["pose_range"] and reset_range["pose_range"][axis][1] > reset_range["pose_range"][axis][0]
-    ]
-    if not axes:
-        return f"{asset} has no x/y variation"
-    starts = np.array([attempt["initial_object_poses"][asset][:2] for attempt in attempts]) - np.array(origin[:2])
-    points = starts[:, [index for index, _ in axes]]
-    bounds = [tuple(reset_range["pose_range"][axis]) for _, axis in axes]
-    in_range = np.all(
-        [
-            (points[:, dim] >= lo - RANGE_TOLERANCE) & (points[:, dim] <= hi + RANGE_TOLERANCE)
-            for dim, (lo, hi) in enumerate(bounds)
-        ],
-        axis=0,
-    )
-    if not in_range.all():
-        return f"only {in_range.mean():.0%} of {asset} starts lie inside its reset range, so its frame is wrong"
-    return points, bounds, [axis for _, axis in axes]
-
-
-def _configuration_inputs(result: dict | None, attempts: list[dict] | None) -> tuple[list, list[str]] | str:
-    if result is None or attempts is None:
-        return "needs --result_file with an attempt log"
+def _varying_starts(attempts: list[dict] | None) -> list[tuple] | str:
+    """Per object, its attempted start positions along the x/y axes on which they vary, with their bounds."""
     if not attempts:
-        return "the attempt log is empty"
-    reset_ranges = result.get("run", {}).get("reset_ranges", [])
-    entries, skipped = [], []
-    for reset_range in reset_ranges:
-        for asset in reset_range["assets"]:
-            if not all(asset in attempt["initial_object_poses"] for attempt in attempts):
-                skipped.append(f"{asset} is not a rigid object")
-                continue
-            resolved = _range_points(reset_range, asset, attempts)
-            if isinstance(resolved, str):
-                skipped.append(resolved)
-            else:
-                entries.append((asset, *resolved))
-    if not entries:
-        return "no reset range with x/y variation" + (f" ({'; '.join(skipped)})" if skipped else "")
-    return entries, skipped
+        return "needs --result_file with a non-empty attempt log"
+    entries = []
+    for asset in attempts[0]["initial_object_positions"]:
+        starts = np.array([attempt["initial_object_positions"][asset] for attempt in attempts])
+        axes = [axis for axis in range(2) if np.ptp(starts[:, axis]) >= MIN_START_EXTENT]
+        if axes:
+            points = starts[:, axes]
+            bounds = [(float(points[:, dim].min()), float(points[:, dim].max())) for dim in range(len(axes))]
+            entries.append((asset, points, bounds, ["xy"[axis] for axis in axes]))
+    return entries or f"no object's start position varies by {MIN_START_EXTENT} m or more"
 
 
-def _success_by_configuration(result: dict | None, attempts: list[dict] | None, corrected: bool) -> dict:
-    resolved = _configuration_inputs(result, attempts)
-    if isinstance(resolved, str):
-        return _not_applicable(resolved)
-    entries, skipped = resolved
+def _success_by_configuration(attempts: list[dict] | None, corrected: bool) -> dict:
+    entries = _varying_starts(attempts)
+    if isinstance(entries, str):
+        return _not_applicable(entries)
     success = np.array([attempt["success"] for attempt in attempts])
     overall_rate = float(success.mean())
     if overall_rate == 0.0:
@@ -451,18 +391,16 @@ def _success_by_configuration(result: dict | None, attempts: list[dict] | None, 
     per_asset = {}
     for asset, points, bounds, axes in entries:
         cells = grid_cells(points, bounds, 3)
-        table = []
-        for cell in range(3 ** len(bounds)):
-            in_cell = cells == cell
-            n = int(in_cell.sum())
-            table.append({"cell": cell, "attempts": n, "successes": int(success[in_cell].sum())})
-        per_asset[asset] = {"axes": axes, "range": [list(bound) for bound in bounds], "cells": table}
+        table = [
+            {"cell": cell, "attempts": int((cells == cell).sum()), "successes": int(success[cells == cell].sum())}
+            for cell in range(3 ** len(bounds))
+        ]
+        per_asset[asset] = {"axes": axes, "bounds": bounds, "cells": table}
     dense = [
         entry for grid in per_asset.values() for entry in grid["cells"] if entry["attempts"] >= SPARSE_CELL_ATTEMPTS
     ]
     if not dense:
-        reasons = [f"no grid cell has {SPARSE_CELL_ATTEMPTS} or more attempts", *skipped]
-        return _not_applicable("; ".join(reasons))
+        return _not_applicable(f"no grid cell has {SPARSE_CELL_ATTEMPTS} or more attempts")
     for entry in dense:
         entry["rate"] = entry["successes"] / entry["attempts"]
         # One-sided exact test: how likely so few successes are if the cell had the overall rate.
@@ -478,26 +416,20 @@ def _success_by_configuration(result: dict | None, attempts: list[dict] | None, 
         ),
         overall_rate=overall_rate,
         per_asset=per_asset,
-        skipped=skipped,
     )
 
 
-def _initial_state_coverage(result: dict | None, attempts: list[dict] | None) -> dict:
-    resolved = _configuration_inputs(result, attempts)
-    if isinstance(resolved, str):
-        return _not_applicable(resolved)
-    entries, skipped = resolved
+def _initial_state_coverage(attempts: list[dict] | None) -> dict:
+    entries = _varying_starts(attempts)
+    if isinstance(entries, str):
+        return _not_applicable(entries)
     success = np.array([attempt["success"] for attempt in attempts])
-    per_asset = {}
+    per_asset, skipped = {}, []
     for asset, points, bounds, axes in entries:
         if success.sum() < min_coverage_successes(len(bounds)):
             skipped.append(f"{asset} needs {min_coverage_successes(len(bounds))} successful attempts")
             continue
-        per_asset[asset] = {
-            "axes": axes,
-            "range": [list(bound) for bound in bounds],
-            **coverage_ratio(points[success], points, bounds),
-        }
+        per_asset[asset] = {"axes": axes, "bounds": bounds, **coverage_ratio(points[success], points, bounds)}
     if not per_asset:
         return _not_applicable("; ".join(skipped))
     worst = min(entry["ratio"] for entry in per_asset.values())
@@ -512,52 +444,22 @@ def _failure_share(attempts: list[dict] | None, stop_attempts: list[dict] | None
         attempts = stop_attempts
         note = _CORRECTED_NOTE
     failures = [attempt for attempt in attempts if not attempt["success"]]
-    if not failures:
-        return _kpi({}, "fraction of failures", 0, note=note)
-    by_cause = Counter(attempt["failure_cause"] or "unknown" for attempt in failures)
-    by_subtask: dict[str, dict[str, dict[str, int]]] = {}
-    for attempt in failures:
-        for eef, subtask in (attempt["failed_subtask"] or {}).items():
-            cause_table = by_subtask.setdefault(attempt["failure_cause"] or "unknown", {}).setdefault(eef, {})
-            cause_table[str(subtask)] = cause_table.get(str(subtask), 0) + 1
+    by_cause = Counter(attempt["failure_cause"] for attempt in failures)
     return _kpi(
         {cause: count / len(failures) for cause, count in by_cause.items()},
         "fraction of failures",
         len(failures),
-        by_subtask=by_subtask,
         note=note,
     )
 
 
-def _planner_calls(attempts: list[dict] | None) -> list[dict]:
-    return [call for attempt in attempts or [] for call in attempt.get("planner_calls", [])]
-
-
-def _planner_failure_types(attempts: list[dict] | None) -> dict:
-    calls = _planner_calls(attempts)
-    if not calls:
-        return _not_applicable("no motion-planner calls in the attempt log")
-    failed = [call for call in calls if not call["success"]]
-    return _kpi(
-        {status: count / len(failed) for status, count in Counter(call["status"] for call in failed).items()},
-        "fraction of failed plans",
-        len(failed),
-        num_calls=len(calls),
-    )
-
-
 def _planning_time(result: dict | None, attempts: list[dict] | None) -> dict:
-    calls = _planner_calls(attempts)
-    if not calls:
-        return _not_applicable("no motion-planner calls in the attempt log")
-    per_attempt = np.array([
-        sum(call["wall_time_s"] for call in attempt["planner_calls"])
-        for attempt in attempts
-        if attempt["planner_calls"]
-    ])
+    planning = np.array([attempt["planning_time_s"] for attempt in attempts or [] if attempt["planning_time_s"] > 0])
+    if not len(planning):
+        return _not_applicable("the run did no motion planning")
     generation_time = (result or {}).get("run", {}).get("generation_time_s")
-    share = float(per_attempt.sum() / generation_time) if generation_time else None
-    return _kpi(_percentiles(per_attempt), "s per attempt", len(per_attempt), share_of_generation_time=share)
+    share = float(planning.sum() / generation_time) if generation_time else None
+    return _kpi(_percentiles(planning), "s per attempt", len(planning), share_of_generation_time=share)
 
 
 def build_report(
@@ -565,7 +467,7 @@ def build_report(
     result_file: str | None = None,
     source: str | None = None,
     embodiment: str | None = None,
-    annotation_summary: str | None = None,
+    recorded_dataset: str | None = None,
 ) -> dict[str, Any]:
     """Compute every KPI for a generated dataset.
 
@@ -574,7 +476,7 @@ def build_report(
         result_file: Generation result JSON (``--result_file`` of ``generate_dataset.py``).
         source: Annotated source HDF5 dataset the generation started from; enables source baselines.
         embodiment: Embodiment YAML used for generation; needed for action saturation.
-        annotation_summary: Annotation summary JSON (``--summary_file`` of ``annotate_demos.py``).
+        recorded_dataset: Teleoperated HDF5 dataset that was annotated into ``source``; enables annotation yield.
     """
     episodes, env_args = load_episodes(dataset)
     source_episodes, source_env_args = load_episodes(source) if source else (None, {})
@@ -596,29 +498,24 @@ def build_report(
         num_envs = result.get("run", {}).get("num_envs")
         if attempts and num_envs:
             stop_attempts = attempts_before_stop(attempts, num_envs)
-    annotation = None
-    if annotation_summary:
-        with open(annotation_summary, encoding="utf-8") as handle:
-            annotation = json.load(handle)
 
-    step_dt = (result or {}).get("run", {}).get("step_dt") or _step_dt_from_env_args(env_args)
-    source_step_dt = _step_dt_from_env_args(source_env_args)
     kpis = {
         "success_rate": _success_rate(result, stop_attempts),
         "demos_per_hour": _demos_per_hour(result),
         "demos_per_human_demo": _demos_per_human_demo(result),
-        "annotation_yield": _annotation_yield(annotation),
+        "annotation_yield": _annotation_yield(source_episodes, recorded_dataset),
         "tracking_error": _tracking_error(episodes, source_episodes),
         "action_saturation": _action_saturation(
             episodes, source_episodes, embodiment_clips_pose_actions(embodiment) if embodiment else None
         ),
-        "motion_smoothness": _motion_smoothness(episodes, step_dt, source_episodes, source_step_dt),
-        "initial_state_coverage": _initial_state_coverage(result, stop_attempts or attempts),
+        "motion_smoothness": _motion_smoothness(
+            episodes, _step_dt_from_env_args(env_args), source_episodes, _step_dt_from_env_args(source_env_args)
+        ),
+        "initial_state_coverage": _initial_state_coverage(stop_attempts or attempts),
         "success_by_initial_configuration": _success_by_configuration(
-            result, stop_attempts or attempts, corrected=stop_attempts is not None
+            stop_attempts or attempts, corrected=stop_attempts is not None
         ),
         "failure_share": _failure_share(attempts, stop_attempts),
-        "planner_failure_types": _planner_failure_types(attempts),
         "planning_time": _planning_time(result, attempts),
     }
     return {"dataset": dataset, "num_episodes": len(episodes), "kpis": kpis}

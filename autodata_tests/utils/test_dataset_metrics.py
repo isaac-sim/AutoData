@@ -32,16 +32,18 @@ def test_path_deviation_ignores_lag_along_the_path():
     np.testing.assert_allclose(dataset_metrics.path_deviation(lagging, intended), 0.005, atol=1e-9)
 
 
-def test_tracking_error_baseline_skips_channels_without_a_generated_intended_pose():
+def test_tracking_error_skips_tracking_only_channels():
     path = np.linspace(0.0, 0.1, 30)[:, None] * np.array([1.0, 0.0, 0.0])
     beside = path + np.array([0.0, 0.002, 0.0])
-    generated = [{"eef_pose": {"left": beside}, "intended_eef_pose": {"left": path}}]
-    # A tracking-only channel's source target is a placeholder far from its achieved pose.
-    source = [{"eef_pose": {"left": beside, "body": path}, "target_eef_pose": {"left": path, "body": path + 1.0}}]
+    # A tracking-only channel commands no pose; its adapter writes an identity placeholder.
+    episode = {
+        "eef_pose": {"left": beside, "body": path},
+        "target_eef_pose": {"left": path, "body": np.zeros_like(path)},
+    }
 
-    kpi = dataset_metrics._tracking_error(generated, source)
+    kpi = dataset_metrics._tracking_error([episode], [episode])
 
-    assert kpi["source_baseline"]["p95"] == pytest.approx(2.0)
+    assert kpi["value"]["p95"] == pytest.approx(2.0) and kpi["source_baseline"]["p95"] == pytest.approx(2.0)
 
 
 def _attempt(env_id: int, success: bool, start: float, duration: float) -> dict:
@@ -71,41 +73,19 @@ def test_coverage_ratio_drops_when_successes_leave_a_region_empty():
 
 
 def _attempts(x_positions: np.ndarray, successes: np.ndarray) -> list[dict]:
+    # The table only settles by about a millimetre, so it does not count as a varying object.
     return [
-        {"success": bool(success), "initial_object_poses": {"cube": [float(x), 0.0, 0.0]}}
-        for x, success in zip(x_positions, successes)
+        {
+            "success": bool(success),
+            "initial_object_positions": {"cube": [float(x), 0.0], "table": [1e-3 * (i % 2), 0.0]},
+        }
+        for i, (x, success) in enumerate(zip(x_positions, successes))
     ]
-
-
-def test_range_points_resolve_offset_and_absolute_ranges_and_reject_wrong_frames():
-    attempts = _attempts(np.array([0.39, 0.41]), np.array([True, True]))
-    offset = {
-        "func": "isaaclab.envs.mdp.events:reset_root_state_uniform",
-        "pose_range": {"x": [-0.01, 0.01], "y": [0.0, 0.0]},
-        "default_positions": {"cube": [0.4, 0.0, 0.0]},
-    }
-    absolute = {**offset, "func": "isaaclab_tasks.contrib.stack.mdp.stack_events:randomize_object_pose"}
-
-    points, bounds, axes = dataset_metrics._range_points(offset, "cube", attempts)
-
-    np.testing.assert_allclose(points[:, 0], [-0.01, 0.01], atol=1e-9)
-    assert axes == ["x"] and bounds == [(-0.01, 0.01)]
-    assert "frame is wrong" in dataset_metrics._range_points(absolute, "cube", attempts)
 
 
 def test_success_by_configuration_flags_only_a_truly_weak_region():
     rng = np.random.default_rng(2)
     x_positions = rng.uniform(0.0, 0.3, size=600)
-    result = {
-        "run": {
-            "reset_ranges": [{
-                "func": "m:randomize_object_pose",
-                "assets": ["cube"],
-                "pose_range": {"x": [0.0, 0.3]},
-                "default_positions": {},
-            }]
-        }
-    }
     uniform = _attempts(x_positions, rng.uniform(size=600) < 0.7)
     weak_left = _attempts(x_positions, (rng.uniform(size=600) < 0.7) & (x_positions > 0.1))
     # 9 of 11 at an overall rate of 65/67: unremarkable by an exact test, though a Wilson bound reads it as low.
@@ -113,6 +93,7 @@ def test_success_by_configuration_flags_only_a_truly_weak_region():
         np.array([0.05] * 11 + [0.15] * 28 + [0.25] * 28), np.array([True] * 9 + [False] * 2 + [True] * 56)
     )
 
-    assert dataset_metrics._success_by_configuration(result, uniform, corrected=False)["value"] == 0
-    assert dataset_metrics._success_by_configuration(result, weak_left, corrected=False)["value"] == 1
-    assert dataset_metrics._success_by_configuration(result, near_perfect, corrected=False)["value"] == 0
+    uniform_kpi = dataset_metrics._success_by_configuration(uniform, corrected=False)
+    assert uniform_kpi["value"] == 0 and set(uniform_kpi["per_asset"]) == {"cube"}
+    assert dataset_metrics._success_by_configuration(weak_left, corrected=False)["value"] == 1
+    assert dataset_metrics._success_by_configuration(near_perfect, corrected=False)["value"] == 0

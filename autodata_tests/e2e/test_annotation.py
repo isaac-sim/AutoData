@@ -20,7 +20,6 @@ def test_automatic_annotation_from_dataset(tmp_path):
     """Use the stored task name and export usable termination signals during replay."""
     input_file = Path(TestPaths.test_data_dir) / "annotated_dataset_franka_stack_mimicgen.hdf5"
     output_file = tmp_path / "annotated.hdf5"
-    summary_file = tmp_path / "annotation_summary.json"
     run_subprocess([
         TestPaths.python_path,
         str(Path(TestPaths.scripts_dir) / "annotate_demos.py"),
@@ -37,15 +36,10 @@ def test_automatic_annotation_from_dataset(tmp_path):
         str(input_file),
         "--output_file",
         str(output_file),
-        "--summary_file",
-        str(summary_file),
     ])
     assert_valid_dataset(str(output_file), min_num_demos=1)
-    summary = json.loads(summary_file.read_text(encoding="utf-8"))
     with h5py.File(input_file, "r") as source, h5py.File(output_file, "r") as annotated:
         assert len(annotated["data"]) == len(source["data"])
-        assert summary["num_processed"] == summary["num_exported"] == len(source["data"])
-        assert summary["rejections"] == {}
         assert json.loads(annotated["data"].attrs["env_args"])["env_name"] == "IsaacContrib-Stack-Cube-Franka-IK-Rel"
         for episode in annotated["data"].values():
             signals = episode["obs/datagen_info/subtask_term_signals"]

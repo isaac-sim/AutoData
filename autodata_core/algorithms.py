@@ -15,6 +15,7 @@ SkillGen overrides this to insert a motion-planned transit ahead of the merge.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -185,7 +186,7 @@ class SkillGen(GenerationAlgorithm):
             motion_planners: One planner per env_id. Planners must expose
                 ``update_world_and_plan_motion(target_pose, expected_attached_object, env_id, ...)``
                 and ``get_planned_poses() -> list[torch.Tensor[4, 4]]``. ``config.motion_noise_scale``
-                and ``last_plan_summary`` (copied into the attempt's ``planner_calls``) are read if present.
+                is read if present.
         """
         assert motion_planners, "SkillGen requires at least one motion planner"
         self.motion_planners = motion_planners
@@ -238,6 +239,7 @@ class SkillGen(GenerationAlgorithm):
         )
 
         planner = self.motion_planners[env_id]
+        start_time = time.perf_counter()
         planning_success = planner.update_world_and_plan_motion(
             target_pose=target_pose,
             expected_attached_object=expected_attached_object,
@@ -245,11 +247,7 @@ class SkillGen(GenerationAlgorithm):
             step_size=getattr(planner, "step_size", None),
             enable_retiming=(hasattr(planner, "step_size") and planner.step_size is not None),
         )
-        plan_summary = getattr(planner, "last_plan_summary", None)
-        if plan_summary is not None:
-            eef_state.planner_calls.append(
-                {"eef": eef_name, "subtask": eef_state.current_subtask_index, **plan_summary}
-            )
+        eef_state.planning_time_s += time.perf_counter() - start_time
         if not planning_success:
             return None
 

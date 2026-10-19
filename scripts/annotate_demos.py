@@ -81,12 +81,6 @@ parser.add_argument(
     default="subtask_terms",
     help="Observation group holding the per-subtask boolean terms read in --auto mode.",
 )
-parser.add_argument(
-    "--summary_file",
-    type=str,
-    default=None,
-    help="Optional JSON path for the annotation summary (processed and exported counts, rejection reasons).",
-)
 
 parser.add_argument(
     "--enable_cameras",
@@ -107,26 +101,26 @@ simulation_app = app_launcher.app
 
 import contextlib  # noqa: E402
 import gymnasium as gym  # noqa: E402
-import json  # noqa: E402
 import math  # noqa: E402
 import os  # noqa: E402
 import sys  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
-from collections import Counter  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401, E402  (registers gym envs)
 from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg  # noqa: E402
-from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg  # noqa: E402
-from isaaclab.managers import DatasetExportMode, RecorderTerm, RecorderTermCfg, TerminationTermCfg  # noqa: E402
-from isaaclab.utils import configclass  # noqa: E402
+from isaaclab.managers import DatasetExportMode, TerminationTermCfg  # noqa: E402
 from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa: E402
 
 from autodata_core.pool import DataGenInfoPool  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
+from autodata_interfaces.env.datagen_info_recorder import (  # noqa: E402
+    DatagenInfoRecorderManagerCfg,
+    PreStepDatagenInfoRecorder,
+)
 from autodata_interfaces.env.registration import register_external_environment  # noqa: E402
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
 
@@ -134,7 +128,6 @@ is_paused = False
 current_action_index = 0
 marked_subtask_action_indices: list[int] = []
 skip_episode = False
-rejection_counts: Counter[str] = Counter()
 
 _datastream: Datastream | None = None
 
@@ -158,34 +151,6 @@ def mark_subtask_cb() -> None:
     global current_action_index, marked_subtask_action_indices
     marked_subtask_action_indices.append(current_action_index)
     print(f"Marked a subtask signal at action index: {current_action_index}")
-
-
-# Recorder term that writes per-step datagen info read through the Datastream.
-class PreStepDatagenInfoRecorder(RecorderTerm):
-    """Recorder term that records ``obs/datagen_info`` from the Datastream on each step."""
-
-    def record_pre_step(self):
-        assert _datastream is not None, "Datastream must be initialized before recording."
-        datagen_info = {
-            "object_pose": _datastream.get_object_poses(),
-            "eef_pose": _datastream.embodiment_adapter.get_eef_poses(env_ids=None),
-            "target_eef_pose": _datastream.action_to_target_eef_pose(self._env.action_manager.action),
-        }
-        return "obs/datagen_info", datagen_info
-
-
-@configclass
-class PreStepDatagenInfoRecorderCfg(RecorderTermCfg):
-    """Configuration for :class:`PreStepDatagenInfoRecorder`."""
-
-    class_type: type[RecorderTerm] = PreStepDatagenInfoRecorder
-
-
-@configclass
-class AnnotationRecorderManagerCfg(ActionStateRecorderManagerCfg):
-    """Action/state recorder plus the datagen-info term used during annotation."""
-
-    record_pre_step_datagen_info = PreStepDatagenInfoRecorderCfg()
 
 
 def _build_signal_names(
@@ -273,7 +238,7 @@ def main() -> int:
         num_envs=1,
         device=args_cli.device,
         generation_policy_params=generation_policy,
-        recorder_cfg=AnnotationRecorderManagerCfg(),
+        recorder_cfg=DatagenInfoRecorderManagerCfg(),
         enable_cameras=args_cli.record_images,
     )
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
@@ -296,6 +261,7 @@ def main() -> int:
             source_pool=empty_pool,
             uses_start_signals=annotate_start_signals,
         )
+        PreStepDatagenInfoRecorder.datastream = _datastream
 
         env.reset()
 
@@ -324,6 +290,7 @@ def main() -> int:
             for episode_index, episode_name in enumerate(episode_names):
                 if not simulation_app.is_running() or simulation_app.is_exiting():
                     break
+                processed_episode_count += 1
                 print(f"\nAnnotating episode #{episode_index} ({episode_name})")
                 episode = dataset_file_handler.load_episode(episode_name, env.device)
 
@@ -335,7 +302,6 @@ def main() -> int:
                     annotated = annotate_episode_in_manual_mode(
                         env, episode, success_term, term_signal_names, start_signal_names, annotate_start_signals
                     )
-                processed_episode_count += 1
 
                 if annotated and not skip_episode:
                     env.recorder_manager.set_success_to_episodes(
@@ -351,15 +317,6 @@ def main() -> int:
             f"\nExported {exported_episode_count} (out of {processed_episode_count}) annotated"
             f" episode{'s' if exported_episode_count != 1 else ''} to {args_cli.output_file}."
         )
-        if args_cli.summary_file:
-            summary = {
-                "num_processed": processed_episode_count,
-                "num_exported": exported_episode_count,
-                "rejections": dict(rejection_counts),
-            }
-            with open(args_cli.summary_file, "w", encoding="utf-8") as summary_handle:
-                json.dump(summary, summary_handle, indent=2, sort_keys=True)
-                summary_handle.write("\n")
         print("Exiting the app.")
         return exported_episode_count
     finally:
@@ -473,7 +430,6 @@ def annotate_episode_in_manual_mode(
             task_succeeded = replay_episode(env, episode, success_term)
             if skip_episode:
                 print("\tSkipping the episode.")
-                rejection_counts["skipped"] += 1
                 return False
 
             print(f"\tSubtasks marked at action indices: {marked_subtask_action_indices}")
@@ -499,7 +455,6 @@ def annotate_episode_in_manual_mode(
 
             if not task_succeeded:
                 print("\tThe final task was not completed.")
-                rejection_counts["task not completed"] += 1
                 return False
 
             print(
@@ -600,7 +555,6 @@ def annotate_episode_in_auto_mode(
     task_succeeded = replay_episode(env, episode, success_term, on_step=sample_signals)
     if not task_succeeded:
         print("\tThe final task was not completed.")
-        rejection_counts["task not completed"] += 1
         return False
 
     num_steps = len(episode.data["actions"])
@@ -614,19 +568,16 @@ def annotate_episode_in_auto_mode(
             if edge is None:
                 reason = "already active at episode start" if bool(signal[0]) else "never fired"
                 print(f'\tSubtask signal "{signal_name}" (eef "{eef_name}") {reason}.')
-                rejection_counts[f"signal {reason}"] += 1
                 return False
             eef_edges.append(edge)
 
         if any(later <= earlier for earlier, later in zip(eef_edges, eef_edges[1:])):
             print(f'\tSubtask signals for eef "{eef_name}" fired out of order: {dict(zip(eef_term_names, eef_edges))}.')
-            rejection_counts["signals out of order"] += 1
             return False
 
         spacing_error = _validate_boundary_spacing(task_descriptor, eef_name, eef_edges, num_steps)
         if spacing_error is not None:
             print(f'\tRejected annotations for eef "{eef_name}": {spacing_error}.')
-            rejection_counts["boundaries too close"] += 1
             return False
 
         print(f'\tDetected subtask signals for eef "{eef_name}": {dict(zip(eef_term_names, eef_edges))}')

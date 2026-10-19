@@ -93,14 +93,6 @@ class EmbodimentAdapter(ABC):
             Tuple of EEF names. Stable across calls; never empty.
         """
 
-    def get_eef_names_with_pose_action(self) -> tuple[str, ...]:
-        """Return the end-effectors whose target pose the action commands.
-
-        Tracking-only channels, whose actions carry only passthrough commands, are excluded.
-        """
-
-        return self.get_eef_names()
-
     @abstractmethod
     def get_eef_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
         """Read current end-effector poses [m, m, m] from the live env.

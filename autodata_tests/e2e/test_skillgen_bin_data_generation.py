@@ -17,12 +17,12 @@ import pytest
 
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_kpi_report, assert_valid_dataset, read_attempt_log
+from autodata_tests.utils.utils import assert_kpi_report, assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
 # KPIs that a one-demo SkillGen run with a result file must produce.
-APPLICABLE_KPIS = {"success_rate", "failure_share", "planner_failure_types", "planning_time"}
+APPLICABLE_KPIS = {"success_rate", "failure_share", "planning_time"}
 
 
 def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
@@ -73,13 +73,6 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
             "path": env_profile,
             "planner": "franka_stack_cube_bin",
         }
-        attempts = read_attempt_log(result_file)
-        # Every SkillGen attempt plans at least its first transit.
-        assert all(attempt["planner_calls"] for attempt in attempts)
-        for attempt in attempts:
-            last_call = attempt["planner_calls"][-1]
-            planner_failed = attempt["failure_cause"] == "planner"
-            assert last_call["success"] != planner_failed and (last_call["status"] == "Success") != planner_failed
 
         run_subprocess([
             TestPaths.python_path,

@@ -284,17 +284,3 @@ def test_get_robot_root_pose():
 def test_get_scene_state_passthrough():
     datastream, _, _, _ = _datastream()
     assert datastream.get_scene_state(is_relative=True) is _SCENE_STATE_SENTINEL
-
-
-def test_subtask_signals_ignore_the_final_subtask():
-    task_dict = _task_dict()
-    task_dict["subtasks"]["franka"][-1]["subtask_term_signal"] = "stack_2"
-    task = TaskDescriptor.from_dict(task_dict)
-    adapter = _embodiment_adapter()
-    env = _env()
-    env.obs_buf["subtask_terms"] = {"grasp_1": torch.tensor([True]), "stack_1": torch.tensor([False])}
-    pool = DataGenInfoPool(task_descriptor=task, embodiment_adapter=adapter, device="cpu", uses_start_signals=False)
-    datastream = Datastream(env=env, task_descriptor=task, embodiment_adapter=adapter, source_pool=pool)
-
-    assert datastream.has_subtask_term_signals()
-    assert set(datastream.get_subtask_term_signals(env_ids=[0])) == {"grasp_1", "stack_1"}

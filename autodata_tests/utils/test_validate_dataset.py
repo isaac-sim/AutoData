@@ -62,9 +62,12 @@ def test_report_covers_a_run_whose_every_attempt_failed(tmp_path: Path) -> None:
             "run": {"num_envs": 1, "attempts_file": "result.attempts.jsonl"},
         })
     )
-    attempt = {"env_id": 0, "success": False, "failure_cause": "execution", "failed_subtask": None, "planner_calls": []}
+    attempt = {"env_id": 0, "success": False, "failure_cause": "execution", "planning_time_s": 0.0}
     (tmp_path / "result.attempts.jsonl").write_text(
-        "".join(json.dumps({**attempt, "start_time_s": t, "end_time_s": t + 1.0}) + "\n" for t in range(3))
+        "".join(
+            json.dumps({**attempt, "start_time_s": t, "end_time_s": t + 1.0, "initial_object_positions": {}}) + "\n"
+            for t in range(3)
+        )
     )
     report_path = tmp_path / "kpis.json"
 

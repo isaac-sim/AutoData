@@ -44,7 +44,6 @@ Annotate source demonstrations with subtask signals.
 | `--output_file <path.hdf5>` | Annotated output. |
 | `--auto` | Annotate termination signals without keyboard input (`--viz none` supported). |
 | `--signal_obs_group <name>` | Observation group holding per-subtask boolean terms (default `subtask_terms`). |
-| `--summary_file <path.json>` | Write processed/exported counts and rejection reasons as JSON. |
 
 Interactive controls: `N` play/resume, `B` pause, `S` mark subtask signal, `Q` skip episode.
 SkillGen start signals still require manual mode.

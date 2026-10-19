@@ -123,9 +123,9 @@ Results and Statistics
 
 Three layers report what happened:
 
-* **Per attempt** — ``GenerationResult``: ``success``, ``failure_cause``, ``failed_subtask``,
-  ``planner_calls`` and ``initial_state``. With ``--result_file``, each completed attempt is also
-  written as one line of ``<result_file stem>.attempts.jsonl``.
+* **Per attempt** — ``GenerationResult``: ``success``, ``failure_cause``, ``planning_time_s`` and
+  ``initial_state``. With ``--result_file``, each completed attempt is also written as one line of
+  ``<result_file stem>.attempts.jsonl``.
 * **Per run, in memory** — the ``stats`` counters: ``num_success``, ``num_failures``,
   ``num_attempts`` (``num_success + num_failures = num_attempts``).
 * **Per run, on disk** — with ``--result_file``, a JSON sidecar is written atomically at the

@@ -160,8 +160,11 @@ from autodata_interfaces.env import (  # noqa: E402
     setup_env_config,
     setup_output_paths,
 )
+from autodata_interfaces.env.datagen_info_recorder import (  # noqa: E402
+    DatagenInfoRecorderManagerCfg,
+    PreStepDatagenInfoRecorder,
+)
 from autodata_interfaces.env.registration import load_callable, register_external_environment  # noqa: E402
-from autodata_utils import pose_math  # noqa: E402
 from autodata_utils.generation_result import AttemptLog, attempts_file_for, write_generation_result  # noqa: E402
 from autodata_utils.tensor_utils import as_torch  # noqa: E402
 
@@ -208,23 +211,14 @@ def _attempt_record(env_id: int, result: GenerationResult, start_time: float, en
         "env_id": env_id,
         "success": result.success,
         "failure_cause": result.failure_cause,
-        "failed_subtask": result.failed_subtask,
+        "planning_time_s": result.planning_time_s,
         "start_time_s": start_time,
         "end_time_s": end_time,
-        "initial_object_poses": _initial_object_poses(result.initial_state, env_id),
-        "planner_calls": list(result.planner_calls),
+        "initial_object_positions": {
+            name: as_torch(state["root_pose"])[env_id, :2].tolist()
+            for name, state in result.initial_state.get("rigid_object", {}).items()
+        },
     }
-
-
-def _initial_object_poses(initial_state: dict, env_id: int) -> dict[str, list[float]]:
-    """``[x, y, yaw]`` [m, m, rad] of each rigid object in the env frame at the start of the attempt."""
-    poses = {}
-    for name, object_state in initial_state.get("rigid_object", {}).items():
-        root_pose = as_torch(object_state["root_pose"])[env_id]
-        rotation = pose_math.matrix_from_quat(root_pose[3:7])
-        yaw = torch.atan2(rotation[1, 0], rotation[0, 0])
-        poses[name] = [float(root_pose[0]), float(root_pose[1]), float(yaw)]
-    return poses
 
 
 def _hardware(device: str) -> dict[str, str | None]:
@@ -239,38 +233,6 @@ def _hardware(device: str) -> dict[str, str | None]:
         model_lines = (line for line in cpuinfo.read_text().splitlines() if line.startswith("model name"))
         cpu = next((line.split(":", 1)[1].strip() for line in model_lines), None)
     return {"gpu": gpu, "cpu": cpu or platform.processor() or None}
-
-
-def _reset_ranges(env_cfg: Any) -> list[dict]:
-    """Reset event terms that sample object poses from a ``pose_range``.
-
-    ``default_positions`` lets a reader resolve ranges that are offsets from an asset's default pose.
-    """
-    ranges = []
-    events = getattr(env_cfg, "events", None)
-    for term in (vars(events) if events is not None else {}).values():
-        params = getattr(term, "params", None)
-        if getattr(term, "mode", None) != "reset" or not params or not isinstance(params.get("pose_range"), dict):
-            continue
-        func = (
-            term.func
-            if isinstance(term.func, str)
-            else f"{getattr(term.func, '__module__', '')}:{getattr(term.func, '__name__', '')}"
-        )
-        asset_cfgs = list(params.get("asset_cfgs", [])) + ([params["asset_cfg"]] if "asset_cfg" in params else [])
-        assets = [asset_cfg.name for asset_cfg in asset_cfgs]
-        default_positions = {}
-        for name in assets:
-            init_state = getattr(getattr(env_cfg.scene, name, None), "init_state", None)
-            if init_state is not None:
-                default_positions[name] = [float(value) for value in init_state.pos]
-        ranges.append({
-            "func": func,
-            "assets": assets,
-            "pose_range": {axis: [float(bounds[0]), float(bounds[1])] for axis, bounds in params["pose_range"].items()},
-            "default_positions": default_positions,
-        })
-    return ranges
 
 
 def build_datastream(
@@ -413,7 +375,9 @@ def main() -> None:
         num_envs=args_cli.num_envs,
         device=args_cli.device,
         generation_policy_params=generation_policy_params,
-        recorder_cfg=load_callable(args_cli.recorder_cfg)() if args_cli.recorder_cfg else None,
+        recorder_cfg=(
+            load_callable(args_cli.recorder_cfg)() if args_cli.recorder_cfg else DatagenInfoRecorderManagerCfg()
+        ),
         env_profile=env_profile,
         enable_cameras=args_cli.record_images,
     )
@@ -433,6 +397,7 @@ def main() -> None:
         task_descriptor=task_descriptor,
         embodiment_adapter=embodiment_adapter,
     )
+    PreStepDatagenInfoRecorder.datastream = datastream
 
     # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
     motion_planners: dict | None = None
@@ -501,10 +466,8 @@ def main() -> None:
                     "device": args_cli.device,
                     **_hardware(args_cli.device),
                     "num_envs": args_cli.num_envs,
-                    "step_dt": float(env.step_dt),
                     "generation_time_s": generation_end - generation_start,
                     "num_source_episodes": datastream.num_source_demos,
-                    "reset_ranges": _reset_ranges(env_cfg),
                     "attempts_file": Path(attempts_file).name,
                 },
             )

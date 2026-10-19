@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import numpy as np
-import time
 import torch
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -287,8 +286,6 @@ class CuroboPlanner(MotionPlannerBase):
         # Initialize planning state
         self._current_plan: JointState | None = None
         self._plan_index: int = 0
-        self._plan_failure_status: str | None = None
-        self.last_plan_summary: dict[str, Any] | None = None
 
         # Initialize visualization state
         self.frame_counter: int = 0
@@ -1332,11 +1329,9 @@ class CuroboPlanner(MotionPlannerBase):
                 self.logger.debug(f"Contact planning succeeded with {len(self._current_plan.position)} waypoints")
             else:
                 self.logger.debug(f"Contact planning failed: {result.status}")
-                self._plan_failure_status = str(getattr(result.status, "value", result.status))
 
         except Exception as e:
             self.logger.debug(f"Error during planning: {e}")
-            self._plan_failure_status = "exception"
 
         # Always restore sphere state after planning, regardless of success
         if contact:
@@ -1848,8 +1843,7 @@ class CuroboPlanner(MotionPlannerBase):
 
         Provides a high-level interface that handles the complete planning workflow:
         world synchronization, object attachment/detachment, gripper configuration,
-        and motion planning. Afterwards :attr:`last_plan_summary` holds the call's outcome, the
-        cuRobo status of the failed phase, and the wall-clock time [s].
+        and motion planning.
 
         Args:
             target_pose: Target end-effector pose as 4x4 transformation matrix
@@ -1861,8 +1855,6 @@ class CuroboPlanner(MotionPlannerBase):
         Returns:
             True if complete planning pipeline succeeded, False if any step failed
         """
-        start_time = time.perf_counter()
-        self._plan_failure_status = None
         # Always reset the plan before starting a new one to ensure a clean state
         self.reset_plan()
 
@@ -1927,11 +1919,6 @@ class CuroboPlanner(MotionPlannerBase):
 
         self._detach_objects()
 
-        self.last_plan_summary = {
-            "success": plan_success,
-            "status": "Success" if plan_success else self._plan_failure_status or "unknown",
-            "wall_time_s": time.perf_counter() - start_time,
-        }
         return plan_success
 
     # =====================================================================================

@@ -40,10 +40,6 @@ def test_pose_conversion_preserves_scalar_grippers_and_body_commands():
         assert all(torch.equal(noisy_channels[name], command[i]) for name, command in channels.items())
 
 
-def test_tracking_only_channel_commands_no_pose():
-    assert _adapter().get_eef_names_with_pose_action() == ("left", "right")
-
-
 def test_controller_state_queries_select_requested_environment():
     adapter = _adapter()
     state = torch.zeros(2, 2, 13)
