@@ -1,12 +1,9 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""KPIs of a generated AutoData dataset.
+"""KPIs of a generated AutoData dataset, computed offline from generation and annotation outputs.
 
-The report reads the generated HDF5, the generation result JSON and its attempt log, the source
-dataset, the embodiment YAML and an optional annotation summary. It needs only h5py, numpy and PyYAML,
-so it runs without the simulator. Every KPI is either a value or ``not_applicable`` with a reason;
-missing inputs never read as zero.
+Every KPI is either a value or ``not_applicable`` with a reason; missing inputs never read as zero.
 """
 
 from __future__ import annotations
@@ -20,43 +17,20 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from autodata_utils.generation_result import file_sha256
-
-REPORT_SCHEMA_VERSION = 1
 Z_95 = 1.959963984540054
-"""Two-sided 95% standard-normal quantile."""
-
 SPARSE_CELL_ATTEMPTS = 10
 """Grid cells with fewer attempts are left out of the success-by-configuration headline."""
-
 MIN_ATTEMPTS_PER_ENV_FOR_STOP_CORRECTION = 3
-"""Below this many completed attempts in some env, the correction for attempts cancelled at the stop is itself biased."""
-
+"""Below this many completed attempts in some env, the stop correction is itself biased."""
 SAMPLES_PER_COVERAGE_CELL = 5
-"""The coverage grid is sized so each cell holds about this many successful starts."""
-
 PATH_DEVIATION_WINDOW = 20
 """Achieved steps are matched to intended path segments at most this many steps away."""
-
 RANGE_TOLERANCE = 1e-3
 """Starts farther than this [m] outside their reset range mean the range frame was resolved wrongly."""
 
 # Isaac Lab reset functions whose pose_range semantics are known.
 _OFFSET_RANGE_FUNCS = ("reset_root_state_uniform",)
 _ABSOLUTE_RANGE_FUNCS = ("randomize_object_pose",)
-
-# Whether each embodiment adapter type clips the pose part (first six entries) of its action. The report
-# stays torch-free, so it cannot import the adapters themselves.
-_CLIPPING_BY_EMBODIMENT_TYPE = {
-    "absolute_pose": False,
-    "delta_pose_ik_single_arm": True,
-    "absolute_pose_whole_body_bimanual": False,
-}
-
-
-# ----------------------------------------------------------------------------------------------
-# Statistics
-# ----------------------------------------------------------------------------------------------
 
 
 def binomial_cdf(successes: int, trials: int, rate: float) -> float:
@@ -169,30 +143,22 @@ def coverage_ratio(
     return {"ratio": occupied(success_points) / attempt_occupancy, "bins_per_dim": bins}
 
 
-# ----------------------------------------------------------------------------------------------
-# Inputs
-# ----------------------------------------------------------------------------------------------
-
-
 def embodiment_clips_pose_actions(path: str) -> bool:
-    """Whether the embodiment's adapter clips the pose part (first six entries) of its action to ±1."""
+    """Whether the embodiment's adapter clips the pose part (first six entries) of its action to ±1.
+
+    Only the single-arm delta-pose IK adapter clips; the report stays torch-free, so it reads the YAML.
+    """
     with open(path, encoding="utf-8") as handle:
         data = yaml.safe_load(handle)
-    embodiment_type = data.get("type")
-    assert (
-        embodiment_type in _CLIPPING_BY_EMBODIMENT_TYPE
-    ), f"Embodiment type {embodiment_type!r} is unknown to the KPI report; add it to _CLIPPING_BY_EMBODIMENT_TYPE."
-    return _CLIPPING_BY_EMBODIMENT_TYPE[embodiment_type] and bool(
+    return data.get("type") == "delta_pose_ik_single_arm" and bool(
         data.get("action_layout", {}).get("clip_pose_action_to_unit", True)
     )
 
 
 def load_episodes(path: str) -> tuple[list[dict], dict]:
-    """Per-episode arrays needed by the KPIs, plus the dataset's ``env_args``.
+    """Per-episode actions and ``obs/datagen_info`` positions, plus the dataset's ``env_args``.
 
-    End-effector positions (``eef_pos``, ``[T, E, 3]``) come from ``obs/datagen_info/eef_pose``, the control-link
-    pose that annotation and generation both record before each step, so source and generated data share a frame
-    and a step.
+    Annotation and generation both record ``eef_pose`` before each step, so source and generated data share a frame.
     """
     episodes = []
     with h5py.File(path, "r") as h5_file:
@@ -230,11 +196,6 @@ def _read_attempts(result_file: str, result: dict) -> list[dict] | None:
         return [json.loads(line) for line in handle if line.strip()]
 
 
-# ----------------------------------------------------------------------------------------------
-# KPIs
-# ----------------------------------------------------------------------------------------------
-
-
 def _kpi(value: Any, unit: str, n: int, **details: Any) -> dict[str, Any]:
     return {"value": value, "unit": unit, "n": n, **details}
 
@@ -251,11 +212,9 @@ def _percentiles(values: np.ndarray, scale: float = 1.0) -> dict[str, float]:
 def attempts_before_stop(attempts: list[dict], num_envs: int) -> list[dict] | None:
     """Attempts that started before the first env completed its last logged attempt.
 
-    Attempts still running when generation stops are cancelled and never logged, and long attempts are the likelier
-    to be running, so the full log under-represents long outcomes. Each env's cancelled attempt started at or after
-    that env's last completion, so every attempt that started before the earliest such completion was logged. This
-    subset is selected by start time, not duration. None when some env completed fewer than
-    :data:`MIN_ATTEMPTS_PER_ENV_FOR_STOP_CORRECTION` attempts, where neither the subset nor the full log is unbiased.
+    Attempts running at the stop are cancelled unlogged, and long ones are likelier to be running. Each env's
+    cancelled attempt started after that env's last completion, so this start-time subset was fully logged. None
+    when some env completed fewer than :data:`MIN_ATTEMPTS_PER_ENV_FOR_STOP_CORRECTION` attempts.
     """
     last_end: dict[int, float] = {}
     completed: Counter[int] = Counter()
@@ -293,7 +252,6 @@ def _success_rate(result: dict | None, stop_attempts: list[dict] | None) -> dict
         attempts,
         interval_95=[lo, hi],
         raw_rate=raw_rate,
-        stop_rule=result.get("run", {}).get("stop_rule"),
         note=note,
     )
 
@@ -302,25 +260,25 @@ def _demos_per_hour(result: dict | None) -> dict:
     run = (result or {}).get("run", {})
     if "generation_time_s" not in run:
         return _not_applicable("needs a --result_file with run timing")
+    gpu, cpu = run["gpu"] or "unknown GPU", run["cpu"] or "unknown CPU"
+    hardware = f"on {gpu}" if run["device"] != "cpu" else f"CPU physics on {cpu}, with {gpu}"
     return _kpi(
         result["num_success"] / (run["generation_time_s"] / 3600),
         "demos/h",
         result["num_success"],
+        note=f"{hardware}, {run['num_envs']} envs; compare only on the same hardware and env count",
         generation_time_s=run["generation_time_s"],
-        setup_time_s=run["setup_time_s"],
         device=run["device"],
+        gpu=run["gpu"],
+        cpu=run["cpu"],
         num_envs=run["num_envs"],
     )
 
 
-def _demos_per_human_demo(result: dict | None, source_episodes: list[dict] | None) -> dict:
-    if result is None:
-        return _not_applicable("needs --result_file")
-    num_source = result.get("run", {}).get("source", {}).get("num_episodes")
-    if num_source is None and source_episodes is not None:
-        num_source = len(source_episodes)
+def _demos_per_human_demo(result: dict | None) -> dict:
+    num_source = (result or {}).get("run", {}).get("num_source_episodes")
     if not num_source:
-        return _not_applicable("needs the source episode count (--result_file run metadata or --source)")
+        return _not_applicable("needs a --result_file with the source episode count")
     note = "input ratio: about requested demos / source demos when the run stops at a success count"
     return _kpi(result["num_success"] / num_source, "ratio", num_source, note=note)
 
@@ -336,8 +294,6 @@ def _annotation_yield(annotation_summary: dict | None) -> dict:
         "fraction",
         processed,
         rejections=annotation_summary["rejections"],
-        manual_remarks=annotation_summary["manual_remarks"],
-        mode=annotation_summary["mode"],
     )
 
 
@@ -640,11 +596,6 @@ def build_report(
         num_envs = result.get("run", {}).get("num_envs")
         if attempts and num_envs:
             stop_attempts = attempts_before_stop(attempts, num_envs)
-        recorded_source = result.get("run", {}).get("source", {})
-        assert source is None or recorded_source.get("sha256") in (
-            None,
-            file_sha256(source),
-        ), f"--source {source} is not the dataset this run generated from ({recorded_source.get('path')})."
     annotation = None
     if annotation_summary:
         with open(annotation_summary, encoding="utf-8") as handle:
@@ -655,7 +606,7 @@ def build_report(
     kpis = {
         "success_rate": _success_rate(result, stop_attempts),
         "demos_per_hour": _demos_per_hour(result),
-        "demos_per_human_demo": _demos_per_human_demo(result, source_episodes),
+        "demos_per_human_demo": _demos_per_human_demo(result),
         "annotation_yield": _annotation_yield(annotation),
         "tracking_error": _tracking_error(episodes, source_episodes),
         "action_saturation": _action_saturation(
@@ -670,13 +621,7 @@ def build_report(
         "planner_failure_types": _planner_failure_types(attempts),
         "planning_time": _planning_time(result, attempts),
     }
-    return {
-        "schema_version": REPORT_SCHEMA_VERSION,
-        "dataset": dataset,
-        "num_episodes": len(episodes),
-        "num_source_episodes": len(source_episodes) if source_episodes is not None else None,
-        "kpis": kpis,
-    }
+    return {"dataset": dataset, "num_episodes": len(episodes), "kpis": kpis}
 
 
 def _format_value(value: Any) -> str:

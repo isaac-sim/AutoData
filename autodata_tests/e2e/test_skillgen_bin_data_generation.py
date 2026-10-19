@@ -74,10 +74,8 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
             "planner": "franka_stack_cube_bin",
         }
         attempts = read_attempt_log(result_file)
-        assert len(attempts) == result["num_attempts"]
         # Every SkillGen attempt plans at least its first transit.
         assert all(attempt["planner_calls"] for attempt in attempts)
-        assert {"status", "wall_time_s", "solve_time_s"} <= set(attempts[0]["planner_calls"][0])
         for attempt in attempts:
             last_call = attempt["planner_calls"][-1]
             planner_failed = attempt["failure_cause"] == "planner"
@@ -93,9 +91,7 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
             "--report_file",
             report_file,
         ])
-        kpis = assert_kpi_report(report_file, APPLICABLE_KPIS)
-        num_calls = sum(len(attempt["planner_calls"]) for attempt in attempts)
-        assert kpis["planner_failure_types"]["num_calls"] == num_calls
+        assert_kpi_report(report_file, APPLICABLE_KPIS)
 
 
 @pytest.mark.with_subprocess

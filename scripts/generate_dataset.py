@@ -33,7 +33,6 @@ live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
 """Launch Isaac Sim Simulator first."""
 
 import argparse
-import time
 
 from isaaclab.app import AppLauncher
 
@@ -42,9 +41,6 @@ from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor
 from autodata_interfaces.tasks.task_descriptor_utils import resolve_task_algorithm
 from autodata_utils.cli import callable_path
-
-# Taken before the simulator launches, so the recorded setup time includes its startup.
-PROCESS_START_TIME = time.monotonic()
 
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in autodata_core.algorithms.
@@ -144,8 +140,10 @@ simulation_app = app_launcher.app
 import asyncio  # noqa: E402
 import gymnasium as gym  # noqa: E402
 import numpy as np  # noqa: E402
+import platform  # noqa: E402
 import random  # noqa: E402
 import sys  # noqa: E402
+import time  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -164,12 +162,7 @@ from autodata_interfaces.env import (  # noqa: E402
 )
 from autodata_interfaces.env.registration import load_callable, register_external_environment  # noqa: E402
 from autodata_utils import pose_math  # noqa: E402
-from autodata_utils.generation_result import (  # noqa: E402
-    AttemptLog,
-    attempts_file_for,
-    file_sha256,
-    write_generation_result,
-)
+from autodata_utils.generation_result import AttemptLog, attempts_file_for, write_generation_result  # noqa: E402
 from autodata_utils.tensor_utils import as_torch  # noqa: E402
 
 
@@ -182,14 +175,11 @@ async def run_data_generator(
     success_term,
     pause_subtask: bool,
     stats: dict,
-    timing: dict,
     attempt_log: AttemptLog | None,
 ) -> None:
     """Repeatedly call ``data_generator.generate``, tally outcomes into ``stats`` and log each attempt."""
     while True:
         attempt_start = time.monotonic()
-        if timing["generation_start"] is None:
-            timing["generation_start"] = attempt_start
         try:
             result = await data_generator.generate(
                 env_id=env_id,
@@ -213,15 +203,14 @@ async def run_data_generator(
 
 
 def _attempt_record(env_id: int, result: GenerationResult, start_time: float, end_time: float) -> dict:
-    """One attempt-log line; times [s] are measured from process start."""
+    """One attempt-log line; times [s] are monotonic-clock readings."""
     return {
         "env_id": env_id,
         "success": result.success,
         "failure_cause": result.failure_cause,
         "failed_subtask": result.failed_subtask,
-        "num_steps": result.num_steps,
-        "start_time_s": start_time - PROCESS_START_TIME,
-        "end_time_s": end_time - PROCESS_START_TIME,
+        "start_time_s": start_time,
+        "end_time_s": end_time,
         "initial_object_poses": _initial_object_poses(result.initial_state, env_id),
         "planner_calls": list(result.planner_calls),
     }
@@ -238,6 +227,20 @@ def _initial_object_poses(initial_state: dict, env_id: int) -> dict[str, list[fl
     return poses
 
 
+def _hardware(device: str) -> dict[str, str | None]:
+    """Model names of the GPU and CPU the run used; physics runs on the CPU when ``device`` is ``cpu``."""
+    gpu = None
+    if torch.cuda.is_available():
+        index = torch.device(device).index if device.startswith("cuda") else None
+        gpu = torch.cuda.get_device_name(torch.cuda.current_device() if index is None else index)
+    cpu = None
+    cpuinfo = Path("/proc/cpuinfo")
+    if cpuinfo.exists():
+        model_lines = (line for line in cpuinfo.read_text().splitlines() if line.startswith("model name"))
+        cpu = next((line.split(":", 1)[1].strip() for line in model_lines), None)
+    return {"gpu": gpu, "cpu": cpu or platform.processor() or None}
+
+
 def _reset_ranges(env_cfg: Any) -> list[dict]:
     """Reset event terms that sample object poses from a ``pose_range``.
 
@@ -245,7 +248,7 @@ def _reset_ranges(env_cfg: Any) -> list[dict]:
     """
     ranges = []
     events = getattr(env_cfg, "events", None)
-    for term_name, term in (vars(events) if events is not None else {}).items():
+    for term in (vars(events) if events is not None else {}).values():
         params = getattr(term, "params", None)
         if getattr(term, "mode", None) != "reset" or not params or not isinstance(params.get("pose_range"), dict):
             continue
@@ -262,7 +265,6 @@ def _reset_ranges(env_cfg: Any) -> list[dict]:
             if init_state is not None:
                 default_positions[name] = [float(value) for value in init_state.pos]
         ranges.append({
-            "term": term_name,
             "func": func,
             "assets": assets,
             "pose_range": {axis: [float(bounds[0]), float(bounds[1])] for axis, bounds in params["pose_range"].items()},
@@ -308,7 +310,6 @@ def setup_async_generation(
 
     data_generator = DataGenerator(datastream=datastream, algorithm=algorithm)
     stats = {"num_success": 0, "num_failures": 0, "num_attempts": 0}
-    timing = {"generation_start": None}
 
     tasks = []
     for env_id in range(num_envs):
@@ -322,7 +323,6 @@ def setup_async_generation(
                 success_term=success_term,
                 pause_subtask=pause_subtask,
                 stats=stats,
-                timing=timing,
                 attempt_log=attempt_log,
             )
         )
@@ -335,7 +335,6 @@ def setup_async_generation(
         "action_queue": env_action_queue,
         "info_pool": datastream.source_pool,
         "stats": stats,
-        "timing": timing,
     }
 
 
@@ -463,7 +462,7 @@ def main() -> None:
 
         data_gen_tasks = asyncio.ensure_future(asyncio.gather(*async_components["tasks"]))
         generation_completed = False
-        generation_end = None
+        generation_start = time.monotonic()
         try:
             generation_completed = env_loop(
                 env,
@@ -488,7 +487,6 @@ def main() -> None:
             _close_motion_planners(motion_planners)
 
         if generation_completed and args_cli.result_file:
-            generation_start = async_components["timing"]["generation_start"]
             write_generation_result(
                 result_file=args_cli.result_file,
                 algorithm=args_cli.alg,
@@ -500,18 +498,12 @@ def main() -> None:
                     else None
                 ),
                 run_metadata={
-                    "seed": generation_policy_params.seed,
-                    "stop_rule": "successes" if generation_policy_params.guarantee_success else "attempts",
                     "device": args_cli.device,
+                    **_hardware(args_cli.device),
                     "num_envs": args_cli.num_envs,
                     "step_dt": float(env.step_dt),
-                    "setup_time_s": generation_start - PROCESS_START_TIME,
                     "generation_time_s": generation_end - generation_start,
-                    "source": {
-                        "path": args_cli.input_file,
-                        "sha256": file_sha256(args_cli.input_file),
-                        "num_episodes": datastream.num_source_demos,
-                    },
+                    "num_source_episodes": datastream.num_source_demos,
                     "reset_ranges": _reset_ranges(env_cfg),
                     "attempts_file": Path(attempts_file).name,
                 },

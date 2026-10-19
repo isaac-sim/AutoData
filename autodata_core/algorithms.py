@@ -185,8 +185,7 @@ class SkillGen(GenerationAlgorithm):
             motion_planners: One planner per env_id. Planners must expose
                 ``update_world_and_plan_motion(target_pose, expected_attached_object, env_id, ...)``
                 and ``get_planned_poses() -> list[torch.Tensor[4, 4]]``. ``config.motion_noise_scale``
-                is read if present, and so is ``last_plan_summary``, a dict describing the latest
-                planning call, which is copied into the attempt's ``planner_calls``.
+                and ``last_plan_summary`` (copied into the attempt's ``planner_calls``) are read if present.
         """
         assert motion_planners, "SkillGen requires at least one motion planner"
         self.motion_planners = motion_planners

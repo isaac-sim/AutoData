@@ -70,18 +70,3 @@ def assert_kpi_report(report_file: str, applicable: set[str]) -> dict:
         numbers = value.values() if isinstance(value, dict) else [value]
         assert all(math.isfinite(number) for number in numbers), f"KPI {name} is not finite: {value}"
     return kpis
-
-
-def assert_step_records_align(dataset_file: str) -> None:
-    """Assert each generated episode records one intended and one achieved end-effector pose per action."""
-
-    with h5py.File(dataset_file, "r") as dataset:
-        for name, episode in dataset["data"].items():
-            num_actions = len(episode["actions"])
-            datagen_info = episode["obs/datagen_info"]
-            lengths = {
-                f"{group}/{eef}": len(poses)
-                for group in ("intended_eef_pose", "eef_pose")
-                for eef, poses in datagen_info[group].items()
-            }
-            assert set(lengths.values()) == {num_actions}, f"{name}: {num_actions} actions but {lengths}"

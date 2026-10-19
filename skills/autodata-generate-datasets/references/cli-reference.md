@@ -66,6 +66,5 @@ Add `--report` to print the KPIs of one generated dataset (see the KPIs docs pag
 
 ```bash
 python scripts/validate_dataset.py <generated.hdf5> --report --result_file <result.json> \
-    --source <source.hdf5> --embodiment <embodiment.yaml> [--annotation_summary <summary.json>] \
-    [--report_file <kpis.json>]
+    --source <source.hdf5> --embodiment <embodiment.yaml>
 ```

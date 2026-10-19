@@ -96,9 +96,8 @@ Visualization and Debugging
 The cuRobo backend can visualize its collision-sphere model and planned trajectories via
 `rerun <https://rerun.io/>`_ (``visualize_spheres`` / ``visualize_plan`` config flags).
 During multi-env generation these are enabled only for env 0 to keep the simulation
-responsive. After each ``update_world_and_plan_motion()`` call, the cuRobo backend's
-``last_plan_summary`` holds the outcome, the cuRobo status, and wall-clock and solver times.
-SkillGen copies it into each attempt's ``planner_calls`` (see :doc:`../references/kpis`).
+responsive. Planner diagnostics (success rates, timing) are available through
+``get_planner_info()``.
 
 Adding a New Backend
 --------------------

@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import os
 import tempfile
@@ -71,15 +70,6 @@ def write_generation_result(
     finally:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(temporary_file_name)
-
-
-def file_sha256(path: str) -> str:
-    """Hex SHA-256 digest of a file, recorded so a report can tell which source a run used."""
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def attempts_file_for(result_file: str) -> str:

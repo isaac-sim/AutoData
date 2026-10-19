@@ -122,11 +122,6 @@ class DataGenInfoPool:
 
         if "datagen_info" not in ep_grp["obs"]:
             raise ValueError("Episode lacks 'datagen_info' obs annotations")
-        missing = {"eef_pose", "object_pose", "target_eef_pose", "subtask_term_signals"} - set(
-            ep_grp["obs"]["datagen_info"]
-        )
-        if missing:
-            raise ValueError(f"Episode 'datagen_info' lacks {sorted(missing)}; pass an annotated source dataset")
 
         eef_pose = ep_grp["obs"]["datagen_info"]["eef_pose"]
         object_poses_dict = ep_grp["obs"]["datagen_info"]["object_pose"]

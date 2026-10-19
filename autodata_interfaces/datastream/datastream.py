@@ -277,19 +277,12 @@ class Datastream:
         return object_pose_matrix
 
     def _boundary_signal_names(self) -> list[str]:
-        """Termination-signal names of every non-final subtask, across EEFs.
-
-        The final subtask ends with the trajectory, so its signal never marks a boundary.
-        """
+        """Termination-signal names of every non-final subtask; the final one ends with the trajectory."""
 
         return [name for eef in self.get_eef_names() for name in self.get_term_signal_names(eef)[:-1] if name]
 
     def has_subtask_term_signals(self, obs_group: str = "subtask_terms") -> bool:
-        """Whether :meth:`get_subtask_term_signals` can read every subtask-boundary signal.
-
-        True when ``env.obs_buf[obs_group]`` is a non-concatenated group holding one term per
-        boundary signal. Not every env publishes such a group.
-        """
+        """Whether the env publishes every signal :meth:`get_subtask_term_signals` reads; not every env does."""
 
         obs_buf = getattr(self.env, "obs_buf", None)
         group = obs_buf.get(obs_group) if isinstance(obs_buf, dict) else None
@@ -301,13 +294,13 @@ class Datastream:
     def get_subtask_term_signals(
         self, env_ids: Sequence[int] | None = None, obs_group: str = "subtask_terms"
     ) -> dict[str, torch.Tensor]:
-        """Read the current subtask-boundary signals from the env observation buffer.
+        """Read the current per-subtask termination signals from the env observation buffer.
 
-        For the termination signal of every non-final subtask (across all EEFs), reads the
-        identically named boolean observation term from ``env.obs_buf[obs_group]``. The env must
-        therefore publish one observation term per boundary signal in a non-concatenated group.
-        Auto annotation samples this each replay step to locate subtask boundaries without a human
-        in the loop.
+        For every non-final subtask's termination-signal name declared by the task descriptor (across all
+        EEFs), reads the identically named boolean observation term from
+        ``env.obs_buf[obs_group]``. The env must therefore publish one observation term per
+        term-signal name in a non-concatenated group. Auto annotation samples this each replay
+        step to locate subtask boundaries without a human in the loop.
 
         Args:
             env_ids: Environments to read; ``None`` reads all.

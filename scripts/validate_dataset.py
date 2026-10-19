@@ -1,17 +1,15 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Structurally validate AutoData HDF5 datasets and report the KPIs of a generated one.
+"""Structurally validate AutoData HDF5 datasets.
 
-Prints a summary table (episode count, env id, sim args) per file followed by any issues. With
-``--report``, also prints the KPIs of a single generated dataset.
+Prints a summary table (episode count, env id, sim args) per file followed by any issues.
 
 Usage::
 
     python scripts/validate_dataset.py <file.hdf5> [<file2.hdf5> ...]
     python scripts/validate_dataset.py directory/*.hdf5
-    python scripts/validate_dataset.py <generated.hdf5> --report --result_file <result.json> \\
-        --source <source.hdf5> --embodiment <embodiment.yaml> [--report_file <kpis.json>]
+    python scripts/validate_dataset.py <generated.hdf5> --report --result_file <result.json>  # KPIs
 
 The command exits nonzero if any supplied file is invalid.
 """

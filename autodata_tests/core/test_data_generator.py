@@ -184,7 +184,6 @@ def test_planner_failure_records_cause_and_subtask():
     assert result.success is False
     assert result.failure_cause == "planner"
     assert result.failed_subtask == {"franka": 0}
-    assert result.num_steps == 0
 
 
 def test_execution_failure_is_attributed_to_the_first_unfinished_subtask():

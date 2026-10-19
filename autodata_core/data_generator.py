@@ -57,7 +57,6 @@ class GenerationResult:
         failed_subtask: Per-EEF index of the subtask where the attempt failed. For a planner failure,
             the subtask being planned; for an execution failure, the first subtask whose termination
             signal never fired (the last subtask if all fired). None when unknown.
-        num_steps: Number of env steps executed.
         planner_calls: One summary per motion-planner call made during the attempt.
     """
 
@@ -65,7 +64,6 @@ class GenerationResult:
     success: bool
     failure_cause: Literal["planner", "execution"] | None = None
     failed_subtask: dict[str, int] | None = None
-    num_steps: int = 0
     planner_calls: tuple[dict, ...] = ()
 
 
@@ -559,7 +557,6 @@ class DataGenerator:
         if self._track_term_signals is None:
             self._track_term_signals = self.datastream.has_subtask_term_signals()
         fired_term_signals: set[str] = set()
-        num_steps = 0
 
         randomized_subtask_boundaries: dict[str, np.ndarray] | None = None
         prev_pool_size = 0
@@ -597,7 +594,6 @@ class DataGenerator:
                             success=False,
                             failure_cause="planner",
                             failed_subtask={eef_name: eef_state.current_subtask_index},
-                            num_steps=num_steps,
                             planner_calls=self._collect_planner_calls(eef_states),
                         )
                     next_trajectory, _is_motion_plan = result
@@ -619,7 +615,6 @@ class DataGenerator:
                 env_id=env_id,
                 env_action_queue=env_action_queue,
             )
-            num_steps += 1
             if self._track_term_signals:
                 signals = self.datastream.get_subtask_term_signals(env_ids=[env_id])
                 fired_now = torch.stack([value[0] for value in signals.values()]).tolist()
@@ -659,7 +654,6 @@ class DataGenerator:
             success=buffers.success,
             failure_cause="execution" if failed else None,
             failed_subtask=self._failed_subtasks(fired_term_signals) if failed and self._track_term_signals else None,
-            num_steps=num_steps,
             planner_calls=self._collect_planner_calls(eef_states),
         )
 
