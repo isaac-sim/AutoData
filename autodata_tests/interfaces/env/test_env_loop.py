@@ -56,6 +56,7 @@ class _MockEnv:
     def __init__(self, num_envs: int) -> None:
         self.num_envs = num_envs
         self.device = "cpu"
+        self.cfg = SimpleNamespace()
         self.action_space = SimpleNamespace(shape=(num_envs, 1))
         self.recorder_manager = _MockRecorderManager()
         self.sim = _MockSimulation()
@@ -114,10 +115,13 @@ def test_reset_without_settling_completes_without_environment_steps():
 
 
 @pytest.mark.parametrize("settling_env_id", [0, 1])
-def test_settling_env_uses_zero_actions_while_other_env_continues(settling_env_id):
+@pytest.mark.parametrize("idle_action", [None, [2.0]], ids=["default_zero", "configured"])
+def test_settling_env_uses_idle_action_while_other_env_continues(settling_env_id, idle_action):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     env = _MockEnv(num_envs=2)
+    if idle_action is not None:
+        env.cfg.idle_action = idle_action
     running_env_id = 1 - settling_env_id
     reset_queue: asyncio.Queue = asyncio.Queue()
     action_queue: asyncio.Queue = asyncio.Queue()
@@ -146,7 +150,8 @@ def test_settling_env_uses_zero_actions_while_other_env_continues(settling_env_i
         assert completed is False
         assert env.reset_env_ids == [(settling_env_id,)]
         assert len(env.actions) == 2
-        assert [action[settling_env_id, 0].item() for action in env.actions] == [0.0, 0.0]
+        expected_idle = 0.0 if idle_action is None else idle_action[0]
+        assert [action[settling_env_id, 0].item() for action in env.actions] == [expected_idle, expected_idle]
         assert [action[running_env_id, 0].item() for action in env.actions] == [3.0, 4.0]
         assert env.recorder_manager.reset_env_ids == [(settling_env_id,)]
         assert env.recorder_manager.post_reset_env_ids == []
@@ -159,3 +164,26 @@ def test_settling_env_uses_zero_actions_while_other_env_continues(settling_env_i
         loop.run_until_complete(asyncio.wait_for(reset_queue.join(), timeout=0.1))
     finally:
         _close_event_loop(loop, tasks)
+
+
+@pytest.mark.parametrize("idle_action", [[1.0, 2.0], [float("nan")]], ids=["wrong_shape", "nonfinite"])
+def test_settling_rejects_invalid_idle_action_before_reset(idle_action):
+    loop = asyncio.new_event_loop()
+    env = _MockEnv(num_envs=1)
+    env.cfg.idle_action = idle_action
+    reset_queue: asyncio.Queue = asyncio.Queue()
+    reset_queue.put_nowait(EnvResetRequest(env_id=0, completion=loop.create_future()))
+    try:
+        with pytest.raises(AssertionError, match="env.cfg.idle_action"):
+            env_loop(
+                env=env,
+                env_reset_queue=reset_queue,
+                env_action_queue=asyncio.Queue(),
+                asyncio_event_loop=loop,
+                generation_policy_params=GenerationPolicy(reset_settling_steps=2),
+                stats={"num_success": 0, "num_failures": 0, "num_attempts": 0},
+            )
+        assert env.reset_env_ids == []
+        assert env.actions == []
+    finally:
+        loop.close()

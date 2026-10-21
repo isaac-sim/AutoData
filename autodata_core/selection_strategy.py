@@ -42,9 +42,15 @@ class SelectionStrategyMeta(type):
 
 
 class SelectionStrategy(metaclass=SelectionStrategyMeta):
-    """ABC for source-demo selection strategies."""
+    """ABC for source-demo selection strategies.
+
+    Strategies declare which reference-object representations they can select from.
+    Strategies that do not inspect the object state can support both representations.
+    """
 
     NAME: str
+    supports_rigid_objects: bool = True
+    supports_deformable_objects: bool = False
 
     @abc.abstractmethod
     def select_source_demo(
@@ -69,6 +75,7 @@ class RandomStrategy(SelectionStrategy):
     """Uniform random pick over source demos."""
 
     NAME = "random"
+    supports_deformable_objects = True
 
     def select_source_demo(
         self,
@@ -182,6 +189,8 @@ class RegistrationCostStrategy(SelectionStrategy):
     """Pick a source segment using deformable-object TPS registration cost."""
 
     NAME = "registration_cost"
+    supports_rigid_objects = False
+    supports_deformable_objects = True
 
     def select_source_demo(
         self,

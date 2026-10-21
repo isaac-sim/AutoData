@@ -264,6 +264,9 @@ def env_loop(
     config) rather than from ``env.cfg.datagen_config``: ``num_trials`` interpreted as successes
     when ``guarantee_success`` is set, otherwise as total attempts.
 
+    Reset settling uses ``env.cfg.idle_action`` when configured, or zeros otherwise. A configured
+    idle action must be a finite vector matching one environment's action dimensions.
+
     Args:
         env: The environment to run the main step loop on.
         env_reset_queue: The asyncio queue carrying :class:`EnvResetRequest` instances.
@@ -281,6 +284,15 @@ def env_loop(
     guarantee_success = generation_policy_params.guarantee_success
     reset_settling_steps = generation_policy_params.reset_settling_steps
     assert reset_settling_steps >= 0, "reset_settling_steps must be non-negative"
+    idle_actions = torch.zeros(env.action_space.shape, dtype=torch.float32, device=env.device)
+    configured_idle_action = getattr(env.cfg, "idle_action", None)
+    if reset_settling_steps > 0 and configured_idle_action is not None:
+        idle_action = torch.as_tensor(configured_idle_action, dtype=idle_actions.dtype, device=env.device)
+        assert (
+            idle_action.shape == env.action_space.shape[1:]
+        ), f"env.cfg.idle_action must have shape {env.action_space.shape[1:]}, got {tuple(idle_action.shape)}."
+        assert torch.isfinite(idle_action).all(), "env.cfg.idle_action must contain only finite values."
+        idle_actions[:] = idle_action
     env_id_tensor = torch.tensor([0], dtype=torch.int64, device=env.device)
     settling_requests: dict[int, EnvResetRequest] = {}
     settling_steps_remaining: dict[int, int] = {}
@@ -323,9 +335,9 @@ def env_loop(
                     "non-settling environments."
                 )
 
-            actions = torch.zeros(env.action_space.shape)
+            actions = idle_actions.clone()
 
-            # Settling environments use the zero action. Batch-fetch one real action for every
+            # Settling environments use the idle action. Batch-fetch one real action for every
             # other environment so their generation trajectories continue without interruption.
             action_count = env.num_envs - len(settling_requests)
             get_tasks = [env_action_queue.get() for _ in range(action_count)]

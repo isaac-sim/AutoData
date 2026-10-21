@@ -19,6 +19,8 @@ import torch
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
+from autodata_core.selection_strategy import make_selection_strategy
+
 if TYPE_CHECKING:
     from autodata_core.data_generator import DataGenerator, _EEFGenerationState
     from autodata_core.waypoint import Waypoint
@@ -226,7 +228,17 @@ class SoftMimicGen(GenerationAlgorithm):
         live_nodal_positions = datastream.get_object_nodal_positions()
         for eef_name in datastream.get_eef_names():
             for subtask_index, subtask in enumerate(datastream.get_subtasks(eef_name)):
-                if not self.is_deformable_subtask(subtask):
+                is_deformable = self.is_deformable_subtask(subtask)
+                strategy = make_selection_strategy(subtask.selection_strategy)
+                supports_object = (
+                    strategy.supports_deformable_objects if is_deformable else strategy.supports_rigid_objects
+                )
+                object_type = "deformable" if is_deformable else "rigid"
+                assert supports_object, (
+                    f"Selection strategy {subtask.selection_strategy!r} does not support {object_type} reference"
+                    f" objects for SoftMimicGen subtask {eef_name}[{subtask_index}]."
+                )
+                if not is_deformable:
                     continue
                 assert (
                     subtask.object_ref
