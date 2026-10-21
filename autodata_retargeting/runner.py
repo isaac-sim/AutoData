@@ -172,6 +172,7 @@ def run(args, simulation_app) -> int:
             eef_offsets=eef_offsets,
             eef_reference_link=eef_reference_link,
             source_hand_postures=source_hand_postures,
+            is_legacy_quaternion_format=dataset_file_handler.is_legacy_quaternion_format(),
         )
         replayer = Replayer(env=env, ctx=ctx, generation_policy=generation_policy, output_file=args.output_file)
         return replayer.run(provider, num_envs, simulation_app)

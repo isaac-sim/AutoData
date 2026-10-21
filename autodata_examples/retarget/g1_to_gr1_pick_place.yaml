@@ -13,7 +13,7 @@ write_datagen_info: true  # write full datagen_info -> output is a drop-in gener
 
 source_embodiment: ../embodiments/g1_ik_abs.yaml
 target_embodiment: ../embodiments/gr1_ik_abs.yaml
-target_env_name: Isaac-PickPlace-GR1T2-Abs-v0
+target_env_name: IsaacContrib-PickPlace-GR1T2-Abs
 
 hand_policy: binary
 init_robot_from_ik: false
@@ -44,7 +44,7 @@ subtasks:
       object_tracking: object
 
     - object_ref: world
-      description: Go back to iddle
+      description: Go back to idle
 
   left:
     - object_ref: object
@@ -60,4 +60,4 @@ subtasks:
       object_tracking: object
 
     - object_ref: world
-      description: Go back to iddle
+      description: Go back to idle

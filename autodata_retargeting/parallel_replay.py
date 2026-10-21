@@ -78,6 +78,28 @@ def _hold_action(env, env_id, target_adapter, passthrough) -> torch.Tensor:
     return action[0] if action.dim() > 1 else action
 
 
+class _DrainBarrier:
+    """Tracks how many workers have run out of plans, so they can all stop together.
+
+    ``env_loop`` requires exactly one action per env on every tick, so a worker must never stop
+    contributing actions while any other worker is still going to submit one. A worker only ever goes
+    idle once (``next_for_env`` keeps returning ``None`` from then on), and it always ``observe()``-s a
+    plan before it can go idle, so the count reaching ``num_envs`` is a consistent, race-free signal that
+    every in-flight plan has been observed -- unlike re-checking ``provider.in_flight()`` independently on
+    every worker, which can see a stale count while the last episode's worker is still finishing up.
+    """
+
+    def __init__(self, num_envs: int) -> None:
+        self._num_envs = num_envs
+        self._num_idle = 0
+
+    def mark_idle(self) -> None:
+        self._num_idle += 1
+
+    def all_idle(self) -> bool:
+        return self._num_idle == self._num_envs
+
+
 async def _replay_worker(
     ctx: ReplayContext,
     env,
@@ -86,23 +108,29 @@ async def _replay_worker(
     action_queue: asyncio.Queue,
     results: list[tuple[str, bool]],
     stats: dict[str, int],
+    drain_barrier: _DrainBarrier,
 ) -> None:
     """One env's worker: pull plans from ``provider`` and replay them.
 
-    When the provider hands out nothing: if it is fully drained (nothing in flight on any env) the worker
-    *returns* so ``env_loop`` terminates via its task-completion check (this covers an unreachable success
-    target on a finite source); otherwise it *holds* at the current pose so the batched step keeps
-    advancing the still-running workers.
+    When the provider hands out nothing, the worker goes idle and holds at the current pose (so the
+    batched step keeps advancing the still-running workers) until every other worker has also gone idle --
+    see :class:`_DrainBarrier`. Only then do all workers return together, so ``env_loop`` terminates via
+    its task-completion check (this covers an unreachable success target on a finite source).
     """
     target_adapter = ctx.target_adapter
     env_ids = torch.tensor([env_id], device=env.device)
     hold_passthrough = None  # last episode's passthrough, reused to hold the gripper at a valid command
+    idle = False
     while True:
-        # ``next_for_env`` is env-agnostic for the copy provider (its plans do not depend on which env runs
-        # them). Synchronous, so each worker claims a distinct source episode + index.
-        plan = provider.next_for_env(env_id)
-        if plan is None:
-            if provider.in_flight() == 0:
+        if not idle:
+            # ``next_for_env`` is env-agnostic for the copy provider (its plans do not depend on which env
+            # runs them). Synchronous, so each worker claims a distinct source episode + index.
+            plan = provider.next_for_env(env_id)
+            if plan is None:
+                idle = True
+                drain_barrier.mark_idle()
+        if idle:
+            if drain_barrier.all_idle():
                 return
             if hold_passthrough is None:
                 hold_passthrough = _zeros_passthrough(env, target_adapter)
@@ -146,9 +174,10 @@ def run_parallel_replay(
     reset_queue: asyncio.Queue = asyncio.Queue()  # unused here; env_loop expects the handle
     results: list[tuple[str, bool]] = []
     stats = {"num_success": 0, "num_failures": 0, "num_attempts": 0}
+    drain_barrier = _DrainBarrier(num_envs)
 
     tasks = [
-        event_loop.create_task(_replay_worker(ctx, env, env_id, provider, action_queue, results, stats))
+        event_loop.create_task(_replay_worker(ctx, env, env_id, provider, action_queue, results, stats, drain_barrier))
         for env_id in range(num_envs)
     ]
     data_gen_tasks = asyncio.ensure_future(asyncio.gather(*tasks))

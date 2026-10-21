@@ -11,12 +11,20 @@ from isaaclab.utils.datasets import EpisodeData
 
 from .util import quat_slerp_batch, se3_inverse
 
-# Component order that maps a recorded ``robot_links_state`` quaternion to Isaac Lab's ``(w, x, y, z)``.
-# ``robot_links_state`` comes from ``body_link_pose_w`` and stores its quaternion in an order that this
-# permutation reorders to ``(w, x, y, z)`` -- verified to reconstruct the datagen ``eef_pose`` exactly.
-# :func:`source_eef_poses_at_link` re-validates it per dataset (matching the observed link), so a future
-# format change fails loudly rather than silently producing a wrong reference.
-_LINK_STATE_QUAT_ORDER = (1, 2, 3, 0)
+
+def _link_state_quat_order(is_legacy_quaternion_format: bool) -> tuple[int, int, int, int]:
+    """Component order that reorders a recorded ``robot_links_state`` quaternion to ``(x, y, z, w)``.
+
+    ``robot_links_state`` comes from ``body_link_pose_w`` and is stored in whatever convention the
+    *source* dataset file was written with: legacy files (``format_version`` < 1) store ``(w, x, y, z)``,
+    everything else already stores ``(x, y, z, w)`` -- the convention :func:`isaaclab.utils.math.
+    matrix_from_quat` expects. ``HDF5DatasetFileHandler.load_episode`` only auto-converts ``root_pose``,
+    not ``robot_links_state``, so the caller must pass the dataset's own
+    ``is_legacy_quaternion_format()``. :func:`source_eef_poses_at_link` re-validates the resulting
+    convention per dataset (matching the observed link), so a wrong guess fails loudly rather than
+    silently producing a wrong reference.
+    """
+    return (1, 2, 3, 0) if is_legacy_quaternion_format else (0, 1, 2, 3)
 
 
 def source_datagen_poses(
@@ -51,33 +59,35 @@ def source_datagen_poses(
     return result
 
 
-def _link_state_pose(links_state: torch.Tensor, body_index: int) -> torch.Tensor:
+def _link_state_pose(links_state: torch.Tensor, body_index: int, quat_order: tuple[int, int, int, int]) -> torch.Tensor:
     """``(T, 4, 4)`` world pose of one body from a recorded ``robot_links_state`` ``(T, num_bodies, 13)``.
 
     Row layout is ``[pos(3), quat(4), lin_vel(3), ang_vel(3)]``; the quaternion is reordered to
-    ``(w, x, y, z)`` via :data:`_LINK_STATE_QUAT_ORDER` before building the rotation.
+    ``(x, y, z, w)`` via ``quat_order`` (see :func:`_link_state_quat_order`) before building the rotation.
     """
     row = links_state[:, body_index]
     num_steps = row.shape[0]
     pose = torch.eye(4, dtype=row.dtype, device=row.device).repeat(num_steps, 1, 1)
-    pose[:, :3, :3] = math_utils.matrix_from_quat(row[:, 3:7][:, list(_LINK_STATE_QUAT_ORDER)])
+    pose[:, :3, :3] = math_utils.matrix_from_quat(row[:, 3:7][:, list(quat_order)])
     pose[:, :3, 3] = row[:, :3]
     return pose
 
 
-def _match_body(links_state: torch.Tensor, target: torch.Tensor) -> tuple[int, float]:
+def _match_body(
+    links_state: torch.Tensor, target: torch.Tensor, quat_order: tuple[int, int, int, int]
+) -> tuple[int, float]:
     """Body index whose recorded orientation best matches ``target``, plus that mean error [deg].
 
     Matches on orientation only (translation-free), so it is unaffected by the world-vs-env-origin
     offset between the world-frame link states and the env-relative datagen ``target``. This locates a
     datagen pose (observed ``eef_pose`` or commanded ``target_eef_pose``) among the robot's bodies
     without needing body names, and the match residual doubles as a check of the link-state quaternion
-    convention (:data:`_LINK_STATE_QUAT_ORDER`).
+    convention (``quat_order``, see :func:`_link_state_quat_order`).
     """
     target_quat = math_utils.quat_from_matrix(target[:, :3, :3])
     best_index, best_err = 0, float("inf")
     for body_index in range(links_state.shape[1]):
-        quat = links_state[:, body_index, 3:7][:, list(_LINK_STATE_QUAT_ORDER)]
+        quat = links_state[:, body_index, 3:7][:, list(quat_order)]
         err = float(torch.rad2deg(math_utils.quat_error_magnitude(target_quat, quat)).mean())
         if err < best_err:
             best_index, best_err = body_index, err
@@ -92,6 +102,7 @@ def source_eef_poses_at_link(
     eef_name_map: dict[str, str] | None = None,
     observed_tol_deg: float = 5.0,
     controlled_tol_deg: float = 20.0,
+    is_legacy_quaternion_format: bool = False,
 ) -> dict[str, torch.Tensor]:
     """Reconstruct the source *achieved* EEF poses at each EEF's IK-controlled link, from link states.
 
@@ -122,6 +133,9 @@ def source_eef_poses_at_link(
         observed_tol_deg: Max orientation error [deg] tolerated when locating the observed link.
         controlled_tol_deg: Max error [deg] when matching the controlled link to ``target_eef_pose``
             (looser than ``observed_tol_deg``: the achieved link lags its command by the tracking error).
+        is_legacy_quaternion_format: The source dataset file's
+            ``HDF5DatasetFileHandler.is_legacy_quaternion_format()`` -- selects the ``robot_links_state``
+            quaternion component order (see :func:`_link_state_quat_order`).
     """
     obs = episode.data.get("obs", {})
     links_state = obs.get("robot_links_state") if isinstance(obs, dict) else None
@@ -129,6 +143,7 @@ def source_eef_poses_at_link(
         "eef_reference_link reconstruction needs 'obs/robot_links_state' (per-step link poses) in the "
         "source demo; this env's dataset does not record it. Use reference_pose without eef_reference_link."
     )
+    quat_order = _link_state_quat_order(is_legacy_quaternion_format)
     match_controlled = isinstance(controlled_spec, str)
     datagen_observed = source_datagen_poses(episode, eef_names, "eef_pose", eef_name_map)
     datagen_commanded = (
@@ -144,14 +159,14 @@ def source_eef_poses_at_link(
     result: dict[str, torch.Tensor] = {}
     for eef_name in eef_names:
         anchor = datagen_observed[eef_name]
-        observed_index, err = _match_body(links_state, anchor)
+        observed_index, err = _match_body(links_state, anchor, quat_order)
         assert err <= observed_tol_deg, (
             f"could not locate eef {eef_name!r}'s observed link in the recorded link states (nearest body "
             f"off by {err:.1f} deg > {observed_tol_deg}); the link-state quaternion convention may differ "
             "for this dataset."
         )
         if match_controlled:
-            controlled_index, cerr = _match_body(links_state, datagen_commanded[eef_name])
+            controlled_index, cerr = _match_body(links_state, datagen_commanded[eef_name], quat_order)
             assert cerr <= controlled_tol_deg, (
                 f"could not locate eef {eef_name!r}'s controlled link (matching target_eef_pose): nearest "
                 f"body off by {cerr:.1f} deg > {controlled_tol_deg}."
@@ -163,8 +178,8 @@ def source_eef_poses_at_link(
                 f"(e.g. {robot_body_names[:3]}...)."
             )
             controlled_index = robot_body_names.index(controlled_link)
-        relative = se3_inverse(_link_state_pose(links_state, observed_index)) @ _link_state_pose(
-            links_state, controlled_index
+        relative = se3_inverse(_link_state_pose(links_state, observed_index, quat_order)) @ _link_state_pose(
+            links_state, controlled_index, quat_order
         )
         result[eef_name] = anchor @ relative
     return result

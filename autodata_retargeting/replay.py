@@ -238,19 +238,44 @@ def _record_signal_frame(env: Any, env_id: int, signal_frame: dict[str, torch.Te
     env.recorder_manager.add_to_episodes("obs/datagen_info/subtask_term_signals", value, env_ids=[env_id])
 
 
+def _reference_frame_object_poses(env: Any, env_id: int, target_adapter: EmbodimentAdapter) -> dict[str, torch.Tensor]:
+    """``{name: (1, 4, 4)}`` non-robot rigid *and articulated* object poses in the embodiment's reference
+    frame -- mirrors ``Datastream.get_object_poses`` (what ``annotate_demos``' ``PreStepDatagenInfoRecorder``
+    writes) so a ``write_datagen_info`` output is a true drop-in ``generate_dataset.py`` source.
+    """
+    scene = env.scene
+    origin = as_torch(scene.env_origins)[env_id : env_id + 1]
+    assets = {**scene.rigid_objects, **getattr(scene, "articulations", {})}
+    reference = target_adapter.get_reference_frame_pose([env_id])
+    reference_inverse = torch.linalg.inv(reference) if reference is not None else None
+    poses: dict[str, torch.Tensor] = {}
+    for name, obj in assets.items():
+        if name == target_adapter.robot_asset_name:
+            continue
+        pos = as_torch(obj.data.root_pos_w)[env_id : env_id + 1] - origin
+        quat = as_torch(obj.data.root_quat_w)[env_id : env_id + 1]
+        pose = torch.eye(4, dtype=pos.dtype, device=pos.device).unsqueeze(0)
+        pose[:, :3, :3] = math_utils.matrix_from_quat(quat)
+        pose[:, :3, 3] = pos
+        poses[name] = reference_inverse @ pose if reference_inverse is not None else pose
+    return poses
+
+
 def _record_datagen_poses(
     env: Any,
     env_id: int,
     target_adapter: EmbodimentAdapter,
     target_eef_pose_dict: dict[str, torch.Tensor],
-    object_names: list[str],
+    has_objects: bool,
 ) -> None:
-    """Record this frame's ``obs/datagen_info`` poses (once per ``env.step``).
+    """Record this frame's ``obs/datagen_info`` poses, *before* the commanded action is applied.
 
     Writes the observed ``eef_pose`` (``target_adapter.get_eef_poses``), the commanded ``target_eef_pose``,
-    and per-object ``object_pose`` -- the same quantities ``annotate_demos``' ``PreStepDatagenInfoRecorder``
-    writes -- so a ``copy`` output carries a complete ``datagen_info`` and is a drop-in source for
-    ``generate_dataset.py`` (no separate annotation pass). All env-relative ``(1, 4, 4)`` SE(3), per key.
+    and per-object ``object_pose`` (:func:`_reference_frame_object_poses`) -- the same quantities
+    ``annotate_demos``' ``PreStepDatagenInfoRecorder.record_pre_step`` writes, read at the same point (pre
+    ``env.step``, paired with the action about to be taken) -- so a ``copy`` output carries a complete,
+    frame-aligned ``datagen_info`` and is a drop-in source for ``generate_dataset.py`` (no separate
+    annotation pass). All env-relative ``(1, 4, 4)`` SE(3), per key.
     """
     recorder = env.recorder_manager
     achieved = target_adapter.get_eef_poses(env_ids=[env_id])  # {eef: (1, 4, 4)} observed EEF
@@ -260,11 +285,9 @@ def _record_datagen_poses(
         {eef: target_eef_pose_dict[eef].reshape(1, 4, 4) for eef in achieved},
         env_ids=[env_id],
     )
-    if object_names:
+    if has_objects:
         recorder.add_to_episodes(
-            "obs/datagen_info/object_pose",
-            {name: _read_env_object_pose(env, name, env_id).reshape(1, 4, 4) for name in object_names},
-            env_ids=[env_id],
+            "obs/datagen_info/object_pose", _reference_frame_object_poses(env, env_id, target_adapter), env_ids=[env_id]
         )
 
 
@@ -549,6 +572,30 @@ def _subtask_offset_frame(subtask: Subtask) -> str:
     return off_frame or subtask.object_ref or params.frame_ref or "eef"
 
 
+def _apply_offset_timeline(poses: torch.Tensor, segs: list, source_objects: dict[str, torch.Tensor]) -> torch.Tensor:
+    """Apply ``segs``' per-step offset timeline (:func:`_build_offset_timeline`) to a ``(T, 4, 4)`` pose path."""
+    segs = sorted(segs, key=lambda s: s["start"])
+    poses = poses.clone()  # copy-on-write
+    num = poses.shape[0]
+    trans_by_step, aa_by_step, frame_by_step = _build_offset_timeline(segs, num)
+    eye4 = torch.eye(4, dtype=poses.dtype, device=poses.device)
+    for step in range(num):
+        trans, axis_angle = trans_by_step[step], aa_by_step[step]
+        if not any(trans) and not any(axis_angle):  # identity offset -> leave pose untouched
+            continue
+        o_mat = _offset_se3(trans, axis_angle, 1.0, poses)
+        pose = poses[step]
+        frame = frame_by_step[step]
+        if frame in ("eef", "controlled"):
+            frame_pose = pose
+        elif source_objects and frame in source_objects:
+            frame_pose = source_objects[frame][step]
+        else:  # "world" (or an unrecognized frame_ref -> world)
+            frame_pose = eye4
+        poses[step] = frame_pose @ o_mat @ torch.linalg.inv(frame_pose) @ pose
+    return poses
+
+
 def apply_subtask_offsets(
     target_eef_poses: dict[str, torch.Tensor],
     subtasks: dict,
@@ -558,7 +605,7 @@ def apply_subtask_offsets(
     eef_name_map: dict[str, str] | None,
     close_fraction: float,
     source_objects: dict[str, torch.Tensor],
-) -> dict[str, torch.Tensor]:
+) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
     """Apply each subtask's ``offset`` to that EEF's commanded trajectory over the subtask's span.
 
     The offset ``O`` acts in a frame ``F`` as ``P' = F @ O @ inv(F) @ P``, which specializes to
@@ -568,13 +615,24 @@ def apply_subtask_offsets(
     continuous per-EEF curve across subtasks (:func:`_build_offset_timeline`): boundaries interpolate
     between adjacent subtask offsets (5 cm -> 10 cm blends 5 -> 10, not 5 -> 0 -> 10), eased by each
     subtask's ``interpolation_start`` / ``interpolation_end``.
+
+    A subtask that is also ``object_tracking`` is replayed by :func:`apply_object_tracking_carry`, which
+    overrides the EEF command with an object-centric one for its whole span -- the EEF-path offset applied
+    here would otherwise have no effect there. So the *same* offset is additionally applied to that
+    object's own source trajectory (returned as ``source_objects``, left untouched where no tracked
+    subtask has an offset), moving the carry's target by the offset instead of the (overridden) EEF path.
+
+    Returns:
+        ``(target_eef_poses, source_objects)``, each a shallow copy with the offset subtasks' entries
+        replaced (copy-on-write; untouched entries are the same tensors passed in).
     """
     per_eef: dict[str, list] = {}
+    per_object: dict[str, list] = {}
     for _eef_key, eef, _index, st, start, end, _boundary in iter_subtask_spans(
         subtasks, gripper_closed, signals, num_steps, eef_name_map, close_fraction
     ):
         off = st.algo_params.offset
-        per_eef.setdefault(eef, []).append({
+        seg = {
             "start": start,
             "end": end,
             "trans": list(off.translation) if (off and off.translation) else [0.0, 0.0, 0.0],
@@ -583,30 +641,28 @@ def apply_subtask_offsets(
             "i_start": off.interpolation_start if off else 0,
             "i_end": off.interpolation_end if off else 0,
             "has_offset": off is not None,
-        })
+        }
+        per_eef.setdefault(eef, []).append(seg)
+        tracking = st.algo_params.object_tracking
+        if tracking is not None:
+            per_object.setdefault(tracking.object, []).append(seg)
+
+    target_eef_poses = dict(target_eef_poses)
     for eef, segs in per_eef.items():
-        if eef not in target_eef_poses or not any(s["has_offset"] for s in segs):
-            continue
-        segs.sort(key=lambda s: s["start"])
-        poses = target_eef_poses[eef] = target_eef_poses[eef].clone()  # copy-on-write
-        num = poses.shape[0]
-        trans_by_step, aa_by_step, frame_by_step = _build_offset_timeline(segs, num)
-        eye4 = torch.eye(4, dtype=poses.dtype, device=poses.device)
-        for step in range(num):
-            trans, axis_angle = trans_by_step[step], aa_by_step[step]
-            if not any(trans) and not any(axis_angle):  # identity offset -> leave pose untouched
-                continue
-            o_mat = _offset_se3(trans, axis_angle, 1.0, poses)
-            pose = poses[step]
-            frame = frame_by_step[step]
-            if frame in ("eef", "controlled"):
-                frame_pose = pose
-            elif source_objects and frame in source_objects:
-                frame_pose = source_objects[frame][step]
-            else:  # "world" (or an unrecognized frame_ref -> world)
-                frame_pose = eye4
-            poses[step] = frame_pose @ o_mat @ torch.linalg.inv(frame_pose) @ pose
-    return target_eef_poses
+        if eef in target_eef_poses and any(s["has_offset"] for s in segs):
+            target_eef_poses[eef] = _apply_offset_timeline(target_eef_poses[eef], segs, source_objects)
+
+    source_objects = dict(source_objects)
+    for obj, segs in per_object.items():
+        if obj in source_objects and any(s["has_offset"] for s in segs):
+            obj_poses = source_objects[obj]
+            obj_len = obj_poses.shape[0]
+            # The carried object's own trajectory can be shorter than the shared timeline; clip each
+            # segment to it so the timeline build only ever sees steps the object tensor actually has.
+            clipped = [{**s, "start": min(s["start"], obj_len), "end": min(s["end"], obj_len)} for s in segs]
+            if any(s["end"] > s["start"] for s in clipped):
+                source_objects[obj] = _apply_offset_timeline(obj_poses, clipped, source_objects)
+    return target_eef_poses, source_objects
 
 
 # Offset frames that resolve without a source-object pose (see :func:`apply_subtask_offsets`).
@@ -650,6 +706,10 @@ class ReplayContext:
         eef_reference_link: Resolved controlled-link reconstruction (see
             :func:`resolve_eef_reference_links`), or ``None`` to use the observed ``eef_pose``.
         source_hand_postures: Source ``open`` / ``close`` hand postures per target EEF name, or ``None``.
+        is_legacy_quaternion_format: The source dataset file's
+            ``HDF5DatasetFileHandler.is_legacy_quaternion_format()`` -- selects the recorded
+            ``robot_links_state`` quaternion component order (see
+            :func:`.trajectory._link_state_quat_order`).
     """
 
     config: RetargetConfig
@@ -662,6 +722,7 @@ class ReplayContext:
     eef_offsets: dict[str, torch.Tensor] | None
     eef_reference_link: dict[str, str] | str | None
     source_hand_postures: dict[str, dict[str, list[float]]] | None
+    is_legacy_quaternion_format: bool = False
 
 
 @dataclass
@@ -751,7 +812,14 @@ def prepare_episode(
         if ctx.eef_reference_link is None:
             return source_datagen_poses(episode, eef_names, "eef_pose", eef_name_map)
         body_names = list(env.scene[ctx.robot_asset_name].data.body_names)
-        return source_eef_poses_at_link(episode, eef_names, ctx.eef_reference_link, body_names, eef_name_map)
+        return source_eef_poses_at_link(
+            episode,
+            eef_names,
+            ctx.eef_reference_link,
+            body_names,
+            eef_name_map,
+            is_legacy_quaternion_format=ctx.is_legacy_quaternion_format,
+        )
 
     if config.reference_pose == "eef_pose":
         target_eef_poses = _achieved_eef_poses()
@@ -784,6 +852,38 @@ def prepare_episode(
             src_close = torch.tensor(posture["close"], dtype=hand.dtype, device=hand.device)
             source_gripper_closed[eef] = _hand_close_fraction(hand, src_open, src_close).unsqueeze(1)  # (T, 1)
 
+    # Reset this env to the source demo's task scene; the target robot starts at its default config. This
+    # must happen before both the ``retarget_frame`` reanchor below (needs the target's *live*, post-reset
+    # base pose) and the ``replay_speed`` resample (so the reanchor runs on the original-length, per-step
+    # ``source_root`` / ``source_objects`` the source episode recorded, not a resampled one).
+    env_ids = torch.tensor([env_id], device=env.device)
+    if reset_sim:
+        env.sim.reset()
+    env.recorder_manager.reset(env_ids=env_ids)
+    # ``reset_to`` expects a state shaped (len(env_ids), ...) == (1, ...); slice this env's row out of the
+    # (num_envs, ...) default so the source object poses (also (1, ...)) shape-match and get applied.
+    reset_state = retargeted_initial_state(
+        episode.data["initial_state"],
+        _slice_scene_state(ctx.target_default_state, env_id),
+        ctx.robot_asset_name,
+        object_translation=config.scene_translation,
+    )
+    env.reset_to(reset_state, env_ids, is_relative=True)
+
+    if config.retarget_frame == "robot_base":
+        source_root = as_torch(episode.data["states"]["articulation"][ctx.robot_asset_name]["root_pose"]).to(env.device)
+        source_base = poses_from_root_pose(source_root)
+        target_base = read_target_base_pose(env, ctx.robot_asset_name, env_id)
+        target_eef_poses = {
+            eef: reanchor_to_target_base(pose, source_base, target_base) for eef, pose in target_eef_poses.items()
+        }
+        # Re-anchor the tracked objects too, so a carry's object-centric target stays in the same frame as
+        # the (now target-base-relative) EEF path instead of the source robot's own base.
+        source_objects = {
+            name: reanchor_to_target_base(pose, source_base[: pose.shape[0]], target_base)
+            for name, pose in source_objects.items()
+        }
+
     if config.replay_speed != 1.0:
         orig_num_steps = target_eef_poses[eef_names[0]].shape[0]
         (target_eef_poses,), (target_passthrough,), _ = resample_trajectory(
@@ -807,29 +907,6 @@ def prepare_episode(
                 source_gripper_closed = next(resampled_values_iter)
             if source_signals:
                 source_signals = next(resampled_values_iter)
-
-    # Reset this env to the source demo's task scene; the target robot starts at its default config.
-    env_ids = torch.tensor([env_id], device=env.device)
-    if reset_sim:
-        env.sim.reset()
-    env.recorder_manager.reset(env_ids=env_ids)
-    # ``reset_to`` expects a state shaped (len(env_ids), ...) == (1, ...); slice this env's row out of the
-    # (num_envs, ...) default so the source object poses (also (1, ...)) shape-match and get applied.
-    reset_state = retargeted_initial_state(
-        episode.data["initial_state"],
-        _slice_scene_state(ctx.target_default_state, env_id),
-        ctx.robot_asset_name,
-        object_translation=config.scene_translation,
-    )
-    env.reset_to(reset_state, env_ids, is_relative=True)
-
-    if config.retarget_frame == "robot_base":
-        source_root = as_torch(episode.data["states"]["articulation"][ctx.robot_asset_name]["root_pose"]).to(env.device)
-        source_base = poses_from_root_pose(source_root)
-        target_base = read_target_base_pose(env, ctx.robot_asset_name, env_id)
-        target_eef_poses = {
-            eef: reanchor_to_target_base(pose, source_base, target_base) for eef, pose in target_eef_poses.items()
-        }
 
     if any(config.scene_translation):
         translation = torch.tensor(
@@ -870,8 +947,10 @@ def prepare_episode(
     # ``synchronization`` barriers so a per-EEF settle can't leave the arms desynchronized.
     num_traj_steps = target_eef_poses[eef_names[0]].shape[0]
     # Per-subtask SE(3) offsets: nudge each EEF's commanded pose over its subtask span (in the subtask's
-    # frame, eased in/out) before segmentation, so carry/settle are computed on the offset trajectory.
-    target_eef_poses = apply_subtask_offsets(
+    # frame, eased in/out) before segmentation, so carry/settle are computed on the offset trajectory. A
+    # tracked subtask's offset is applied to its object's own trajectory too (see
+    # :func:`apply_subtask_offsets`), since the carry overrides the EEF command with an object-centric one.
+    target_eef_poses, source_objects = apply_subtask_offsets(
         target_eef_poses,
         subtasks,
         source_gripper_closed,
@@ -1092,8 +1171,11 @@ def episode_steps(
     passthrough_action_dict: dict[str, torch.Tensor] = {}
     record_signals = None
     # When ``write_datagen_info`` (copy), record the full ``obs/datagen_info`` (poses + signals) each step so
-    # the output is a drop-in ``generate_dataset.py`` source. The scene's rigid objects (for ``object_pose``).
-    object_names = list(env.scene.rigid_objects.keys()) if config.write_datagen_info else []
+    # the output is a drop-in ``generate_dataset.py`` source. Non-robot rigid *and* articulated assets count
+    # (see :func:`_reference_frame_object_poses`).
+    non_robot_assets = {**env.scene.rigid_objects, **getattr(env.scene, "articulations", {})}
+    non_robot_assets.pop(target_adapter.robot_asset_name, None)
+    has_objects = config.write_datagen_info and bool(non_robot_assets)
     tick = 0
     early_failure = False
     monitor_early = config.stop_early_on_failure and (
@@ -1129,11 +1211,13 @@ def episode_steps(
         signal_frame = {name: sig[min(max(ref_ts, 0), sig.shape[0] - 1)] for name, sig in prep.source_signals.items()}
         record_signals = (lambda sf=signal_frame: _record_signal_frame(env, env_id, sf)) if signal_frame else None
 
+        # Recorded *before* the step (matching ``annotate_demos``' ``PreStepDatagenInfoRecorder``): this
+        # frame's achieved/object poses pair with ``target_eef_pose_dict``, the command about to be applied.
+        if config.write_datagen_info:
+            _record_datagen_poses(env, env_id, target_adapter, target_eef_pose_dict, has_objects)
         yield target_eef_pose_dict, passthrough_action_dict
         if record_signals is not None:
             record_signals()
-        if config.write_datagen_info:
-            _record_datagen_poses(env, env_id, target_adapter, target_eef_pose_dict, object_names)
         if success_term is not None and bool(success_term.func(env, **success_term.params)[env_id]):
             task_succeeded = True
 
@@ -1212,11 +1296,11 @@ def episode_steps(
         and success_term is not None
     ):
         for _ in range(config.success_settle_steps):
+            if config.write_datagen_info:
+                _record_datagen_poses(env, env_id, target_adapter, target_eef_pose_dict, has_objects)
             yield target_eef_pose_dict, passthrough_action_dict
             if record_signals is not None:  # hold the last waypoint's signal across the success settle
                 record_signals()
-            if config.write_datagen_info:
-                _record_datagen_poses(env, env_id, target_adapter, target_eef_pose_dict, object_names)
             if bool(success_term.func(env, **success_term.params)[env_id]):
                 task_succeeded = True
                 break
