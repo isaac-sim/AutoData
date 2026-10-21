@@ -3,6 +3,9 @@
 
 """Unit tests for :mod:`autodata_core.algorithms`."""
 
+import torch
+from types import SimpleNamespace
+
 import pytest
 
 from autodata_core.algorithms import (
@@ -11,15 +14,19 @@ from autodata_core.algorithms import (
     GenerationAlgorithm,
     MimicGen,
     SkillGen,
+    SoftMimicGen,
     get_algorithm,
     iter_algorithms,
 )
+from autodata_core.datagen_info import DatagenInfo
+from autodata_interfaces.tasks.subtask_spec import SoftMimicGenSubtaskAlgoParams, Subtask
 
 
 def test_registry_contents():
     assert REGISTERED_ALGORITHMS == {
         "mimicgen": MimicGen,
         "dexmimicgen": DexMimicGen,
+        "softmimicgen": SoftMimicGen,
         "skillgen": SkillGen,
     }
 
@@ -31,10 +38,13 @@ def test_base_class_not_registered():
 
 
 def test_iter_algorithms():
-    assert set(iter_algorithms()) == {MimicGen, DexMimicGen, SkillGen}
+    assert set(iter_algorithms()) == {MimicGen, DexMimicGen, SoftMimicGen, SkillGen}
 
 
-@pytest.mark.parametrize("name, cls", [("mimicgen", MimicGen), ("dexmimicgen", DexMimicGen)])
+@pytest.mark.parametrize(
+    "name, cls",
+    [("mimicgen", MimicGen), ("dexmimicgen", DexMimicGen), ("softmimicgen", SoftMimicGen)],
+)
 def test_get_algorithm_no_kwargs(name, cls):
     assert isinstance(get_algorithm(name), cls)
 
@@ -59,6 +69,50 @@ def test_dexmimicgen_attributes():
     assert algo.expected_eef_count == (2, 3)
     assert algo.supports_coordination is True
     assert algo.requires_motion_planner is False
+
+
+def test_softmimicgen_attributes():
+    algo = SoftMimicGen()
+    assert algo.name == "softmimicgen"
+    assert algo.expected_eef_count == (1, 2)
+    assert algo.requires_motion_planner is False
+    assert algo.uses_subtask_start_signals is False
+    assert algo.supports_coordination is False
+
+
+@pytest.mark.parametrize(
+    "object_soft, strategy, compatible",
+    [
+        (False, "random", True),
+        (False, "nearest_neighbor_object", True),
+        (False, "nearest_neighbor_robot_distance", True),
+        (False, "registration_cost", False),
+        (True, "random", True),
+        (True, "nearest_neighbor_object", False),
+        (True, "nearest_neighbor_robot_distance", False),
+        (True, "registration_cost", True),
+    ],
+)
+def test_softmimicgen_validates_selection_strategy_at_setup(object_soft, strategy, compatible):
+    subtask = Subtask(
+        object_ref="object",
+        selection_strategy=strategy,
+        algo_params=SoftMimicGenSubtaskAlgoParams(object_soft=object_soft),
+    )
+    nodes = torch.zeros(1, 6, 3)
+    datastream = SimpleNamespace(
+        get_eef_names=lambda: ["franka"],
+        get_subtasks=lambda _eef: [subtask],
+        get_object_nodal_positions=lambda: {"object": nodes},
+        source_pool=SimpleNamespace(datagen_infos=[DatagenInfo(object_nodal_positions={"object": nodes})]),
+    )
+    algorithm = SoftMimicGen()
+    if compatible:
+        algorithm.validate_setup(datastream)
+    else:
+        object_type = "deformable" if object_soft else "rigid"
+        with pytest.raises(AssertionError, match=f"{strategy!r} does not support {object_type} reference objects"):
+            algorithm.validate_setup(datastream)
 
 
 def test_skillgen_attributes():

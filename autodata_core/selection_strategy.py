@@ -10,6 +10,7 @@ Subclasses self-register via :class:`SelectionStrategyMeta`. Look up by name wit
 from __future__ import annotations
 
 import abc
+import numpy as np
 import torch
 from typing import Any
 
@@ -41,9 +42,15 @@ class SelectionStrategyMeta(type):
 
 
 class SelectionStrategy(metaclass=SelectionStrategyMeta):
-    """ABC for source-demo selection strategies."""
+    """ABC for source-demo selection strategies.
+
+    Strategies declare which reference-object representations they can select from.
+    Strategies that do not inspect the object state can support both representations.
+    """
 
     NAME: str
+    supports_rigid_objects: bool = True
+    supports_deformable_objects: bool = False
 
     @abc.abstractmethod
     def select_source_demo(
@@ -51,6 +58,7 @@ class SelectionStrategy(metaclass=SelectionStrategyMeta):
         eef_pose: torch.Tensor,
         object_pose: torch.Tensor | None,
         src_subtask_datagen_infos: list,
+        object_nodal_positions: torch.Tensor | None = None,
     ) -> int:
         """Return the index of the source demo whose subtask segment best fits the current scene.
 
@@ -58,6 +66,7 @@ class SelectionStrategy(metaclass=SelectionStrategyMeta):
             eef_pose: Current 4x4 EEF pose [m, rad].
             object_pose: Current 4x4 pose of the subtask's reference object [m, rad], or None.
             src_subtask_datagen_infos: Per-source-demo :class:`DatagenInfo` slices covering this subtask.
+            object_nodal_positions: Current deformable-object nodes shaped ``(N, 3)`` [m], or None.
         """
         raise NotImplementedError
 
@@ -66,8 +75,15 @@ class RandomStrategy(SelectionStrategy):
     """Uniform random pick over source demos."""
 
     NAME = "random"
+    supports_deformable_objects = True
 
-    def select_source_demo(self, eef_pose, object_pose, src_subtask_datagen_infos) -> int:
+    def select_source_demo(
+        self,
+        eef_pose,
+        object_pose,
+        src_subtask_datagen_infos,
+        object_nodal_positions=None,
+    ) -> int:
         n_src_demo = len(src_subtask_datagen_infos)
         return torch.randint(0, n_src_demo, (1,)).item()
 
@@ -85,6 +101,7 @@ class NearestNeighborObjectStrategy(SelectionStrategy):
         pos_weight: float = 1.0,
         rot_weight: float = 1.0,
         nn_k: int = 3,
+        object_nodal_positions: torch.Tensor | None = None,
     ) -> int:
         src_object_poses = []
         for di in src_subtask_datagen_infos:
@@ -126,6 +143,7 @@ class NearestNeighborRobotDistanceStrategy(SelectionStrategy):
         pos_weight: float = 1.0,
         rot_weight: float = 1.0,
         nn_k: int = 3,
+        object_nodal_positions: torch.Tensor | None = None,
     ) -> int:
         src_eef_poses = []
         src_object_poses = []
@@ -165,3 +183,57 @@ class NearestNeighborRobotDistanceStrategy(SelectionStrategy):
         nn_k = min(nn_k, len(dists))
         rand_k = torch.randint(0, nn_k, (1,)).item()
         return torch.argsort(dists)[:nn_k][rand_k]
+
+
+class RegistrationCostStrategy(SelectionStrategy):
+    """Pick a source segment using deformable-object TPS registration cost."""
+
+    NAME = "registration_cost"
+    supports_rigid_objects = False
+    supports_deformable_objects = True
+
+    def select_source_demo(
+        self,
+        eef_pose: torch.Tensor,
+        object_pose: torch.Tensor | None,
+        src_subtask_datagen_infos: list,
+        object_nodal_positions: torch.Tensor | None = None,
+        bend_coef: float = 0.1,
+        rot_reg: float = 1e-3,
+        nn_k: int = 3,
+    ) -> int:
+        """Choose uniformly among the ``nn_k`` source shapes with lowest TPS cost."""
+
+        from autodata_core.deformable_transforms import nodal_registration_cost
+
+        assert object_nodal_positions is not None, "registration_cost requires current object nodal positions"
+        assert nn_k >= 1, f"nn_k must be at least 1, got {nn_k}"
+
+        valid_candidates: list[tuple[int, float]] = []
+        for demo_index, datagen_info in enumerate(src_subtask_datagen_infos):
+            assert (
+                datagen_info.object_nodal_positions is not None
+            ), "registration_cost requires source object nodal positions"
+            source_objects = list(datagen_info.object_nodal_positions.values())
+            assert (
+                len(source_objects) == 1
+            ), f"registration_cost expects exactly one source object, got {len(source_objects)}"
+            source_nodal_positions = source_objects[0][0]
+            try:
+                cost = nodal_registration_cost(
+                    source_nodal_positions,
+                    object_nodal_positions,
+                    bend_coef=bend_coef,
+                    rot_reg=rot_reg,
+                )
+            except (AssertionError, np.linalg.LinAlgError, ValueError):
+                continue
+            if np.isfinite(cost):
+                valid_candidates.append((demo_index, cost))
+
+        assert valid_candidates, "registration_cost could not compute a finite TPS cost for any source demo"
+        costs_tensor = torch.tensor([cost for _, cost in valid_candidates], dtype=torch.float32)
+        nn_k = min(nn_k, len(valid_candidates))
+        rand_k = torch.randint(0, nn_k, (1,)).item()
+        selected_candidate = torch.argsort(costs_tensor)[:nn_k][rand_k].item()
+        return valid_candidates[selected_candidate][0]

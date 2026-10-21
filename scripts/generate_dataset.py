@@ -8,7 +8,7 @@ Usage::
 
     python scripts/generate_dataset.py \\
         --env_name <env_id> \\
-        [--alg {mimicgen|dexmimicgen|skillgen}] \\
+        [--alg {mimicgen|dexmimicgen|skillgen|softmimicgen}] \\
         --task_descriptor <task_descriptor.yaml> \\
         --embodiment <embodiment.yaml> \\
         --env_profile <environment_profile.yaml> \\
@@ -25,6 +25,7 @@ The task descriptor's ``algo`` selects the :class:`GenerationAlgorithm` plug-in 
 * ``skillgen`` — single-arm SkillGen. SkillGen depends on a motion-planner interface; until the
   planner code is ported into this repo, the CLI satisfies that interface with the upstream Arena
   ``CuroboPlanner``.
+* ``softmimicgen`` — one- or two-arm MimicGen with deformable-object nodal registration.
 
 The CLI composes a :class:`Datastream` from the task descriptor YAML, the embodiment YAML, the
 live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
@@ -44,7 +45,7 @@ from autodata_utils.cli import callable_path
 
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in autodata_core.algorithms.
-_ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen"]
+_ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen", "softmimicgen"]
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument(
