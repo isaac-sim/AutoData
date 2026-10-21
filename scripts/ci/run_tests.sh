@@ -30,13 +30,14 @@ FORCE_REBUILD="${FORCE_REBUILD:-false}"
 # run_docker.sh gives the container a fresh environment, so this is forwarded
 # explicitly on the in-container command line rather than exported on the host.
 SUBPROCESS_TIMEOUT="${AUTODATA_SUBPROCESS_TIMEOUT:-1200}"
-# Container-local cache directory. run_docker.sh bind-mounts the host's
-# $HOME/.cache into the container; on the CI runner that path is root-owned (or
-# auto-created as root), so the recreated non-root container user cannot write
-# it -- warp fails to create ~/.cache/warp with a PermissionError. Pointing the
-# cache env vars at a writable, container-local /tmp path sidesteps the mounted
-# host cache entirely. The tools create these dirs themselves (makedirs).
+# Writable container-local cache for Warp and tools that honor XDG_CACHE_HOME.
+# Arena's hard-coded home cache is handled separately below.
 CONTAINER_CACHE_DIR="${CONTAINER_CACHE_DIR:-/tmp/autodata_ci_cache}"
+# Arena's composed USD cache ignores XDG_CACHE_HOME and writes under ~/.cache.
+# Mount a fresh directory owned by the runner instead of its shared host cache.
+# RUNNER_TEMP is cleaned by Actions; local invocations fall back to TMPDIR or /tmp.
+AUTODATA_DOCKER_CACHE_DIR="${AUTODATA_DOCKER_CACHE_DIR:-$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/autodata-ci-cache.XXXXXX")}"
+export AUTODATA_DOCKER_CACHE_DIR
 # Optional JUnit report dir (repo-relative). The repo is bind-mounted, so a report
 # written here lands on the host for CI to collect.
 RESULTS_DIR="${AUTODATA_RESULTS_DIR-}"
@@ -56,8 +57,8 @@ fi
 # container (run_docker.sh passes trailing args through verbatim, and the values
 # are inherited by the data-generation subprocess pytest spawns). Call
 # /isaac-sim/python.sh -m pytest explicitly so it does not depend on the
-# in-container `pytest` alias expanding. XDG_CACHE_HOME/WARP_CACHE_PATH steer all
-# caches away from the mounted host $HOME/.cache (see CONTAINER_CACHE_DIR above).
+# in-container `pytest` alias expanding. XDG_CACHE_HOME/WARP_CACHE_PATH keep those
+# caches container-local; Arena uses the writable bind mount configured above.
 PYTEST_ARGS=(
     env
     "AUTODATA_SUBPROCESS_TIMEOUT=${SUBPROCESS_TIMEOUT}"
