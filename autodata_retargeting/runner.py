@@ -16,8 +16,8 @@ from autodata_interfaces.env import setup_env_config, setup_output_paths
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 
 from .config import RetargetConfig
-from .eef_offset import build_eef_offsets, compose_retarget_eef_offsets
-from .gripper_retargeting import build_passthrough_remapper, load_hand_postures
+from .eef_offset import build_eef_offsets, compose_retarget_eef_offsets_from_adapters
+from .gripper_retargeting import build_passthrough_remapper, hand_postures_from_adapter
 from .provider import DatasetReplayProvider
 from .replay import ReplayContext, resolve_eef_reference_links, validate_eef_agreement
 from .replayer import Replayer
@@ -63,8 +63,10 @@ def run(args, simulation_app) -> int:
     validate_eef_agreement(source_adapter, target_adapter, config.eef_name_map)
     eef_names = list(target_adapter.get_eef_names())
     # Source hand_open/hand_close postures (keyed by the target EEF names), reused for both the hand
-    # policy and, under object_tracking="auto", the gripper-closed gate in carry detection.
-    source_hand_postures = load_hand_postures(config.source_embodiment, eef_names)
+    # policy and, under object_tracking="auto", the gripper-closed gate in carry detection. Read from
+    # each adapter's own raw_config (the embodiment YAML the factory already parsed to build it) instead
+    # of re-opening the file.
+    source_hand_postures = hand_postures_from_adapter(source_adapter, eef_names)
     remap_passthrough = build_passthrough_remapper(
         source_adapter,
         target_adapter,
@@ -74,19 +76,17 @@ def run(args, simulation_app) -> int:
         hand_interp_band=config.hand_interp_band,
         joint_mapping=config.joint_mapping,
         source_hand_postures=source_hand_postures,
-        target_hand_postures=load_hand_postures(config.target_embodiment, eef_names),
+        target_hand_postures=hand_postures_from_adapter(target_adapter, eef_names),
         target_channel_defaults=config.target_channel_defaults,
         eef_name_map=config.eef_name_map,
     )
     device = torch.device(args.device)
     # EEF frame reconciliation: the descriptor's inline ``eef_offsets`` if given, else composed from each
-    # embodiment's own eef_offset (the general per-robot design).
+    # embodiment's own eef_offset (the general per-robot design), read from the already-parsed adapters.
     if config.eef_offsets:
         eef_offsets = build_eef_offsets(config.eef_offsets, eef_names, device)
     else:
-        eef_offsets = compose_retarget_eef_offsets(
-            config.source_embodiment, config.target_embodiment, eef_names, device
-        )
+        eef_offsets = compose_retarget_eef_offsets_from_adapters(source_adapter, target_adapter, eef_names, device)
 
     num_envs = getattr(args, "num_envs", 1)
     env_cfg, success_term = setup_env_config(

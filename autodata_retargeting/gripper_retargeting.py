@@ -90,20 +90,19 @@ def _apply_joint_mapping(
     return out
 
 
-def load_hand_postures(embodiment_yaml: str, eef_names: list[str]) -> dict[str, dict[str, list[float]]] | None:
-    """Read per-EEF ``{eef: {open, close}}`` hand joint configs from an embodiment YAML, or None.
+def _hand_postures_from_dict(data: dict, eef_names: list[str]) -> dict[str, dict[str, list[float]]] | None:
+    """Resolve per-EEF ``{eef: {open, close}}`` hand joint configs from a parsed embodiment config, or None.
 
     Reads the ``hand_open`` / ``hand_close`` sections (each ``{eef: [joint values]}``). Returns None
     if either is absent, so retargeting can require them only for the ``binary``/``interpolation``
     hand policies.
 
-    Bimanual YAMLs (``eefs:`` block) key the postures by their own EEF names (``left``/``right``, shared
-    across the pair). A single-arm YAML has exactly one gripper, so its single posture is applied to
-    whichever EEF name(s) the retarget requests (``eef_names`` comes from the target adapter) — this
-    lets e.g. a Franka source (``eef_name: franka``) map onto a UR10 target (``eef_name: ur10``).
+    Bimanual configs (``eefs:`` block) key the postures by their own EEF names (``left``/``right``,
+    shared across the pair). A single-arm config has exactly one gripper, so its single posture is
+    applied to whichever EEF name(s) the retarget requests (``eef_names`` comes from the target
+    adapter) — this lets e.g. a Franka source (``eef_name: franka``) map onto a UR10 target
+    (``eef_name: ur10``).
     """
-    with open(embodiment_yaml) as f:
-        data = yaml.safe_load(f) or {}
     hand_open = data.get("hand_open")
     hand_close = data.get("hand_close")
     if not hand_open or not hand_close:
@@ -113,6 +112,29 @@ def load_hand_postures(embodiment_yaml: str, eef_names: list[str]) -> dict[str, 
         (close_vals,) = hand_close.values()
         return {eef: {"open": open_vals, "close": close_vals} for eef in eef_names}
     return {eef: {"open": hand_open[eef], "close": hand_close[eef]} for eef in eef_names}
+
+
+def load_hand_postures(embodiment_yaml: str, eef_names: list[str]) -> dict[str, dict[str, list[float]]] | None:
+    """Read per-EEF ``{eef: {open, close}}`` hand joint configs from an embodiment YAML, or None.
+
+    Opens and parses ``embodiment_yaml`` itself; prefer :func:`hand_postures_from_adapter` when an
+    :class:`~autodata_interfaces.embodiments.embodiment_adapter.EmbodimentAdapter` built from the same
+    file is already in hand, so the file is not parsed twice.
+    """
+    with open(embodiment_yaml) as f:
+        data = yaml.safe_load(f) or {}
+    return _hand_postures_from_dict(data, eef_names)
+
+
+def hand_postures_from_adapter(
+    adapter: EmbodimentAdapter, eef_names: list[str]
+) -> dict[str, dict[str, list[float]]] | None:
+    """Read per-EEF ``{eef: {open, close}}`` hand postures from an adapter's ``raw_config`` (see
+    :attr:`~autodata_interfaces.embodiments.embodiment_adapter.EmbodimentAdapter.raw_config`), the
+    same ``hand_open``/``hand_close`` sections :func:`load_hand_postures` reads from the YAML file --
+    this reuses the config the factory already parsed instead of re-opening it.
+    """
+    return _hand_postures_from_dict(adapter.raw_config or {}, eef_names)
 
 
 def _fill_non_eef_channel(

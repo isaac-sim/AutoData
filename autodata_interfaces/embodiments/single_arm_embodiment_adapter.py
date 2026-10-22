@@ -47,7 +47,12 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
             frame the pose observation reports, expressed in the control link's
             frame. The adapter reports poses in the control-link frame so the
             whole pipeline (planner targets, recorded skill targets, delta-pose
-            actions) shares one frame. Defaults to no offset.
+            actions) shares one frame. Defaults to no offset. ``autodata_retargeting``
+            reads this same value back out of the embodiment YAML (plus an
+            ``eef_rotation`` it alone declares) as the embodiment's canonical
+            grasp-frame offset for cross-embodiment alignment -- the same
+            control-link -> observed-EEF transform, reused deliberately, not a
+            second field that happens to share the name.
     """
 
     name: str

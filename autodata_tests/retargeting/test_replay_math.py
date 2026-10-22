@@ -12,11 +12,24 @@ import torch
 
 from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint, SubTaskConstraintType
 from autodata_retargeting.config import parse_subtask
-from autodata_retargeting.eef_offset import build_eef_offsets, compose_retarget_eef_offsets
+from autodata_retargeting.eef_offset import (
+    build_eef_offsets,
+    compose_retarget_eef_offsets,
+    eef_offset_from_adapter,
+    load_embodiment_eef_offset,
+)
+from autodata_retargeting.gripper_retargeting import hand_postures_from_adapter
 from autodata_retargeting.object_tracking import carry_segments_and_boundaries_from_subtasks, iter_subtask_spans
 from autodata_retargeting.parallel_replay import _DrainBarrier
 from autodata_retargeting.replay import _build_sync_barriers, apply_subtask_offsets
 from autodata_retargeting.trajectory import _link_state_quat_order
+
+
+class _FakeAdapter:
+    """Stands in for an EmbodimentAdapter in tests that only need ``.raw_config``."""
+
+    def __init__(self, raw_config: dict | None) -> None:
+        self.raw_config = raw_config
 
 
 def _eye_poses(num_steps: int) -> torch.Tensor:
@@ -133,6 +146,39 @@ def test_compose_retarget_eef_offsets_composes_single_arm_schemas(tmp_path):
     composed = compose_retarget_eef_offsets(str(src), str(tgt), ["right"], torch.device("cpu"))
     assert composed is not None
     assert torch.allclose(composed["right"][:3, 3], torch.tensor([0.1, 0.0, 0.0]), atol=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# eef_offset_from_adapter / gripper_retargeting.hand_postures_from_adapter
+# ---------------------------------------------------------------------------
+
+
+def test_eef_offset_from_adapter_matches_path_based_loader(tmp_path):
+    """Regression test: reading an already-parsed adapter's raw_config must agree with re-opening the
+    same YAML (see EmbodimentAdapter.raw_config -- added so these are not re-parsed twice)."""
+    path = tmp_path / "src.yaml"
+    path.write_text("eef_offset: [0.1, 0.0, 0.0]\n")
+    from_adapter = eef_offset_from_adapter(
+        _FakeAdapter({"eef_offset": [0.1, 0.0, 0.0]}), ["right"], torch.device("cpu")
+    )
+    from_file = load_embodiment_eef_offset(str(path), ["right"], torch.device("cpu"))
+    assert from_adapter is not None and from_file is not None
+    assert torch.allclose(from_adapter["right"], from_file["right"])
+
+
+def test_eef_offset_from_adapter_none_without_declared_offset():
+    assert eef_offset_from_adapter(_FakeAdapter({}), ["right"], torch.device("cpu")) is None
+    assert eef_offset_from_adapter(_FakeAdapter(None), ["right"], torch.device("cpu")) is None
+
+
+def test_hand_postures_from_adapter_resolves_single_arm_posture_to_requested_eef():
+    adapter = _FakeAdapter({"hand_open": {"franka": [0.04]}, "hand_close": {"franka": [0.0]}})
+    assert hand_postures_from_adapter(adapter, ["ur10"]) == {"ur10": {"open": [0.04], "close": [0.0]}}
+
+
+def test_hand_postures_from_adapter_none_without_both_postures():
+    assert hand_postures_from_adapter(_FakeAdapter({"hand_open": {"franka": [0.04]}}), ["franka"]) is None
+    assert hand_postures_from_adapter(_FakeAdapter(None), ["franka"]) is None
 
 
 # ---------------------------------------------------------------------------

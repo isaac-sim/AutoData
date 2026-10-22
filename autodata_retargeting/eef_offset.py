@@ -8,6 +8,8 @@ import yaml
 
 import isaaclab.utils.math as math_utils
 
+from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+
 
 def build_eef_offsets(
     offset_data: dict[str, dict], eef_names: list[str], device: torch.device
@@ -36,22 +38,22 @@ def build_eef_offsets(
     return offsets
 
 
-def load_embodiment_eef_offset(
-    embodiment_yaml: str, eef_names: list[str], device: torch.device
-) -> dict[str, torch.Tensor] | None:
-    """Load an embodiment's per-EEF ``offset`` (control link → canonical grasp frame) as ``(4, 4)``.
+def _eef_offset_from_dict(data: dict, eef_names: list[str], device: torch.device) -> dict[str, torch.Tensor] | None:
+    """Resolve an embodiment's per-EEF ``offset`` (control link → canonical grasp frame) as ``(4, 4)``.
 
     Supports both embodiment schemas (see ``calibrate_offset.py``):
 
     * **Bimanual**: each EEF's ``offset`` (``axis_angle`` + ``translation``) lives under ``eefs.<eef>``.
     * **Single-arm**: a top-level ``eef_offset`` (translation [m]) and ``eef_rotation`` (axis-angle
-      [rad]). A single-arm embodiment has exactly one EEF, so that one offset is applied to whichever
-      EEF name is requested (``eef_names`` comes from the target adapter, e.g. ``["ur10"]``).
+      [rad]). This is the *same* control-link -> observed-EEF translation
+      :class:`~autodata_interfaces.embodiments.single_arm_embodiment_adapter.SingleArmEmbodimentAdapter`
+      reads as its own ``eef_offset`` field (``eef_rotation`` has no live-adapter counterpart; it is
+      retargeting-only) -- not an unrelated value that happens to share the name. A single-arm
+      embodiment has exactly one EEF, so that one offset is applied to whichever EEF name is requested
+      (``eef_names`` comes from the target adapter, e.g. ``["ur10"]``).
 
     Returns None if the embodiment declares no offset (so composition falls back to identity).
     """
-    with open(embodiment_yaml) as f:
-        data = yaml.safe_load(f) or {}
     eefs = data.get("eefs") or {}
     if eefs:  # bimanual: per-EEF offset under eefs.<eef>.offset
         offset_data = {name: cfg["offset"] for name, cfg in eefs.items() if isinstance(cfg, dict) and "offset" in cfg}
@@ -67,6 +69,30 @@ def load_embodiment_eef_offset(
     return build_eef_offsets(offset_data, eef_names, device) if offset_data else None
 
 
+def load_embodiment_eef_offset(
+    embodiment_yaml: str, eef_names: list[str], device: torch.device
+) -> dict[str, torch.Tensor] | None:
+    """Load an embodiment's per-EEF grasp-frame ``offset`` (see :func:`_eef_offset_from_dict`) as ``(4, 4)``.
+
+    Opens and parses ``embodiment_yaml`` itself; prefer :func:`eef_offset_from_adapter` when an
+    :class:`~autodata_interfaces.embodiments.embodiment_adapter.EmbodimentAdapter` built from the same
+    file is already in hand, so the file is not parsed twice.
+    """
+    with open(embodiment_yaml) as f:
+        data = yaml.safe_load(f) or {}
+    return _eef_offset_from_dict(data, eef_names, device)
+
+
+def eef_offset_from_adapter(
+    adapter: EmbodimentAdapter, eef_names: list[str], device: torch.device
+) -> dict[str, torch.Tensor] | None:
+    """Read an embodiment's per-EEF grasp-frame offset from an adapter's ``raw_config`` (see
+    :attr:`~autodata_interfaces.embodiments.embodiment_adapter.EmbodimentAdapter.raw_config`), reusing
+    the config the factory already parsed instead of re-opening the YAML file.
+    """
+    return _eef_offset_from_dict(adapter.raw_config or {}, eef_names, device)
+
+
 def compose_retarget_eef_offsets(
     source_embodiment: str, target_embodiment: str, eef_names: list[str], device: torch.device
 ) -> dict[str, torch.Tensor] | None:
@@ -78,6 +104,20 @@ def compose_retarget_eef_offsets(
     """
     source_offset = load_embodiment_eef_offset(source_embodiment, eef_names, device)
     target_offset = load_embodiment_eef_offset(target_embodiment, eef_names, device)
+    if source_offset is None or target_offset is None:
+        return None
+    return {eef: source_offset[eef] @ torch.linalg.inv(target_offset[eef]) for eef in eef_names}
+
+
+def compose_retarget_eef_offsets_from_adapters(
+    source_adapter: EmbodimentAdapter, target_adapter: EmbodimentAdapter, eef_names: list[str], device: torch.device
+) -> dict[str, torch.Tensor] | None:
+    """Per-EEF ``T_src @ inv(T_tgt)`` from two already-built adapters' ``raw_config`` (see
+    :func:`eef_offset_from_adapter`), reusing the config the factory already parsed for both embodiments
+    instead of re-opening their YAML files, otherwise identical to :func:`compose_retarget_eef_offsets`.
+    """
+    source_offset = eef_offset_from_adapter(source_adapter, eef_names, device)
+    target_offset = eef_offset_from_adapter(target_adapter, eef_names, device)
     if source_offset is None or target_offset is None:
         return None
     return {eef: source_offset[eef] @ torch.linalg.inv(target_offset[eef]) for eef in eef_names}
