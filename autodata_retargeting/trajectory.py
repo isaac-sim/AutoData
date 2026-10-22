@@ -9,6 +9,8 @@ import torch
 import isaaclab.utils.math as math_utils
 from isaaclab.utils.datasets import EpisodeData
 
+from autodata_core.datagen_info import DatagenInfo
+
 from .util import quat_slerp_batch, se3_inverse
 
 
@@ -42,21 +44,20 @@ def source_datagen_poses(
     The source demo keys its poses by the *source* embodiment's EEF names; ``eef_name_map``
     (``{source_eef: target_eef}``) renames them onto the requested target/task ``eef_names`` (identity
     when the pair shares names, e.g. bimanual left/right). Returned dict is keyed by ``eef_names``.
+
+    Decodes via :meth:`~autodata_core.datagen_info.DatagenInfo.from_episode`, the same ``obs/
+    datagen_info`` decode :class:`~autodata_core.pool.DataGenInfoPool` uses, so the two paths cannot
+    drift apart on how a recorded episode's datagen info is read.
     """
-    obs = episode.data.get("obs", {})
-    datagen_info = obs.get("datagen_info") if isinstance(obs, dict) else None
-    assert datagen_info is not None and key in datagen_info, (
+    info = DatagenInfo.from_episode(episode.data, eef_name_map)
+    poses = getattr(info, key)
+    assert poses is not None, (
         f"Source episode is missing 'obs/datagen_info/{key}'. Retargeting needs an annotated "
         "dataset — run annotate_demos.py (or use a generate_dataset.py output) first."
     )
-    poses = datagen_info[key]
-    inverse = {tgt: src for src, tgt in (eef_name_map or {}).items()}
-    result: dict[str, torch.Tensor] = {}
-    for eef_name in eef_names:
-        source_key = inverse.get(eef_name, eef_name)
-        assert source_key in poses, f"datagen_info/{key} has no entry for eef '{source_key}'"
-        result[eef_name] = poses[source_key]
-    return result
+    missing = [eef_name for eef_name in eef_names if eef_name not in poses]
+    assert not missing, f"datagen_info/{key} has no entry for eef(s) {missing}"
+    return {eef_name: poses[eef_name] for eef_name in eef_names}
 
 
 def _link_state_pose(links_state: torch.Tensor, body_index: int, quat_order: tuple[int, int, int, int]) -> torch.Tensor:
