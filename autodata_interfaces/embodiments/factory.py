@@ -72,6 +72,7 @@ def embodiment_adapter_from_dict(data: dict[str, Any], env: Any = None) -> Embod
     cls = EMBODIMENT_TYPE_REGISTRY[type_key]
     payload = {k: v for k, v in data.items() if k != "type"}
     adapter = cls.from_dict(payload)  # type: ignore[attr-defined]
+    adapter.raw_config = data  # the full parsed config, for sections no typed adapter field models
     if env is not None:
         adapter.bind_env(env)
     return adapter
