@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from autodata_interfaces.tasks.subtask_spec import Subtask, SubtaskAlgoParams
+from autodata_interfaces.tasks.task_descriptor_utils import build_subtask
 from autodata_utils.yaml_utils import UniqueKeySafeLoader
 
 
@@ -242,6 +243,20 @@ class RetargetSubtaskAlgoParams(SubtaskAlgoParams):
     object_tracking: SubtaskObjectTracking | None = None
     offset: Offset | None = None
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "RetargetSubtaskAlgoParams":
+        """Parse the structured ``subtask_end`` / ``object_tracking`` / ``offset`` descriptors before
+        constructing (the :meth:`~autodata_interfaces.tasks.subtask_spec.SubtaskAlgoParams.from_dict`
+        hook :func:`~autodata_interfaces.tasks.task_descriptor_utils.build_subtask` calls); every other
+        field is a plain scalar and needs no special handling.
+        """
+        data = dict(data)
+        if data.get("subtask_end") is not None:
+            data["subtask_end"] = SubtaskEnd.parse(data["subtask_end"])
+        data["object_tracking"] = SubtaskObjectTracking.parse(data.get("object_tracking"))
+        data["offset"] = Offset.parse(data.get("offset"))
+        return cls(**data)
+
 
 # Core ``Subtask`` fields a retarget descriptor may set; the rest drive generation-time segment selection
 # and noise, which retargeting (a 1:1 replay) does not use, so they are rejected rather than ignored.
@@ -252,7 +267,9 @@ def parse_subtask(value: dict) -> Subtask:
     """Parse one descriptor subtask into a core :class:`Subtask` with :class:`RetargetSubtaskAlgoParams`.
 
     The descriptor keeps a flat layout: ``object_ref`` / ``description`` fill the core fields, and every
-    other key fills the retarget ``algo_params``.
+    other key fills the retarget ``algo_params``. Construction itself goes through the normal
+    :func:`~autodata_interfaces.tasks.task_descriptor_utils.build_subtask` task-parsing path (via
+    :meth:`RetargetSubtaskAlgoParams.from_dict`'s nested-field hook), instead of a retarget-only copy.
 
     Args:
         value: Mapping of subtask field values.
@@ -265,13 +282,9 @@ def parse_subtask(value: dict) -> Subtask:
     allowed = set(_CORE_SUBTASK_KEYS) | algo_keys
     unknown = set(value) - allowed
     assert not unknown, f"unknown subtask keys {sorted(unknown)}; allowed: {sorted(allowed)}."
-    algo = {key: value[key] for key in algo_keys if key in value}
-    if algo.get("subtask_end") is not None:
-        algo["subtask_end"] = SubtaskEnd.parse(algo["subtask_end"])
-    algo["object_tracking"] = SubtaskObjectTracking.parse(algo.get("object_tracking"))
-    algo["offset"] = Offset.parse(algo.get("offset"))
     core = {key: value[key] for key in _CORE_SUBTASK_KEYS if value.get(key) is not None}
-    return Subtask(**core, algo_params=RetargetSubtaskAlgoParams(**algo))
+    algo = {key: value[key] for key in algo_keys if key in value}
+    return build_subtask({**core, "algo_params": algo}, RetargetSubtaskAlgoParams)
 
 
 @dataclass
