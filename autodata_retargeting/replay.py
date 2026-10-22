@@ -13,6 +13,7 @@ import isaaclab.utils.math as math_utils
 from isaaclab.managers import TerminationTermCfg
 from isaaclab.utils.datasets import EpisodeData
 
+from autodata_interfaces.datastream.datastream import scene_object_poses
 from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 from autodata_interfaces.tasks.subtask_spec import Subtask
 from autodata_utils.tensor_utils import as_torch
@@ -240,25 +241,13 @@ def _record_signal_frame(env: Any, env_id: int, signal_frame: dict[str, torch.Te
 
 def _reference_frame_object_poses(env: Any, env_id: int, target_adapter: EmbodimentAdapter) -> dict[str, torch.Tensor]:
     """``{name: (1, 4, 4)}`` non-robot rigid *and articulated* object poses in the embodiment's reference
-    frame -- mirrors ``Datastream.get_object_poses`` (what ``annotate_demos``' ``PreStepDatagenInfoRecorder``
-    writes) so a ``write_datagen_info`` output is a true drop-in ``generate_dataset.py`` source.
+    frame -- the same :func:`~autodata_interfaces.datastream.datastream.scene_object_poses` reading
+    ``Datastream.get_object_poses`` uses (what ``annotate_demos``' ``PreStepDatagenInfoRecorder`` writes),
+    so a ``write_datagen_info`` output is a true drop-in ``generate_dataset.py`` source.
     """
-    scene = env.scene
-    origin = as_torch(scene.env_origins)[env_id : env_id + 1]
-    assets = {**scene.rigid_objects, **getattr(scene, "articulations", {})}
     reference = target_adapter.get_reference_frame_pose([env_id])
     reference_inverse = torch.linalg.inv(reference) if reference is not None else None
-    poses: dict[str, torch.Tensor] = {}
-    for name, obj in assets.items():
-        if name == target_adapter.robot_asset_name:
-            continue
-        pos = as_torch(obj.data.root_pos_w)[env_id : env_id + 1] - origin
-        quat = as_torch(obj.data.root_quat_w)[env_id : env_id + 1]
-        pose = torch.eye(4, dtype=pos.dtype, device=pos.device).unsqueeze(0)
-        pose[:, :3, :3] = math_utils.matrix_from_quat(quat)
-        pose[:, :3, 3] = pos
-        poses[name] = reference_inverse @ pose if reference_inverse is not None else pose
-    return poses
+    return scene_object_poses(env.scene, [env_id], target_adapter.robot_asset_name, reference_inverse)
 
 
 def _record_datagen_poses(
