@@ -16,6 +16,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
+from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint, SubTaskConstraintType
 from autodata_interfaces.tasks.subtask_spec import Subtask, SubtaskAlgoParams
 from autodata_interfaces.tasks.task_descriptor_utils import build_subtask
 from autodata_utils.yaml_utils import UniqueKeySafeLoader
@@ -365,13 +366,15 @@ class RetargetConfig:
     # is parsed into a core Subtask with RetargetSubtaskAlgoParams. Segmentation and object tracking come from
     # these.
     subtasks: dict[str, list[Subtask]] = field(default_factory=dict)
-    # Bimanual/multi-arm synchronization: a list of barrier groups, each a list of subtask *names* that must
-    # conclude together. Every EEF that reaches its named segment holds at that pose until all segments in
-    # the group have concluded (a join). Rules: a group's names belong to different EEFs; each subtask is in
-    # at most one group; and groups are declared in execution order -- each EEF's participating segments
-    # appear in its temporal subtask order (a simple check that also guarantees deadlock-freedom). Empty for
-    # single-arm / uncoordinated runs.
-    synchronization: list[list[str]] = field(default_factory=list)
+    # Bimanual/multi-arm synchronization: written as a list of barrier groups, each a list of subtask
+    # *names* that must conclude together (resolved in __post_init__ into core SubtaskConstraint BARRIER
+    # entries -- the same (eef_name, subtask_index) addressing SEQUENTIAL/COORDINATION constraints use).
+    # Every EEF that reaches its named segment holds at that pose until all segments in the group have
+    # concluded (a join). Rules: a group's names belong to different EEFs; each subtask is in at most one
+    # group; and groups are declared in execution order -- each EEF's participating segments appear in its
+    # temporal subtask order (a simple check that also guarantees deadlock-freedom). Empty for single-arm /
+    # uncoordinated runs.
+    synchronization: list[SubtaskConstraint] = field(default_factory=list)
     # Write the full ``obs/datagen_info`` into the retargeted dataset so the output is a drop-in source
     # for ``generate_dataset.py`` (no separate ``annotate_demos`` pass): observed ``eef_pose``, commanded
     # ``target_eef_pose`` and per-object ``object_pose`` (read live each step, matching annotate_demos'
@@ -420,31 +423,41 @@ class RetargetConfig:
         # is in at most one group; and the declaration order is a valid schedule -- for each EEF, the groups
         # it joins (in declaration order) reference its subtasks in temporal order. That last check both
         # keeps authoring intuitive (list groups as they happen) and guarantees the barriers are acyclic.
-        group_of: dict[str, int] = {}
-        eef_join_order: dict[str, list[tuple[int, int]]] = {}  # eef -> [(group_index, subtask_index)]
-        for g_idx, group in enumerate(self.synchronization):
-            assert len(group) >= 2, f"synchronization group {g_idx} needs >= 2 subtask names, got {group}."
-            group_eefs: set[str] = set()
-            for nm in group:
-                assert nm in by_name, f"synchronization group {g_idx} references unknown subtask name {nm!r}."
-                assert nm not in group_of, (
-                    f"subtask {nm!r} is in synchronization groups {group_of[nm]} and {g_idx}; "
-                    "each subtask may be in at most one group."
+        # Already-resolved SubtaskConstraint entries (e.g. a config built from another config's state, or
+        # __post_init__ re-run) are left alone -- the raw name-group form only comes from fresh YAML/dict
+        # input, same convention as ``subtasks`` above.
+        if not self.synchronization or not isinstance(self.synchronization[0], SubtaskConstraint):
+            group_of: dict[str, int] = {}
+            eef_join_order: dict[str, list[tuple[int, int]]] = {}  # eef -> [(group_index, subtask_index)]
+            for g_idx, group in enumerate(self.synchronization):
+                assert len(group) >= 2, f"synchronization group {g_idx} needs >= 2 subtask names, got {group}."
+                group_eefs: set[str] = set()
+                for nm in group:
+                    assert nm in by_name, f"synchronization group {g_idx} references unknown subtask name {nm!r}."
+                    assert nm not in group_of, (
+                        f"subtask {nm!r} is in synchronization groups {group_of[nm]} and {g_idx}; "
+                        "each subtask may be in at most one group."
+                    )
+                    group_of[nm] = g_idx
+                    eef, s_i = by_name[nm]
+                    assert eef not in group_eefs, (
+                        f"synchronization group {g_idx} lists two subtasks of EEF {eef!r}; a group's members "
+                        "must belong to different EEFs."
+                    )
+                    group_eefs.add(eef)
+                    eef_join_order.setdefault(eef, []).append((g_idx, s_i))
+            for eef, joins in eef_join_order.items():
+                s_indices = [s_i for _, s_i in sorted(joins)]  # subtask indices in group-declaration order
+                assert s_indices == sorted(s_indices) and len(set(s_indices)) == len(s_indices), (
+                    f"EEF {eef!r} joins synchronization groups out of temporal order; declare groups in the "
+                    "order their subtasks execute."
                 )
-                group_of[nm] = g_idx
-                eef, s_i = by_name[nm]
-                assert eef not in group_eefs, (
-                    f"synchronization group {g_idx} lists two subtasks of EEF {eef!r}; a group's members "
-                    "must belong to different EEFs."
+            self.synchronization = [
+                SubtaskConstraint(
+                    constraint_type=SubTaskConstraintType.BARRIER, members=tuple(by_name[nm] for nm in group)
                 )
-                group_eefs.add(eef)
-                eef_join_order.setdefault(eef, []).append((g_idx, s_i))
-        for eef, joins in eef_join_order.items():
-            s_indices = [s_i for _, s_i in sorted(joins)]  # subtask indices in group-declaration order
-            assert s_indices == sorted(s_indices) and len(set(s_indices)) == len(s_indices), (
-                f"EEF {eef!r} joins synchronization groups out of temporal order; declare groups in the "
-                "order their subtasks execute."
-            )
+                for group in self.synchronization
+            ]
 
     @classmethod
     def from_yaml(cls, path: str) -> "RetargetConfig":

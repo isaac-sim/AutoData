@@ -10,11 +10,12 @@ resolution) is pure function of its inputs and does not need a live simulation.
 
 import torch
 
+from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint, SubTaskConstraintType
 from autodata_retargeting.config import parse_subtask
 from autodata_retargeting.eef_offset import build_eef_offsets, compose_retarget_eef_offsets
-from autodata_retargeting.object_tracking import iter_subtask_spans
+from autodata_retargeting.object_tracking import carry_segments_and_boundaries_from_subtasks, iter_subtask_spans
 from autodata_retargeting.parallel_replay import _DrainBarrier
-from autodata_retargeting.replay import apply_subtask_offsets
+from autodata_retargeting.replay import _build_sync_barriers, apply_subtask_offsets
 from autodata_retargeting.trajectory import _link_state_quat_order
 
 
@@ -145,6 +146,35 @@ def test_link_state_quat_order_selects_legacy_wxyz_to_xyzw_permutation():
 
 def test_link_state_quat_order_is_identity_for_current_xyzw_format():
     assert _link_state_quat_order(is_legacy_quaternion_format=False) == (0, 1, 2, 3)
+
+
+# ---------------------------------------------------------------------------
+# object_tracking.carry_segments_and_boundaries_from_subtasks / replay._build_sync_barriers
+# ---------------------------------------------------------------------------
+
+
+def test_build_sync_barriers_rendezvous_at_later_members_end_step():
+    """Regression test: synchronization is now a core SubtaskConstraint BARRIER, (eef, subtask_index)-
+    addressed -- same end-to-end behavior as the old name-keyed barrier (see replay.py docstrings)."""
+    subtasks = {
+        "left": [parse_subtask({"subtask_end": {"method": "fixed_length", "length": 3}}), parse_subtask({})],
+        "right": [parse_subtask({"subtask_end": {"method": "fixed_length", "length": 5}}), parse_subtask({})],
+    }
+    _, _, index_end_step = carry_segments_and_boundaries_from_subtasks(subtasks, {}, {}, num_steps=10)
+    assert index_end_step[("left", 0)] == ("left", 3)
+    assert index_end_step[("right", 0)] == ("right", 5)
+
+    constraint = SubtaskConstraint(constraint_type=SubTaskConstraintType.BARRIER, members=(("left", 0), ("right", 0)))
+    sync_of, group_members = _build_sync_barriers([constraint], index_end_step)
+    assert sync_of == {"left": {3: 0}, "right": {5: 0}}
+    assert sorted(group_members[0]) == [("left", 3), ("right", 5)]
+
+
+def test_build_sync_barriers_skips_member_with_no_segment_this_run():
+    constraint = SubtaskConstraint(constraint_type=SubTaskConstraintType.BARRIER, members=(("left", 0), ("right", 0)))
+    sync_of, group_members = _build_sync_barriers([constraint], {("left", 0): ("left", 3)})
+    assert sync_of == {"left": {3: 0}}
+    assert group_members[0] == [("left", 3)]
 
 
 # ---------------------------------------------------------------------------

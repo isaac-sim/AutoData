@@ -175,7 +175,7 @@ def carry_segments_and_boundaries_from_subtasks(
     default_interp_after: int = 0,
     default_settle_steps: int = 0,
     close_fraction: float = 0.5,
-) -> tuple[list[CarrySegment], dict[str, dict[int, int]], dict[str, tuple[str, int]]]:
+) -> tuple[list[CarrySegment], dict[str, dict[int, int]], dict[tuple[str, int], tuple[str, int]]]:
     """Turn the descriptor's per-EEF subtask lists into carry segments + subtask-boundary steps.
 
     Each EEF's subtasks partition the trajectory: subtask ``i`` runs from the previous subtask's end (0
@@ -191,16 +191,18 @@ def carry_segments_and_boundaries_from_subtasks(
     *target* EEF name (per-step closedness fraction); ``signals`` by signal name.
 
     Returns:
-        ``(carry_segments sorted by start, {target_eef: {boundary_step: settle_cap}}, {name: (target_eef,
-        end_step)})``. Each subtask boundary is registered under its **own** EEF (per-EEF settle), so each
-        arm settles at its own subtask ends and the executor schedules the arms independently; declare a
-        ``synchronization`` group to re-couple them (the third return maps each named subtask to its
+        ``(carry_segments sorted by start, {target_eef: {boundary_step: settle_cap}}, {(source_eef,
+        subtask_index): (target_eef, end_step)})``. Each subtask boundary is registered under its **own**
+        EEF (per-EEF settle), so each arm settles at its own subtask ends and the executor schedules the
+        arms independently; declare a ``synchronization`` barrier to re-couple them (the third return maps
+        every subtask's ``(source_eef, subtask_index)`` -- the same addressing
+        :class:`~autodata_interfaces.tasks.subtask_constraint_spec.SubtaskConstraint` uses -- to its
         ``(target_eef, end_step)`` for that barrier).
     """
     segments: list[CarrySegment] = []
     boundaries: dict[str, dict[int, int]] = {}
-    name_end_step: dict[str, tuple[str, int]] = {}
-    for _eef_key, target_eef, _i, st, start, end, boundary in iter_subtask_spans(
+    index_end_step: dict[tuple[str, int], tuple[str, int]] = {}
+    for eef_key, target_eef, i, st, start, end, boundary in iter_subtask_spans(
         subtasks, gripper_closed, signals, num_steps, eef_name_map, close_fraction
     ):
         eef_boundaries = boundaries.setdefault(target_eef, {})
@@ -209,8 +211,7 @@ def carry_segments_and_boundaries_from_subtasks(
             override = params.subtask_end.settle_steps
             cap = default_settle_steps if override is None else override
             eef_boundaries[boundary] = max(eef_boundaries.get(boundary, 0), cap)
-        if params.name is not None:
-            name_end_step[params.name] = (target_eef, end)
+        index_end_step[(eef_key, i)] = (target_eef, end)
         if params.object_tracking is not None:
             iss, isa = params.object_tracking.interpolation_step_start, params.object_tracking.interpolation_step_after
             segments.append(
@@ -223,4 +224,4 @@ def carry_segments_and_boundaries_from_subtasks(
                     interp_after=default_interp_after if isa is None else isa,
                 )
             )
-    return sorted(segments, key=lambda seg: seg.start), boundaries, name_end_step
+    return sorted(segments, key=lambda seg: seg.start), boundaries, index_end_step

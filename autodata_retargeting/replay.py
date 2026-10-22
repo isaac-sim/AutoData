@@ -15,6 +15,7 @@ from isaaclab.utils.datasets import EpisodeData
 
 from autodata_interfaces.datastream.datastream import scene_object_poses
 from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint
 from autodata_interfaces.tasks.subtask_spec import Subtask
 from autodata_utils.tensor_utils import as_torch
 
@@ -949,7 +950,7 @@ def prepare_episode(
         _CARRY_GRIPPER_CLOSED_FRACTION,
         source_objects,
     )
-    carry_segments, segment_ends, name_end_step = carry_segments_and_boundaries_from_subtasks(
+    carry_segments, segment_ends, index_end_step = carry_segments_and_boundaries_from_subtasks(
         subtasks,
         source_gripper_closed,
         source_signals,
@@ -960,7 +961,7 @@ def prepare_episode(
         default_settle_steps=config.segment_settle_steps,
         close_fraction=_CARRY_GRIPPER_CLOSED_FRACTION,
     )
-    sync_of, group_members = _build_sync_barriers(config.synchronization, name_end_step)
+    sync_of, group_members = _build_sync_barriers(config.synchronization, index_end_step)
 
     num_interpolation_steps = config.num_interpolation_steps
     if config.init_robot_from_ik:
@@ -1329,23 +1330,25 @@ def replay_episode_on_target(ctx: ReplayContext, env: Any, episode: EpisodeData)
 
 
 def _build_sync_barriers(
-    synchronization: list[list[str]], name_end_step: dict[str, tuple[str, int]]
+    synchronization: list[SubtaskConstraint], index_end_step: dict[tuple[str, int], tuple[str, int]]
 ) -> tuple[dict[str, dict[int, int]], dict[int, list[tuple[str, int]]]]:
-    """Turn the descriptor's sync groups into the executor's per-EEF barrier lookups.
+    """Turn the descriptor's BARRIER constraints into the executor's per-EEF barrier lookups.
 
-    ``name_end_step`` maps each named subtask to ``(eef, end_trajectory_step)`` -- the step where that
-    subtask concludes. Returns ``(sync_of, group_members)`` where ``sync_of[eef][end_step]`` is the group
-    id an EEF must rendezvous at when it reaches that step, and ``group_members[gid]`` lists every
-    ``(eef, end_step)`` in the group. At runtime an EEF holds at ``end_step`` until every member has reached
-    its own ``end_step`` (all ``ptr[m_eef] >= m_step``), then all advance -- the hand-off join.
+    ``index_end_step`` maps each ``(source_eef, subtask_index)`` -- the same addressing
+    :class:`~autodata_interfaces.tasks.subtask_constraint_spec.SubtaskConstraint` uses -- to
+    ``(target_eef, end_trajectory_step)``, the step where that subtask concludes. Returns
+    ``(sync_of, group_members)`` where ``sync_of[eef][end_step]`` is the group id an EEF must
+    rendezvous at when it reaches that step, and ``group_members[gid]`` lists every ``(eef, end_step)``
+    in the group. At runtime an EEF holds at ``end_step`` until every member has reached its own
+    ``end_step`` (all ``ptr[m_eef] >= m_step``), then all advance -- the hand-off join.
     """
     sync_of: dict[str, dict[int, int]] = {}
     group_members: dict[int, list[tuple[str, int]]] = {}
-    for gid, group in enumerate(synchronization):
-        for name in group:
-            if name not in name_end_step:  # a named subtask that produced no segment this run -- skip
+    for gid, constraint in enumerate(synchronization):
+        for member in constraint.members or ():
+            if member not in index_end_step:  # a subtask that produced no segment this run -- skip
                 continue
-            eef, end_step = name_end_step[name]
+            eef, end_step = index_end_step[member]
             sync_of.setdefault(eef, {})[end_step] = gid
             group_members.setdefault(gid, []).append((eef, end_step))
     return sync_of, group_members

@@ -7,6 +7,7 @@ import os
 
 import pytest
 
+from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint, SubTaskConstraintType
 from autodata_interfaces.tasks.subtask_spec import Subtask
 from autodata_retargeting.config import RetargetConfig, RetargetSubtaskAlgoParams, parse_subtask
 
@@ -60,6 +61,11 @@ def test_synchronization_resolves_names_from_algo_params():
         synchronization=[["l_release", "r_grasp"]],
     )
     assert config.subtasks["left"][0].algo_params.name == "l_release"
+    # Resolved into a core SubtaskConstraint BARRIER, (eef, subtask_index)-addressed like
+    # SEQUENTIAL/COORDINATION, not a retarget-only name-list format.
+    assert config.synchronization == [
+        SubtaskConstraint(constraint_type=SubTaskConstraintType.BARRIER, members=(("left", 0), ("right", 0)))
+    ]
 
 
 def test_duplicate_subtask_names_rejected():
