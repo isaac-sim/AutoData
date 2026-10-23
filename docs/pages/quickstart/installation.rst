@@ -141,7 +141,8 @@ Optional Native uv Installation
 AutoData is a `uv <https://docs.astral.sh/uv/>`__ project. ``uv sync`` installs Isaac Sim **6.1.0.0** (the pip
 version of Sim 6.1.0), PyTorch **2.11.0+cu128**, Isaac Lab, Arena, and AutoData with its test tools into ``.venv``
 at the repository root. The versions come from the repository's ``uv.lock``, which keeps Arena's locked version of
-every package they share. Lab, Arena, and AutoData are editable installations from the checkout, and uv provides Python 3.12.
+every package they share. Lab, Arena, and AutoData are editable installations from the checkout, and uv provides
+Python 3.12.
 
 The uv installation supports Linux x86_64. On the host, install
 `uv <https://docs.astral.sh/uv/getting-started/installation/>`__ **0.12.21 or newer**, Git, CMake, and a C++
@@ -169,8 +170,10 @@ Docker-only ``/workspaces/autodata`` path. After updating the checkout and its s
 ``uv sync --locked`` again.
 
 Review and accept the Isaac Sim EULA on first launch. For unattended launches after accepting it, set
-the two variables shown above. ``uv pip check`` reports the discrepancies listed for the conda installation
-below, except ``openpi-client``, which this environment does not install. Arena's ``packaging`` override also
+the two variables shown above.
+
+``uv pip check`` reports the discrepancies listed for the conda installation below, except
+``openpi-client``, which this environment does not install. Arena's ``packaging`` override also
 leaves ``virtualenv`` (used by ``pre-commit``) and ``vcs-versioning`` (used to build cuRobo) below the
 ``packaging`` version they declare. Both work with the locked version.
 

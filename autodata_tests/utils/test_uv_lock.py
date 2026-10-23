@@ -39,7 +39,7 @@ def test_shared_packages_keep_arena_resolution():
 def test_resolver_settings_mirror_arena():
     autodata = _load(ROOT / "pyproject.toml")["tool"]["uv"]
     arena = _load(ARENA / "pyproject.toml")["tool"]["uv"]
-    # uv deprecated Arena's prerelease mode in favor of if-necessary, which locks this stack identically.
+    # uv deprecates Arena's prerelease mode; if-necessary resolves this stack identically.
     if arena["prerelease"] == "if-necessary-or-explicit":
         arena["prerelease"] = "if-necessary"
     for key in ("environments", "prerelease", "index-strategy", "override-dependencies", "constraint-dependencies"):

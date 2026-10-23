@@ -101,7 +101,6 @@ if [[ "$ALG" == "skillgen" ]]; then
   echo "NOTE: SkillGen requires cuRobo (./docker/run_docker.sh -c, or uv sync --group curobo)." >&2
 fi
 
-# Use Isaac Sim's Python in the container, otherwise the active environment's python (for example under uv run).
 if [[ -x /isaac-sim/python.sh ]]; then
   python_cmd=(/isaac-sim/python.sh)
 elif python -c 'import importlib.util, sys; sys.exit(importlib.util.find_spec("isaaclab_arena") is None)' 2>/dev/null; then

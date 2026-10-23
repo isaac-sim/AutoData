@@ -51,7 +51,7 @@ jobs:
 
   uv_lock:
     name: uv lock
-    # Checks that uv.lock matches pyproject.toml and Arena's lock. Needs no GPU, so it also runs for fork PRs.
+    # Needs no GPU, so unlike the GPU job it also runs for fork PRs.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
