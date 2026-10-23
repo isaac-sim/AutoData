@@ -54,9 +54,10 @@ then SkillGen.
      - Validate the metadata, match the environment and device, and reproduce with one environment.
        See :ref:`troubleshooting-replay`.
    * - ``import curobo`` fails, or cuRobo reports an incompatible CUDA kernel.
-     - The base container was used, or cuRobo was built for a different GPU compute capability.
-     - Start the cuRobo container; for a GPU change, rebuild it without cache. See
-       :ref:`troubleshooting-curobo`.
+     - cuRobo is not installed (base container, or a uv environment without the ``curobo`` group), or it
+       was built for a different GPU compute capability.
+     - Start the cuRobo container; for a GPU change, rebuild it without cache. In the uv environment,
+       rebuild cuRobo. See :ref:`troubleshooting-curobo`.
    * - SkillGen fails while downloading the Franka URDF from Nucleus.
      - The container cannot reach the Nucleus asset server because of its network, DNS, proxy, or
        VPN configuration.
@@ -288,6 +289,10 @@ Docker cache:
 
 The rebuild is required for errors such as ``no kernel image is available for execution on the
 device``. For ordinary source changes, a no-cache rebuild is not necessary.
+
+In the native uv environment, check the module with
+``uv run --locked python -c "import curobo; print(curobo.__file__)"``. If it is missing, or was built for
+another GPU or PyTorch version, install it again with the commands in :ref:`installation-uv-curobo`.
 
 .. _troubleshooting-nucleus:
 

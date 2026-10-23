@@ -7,7 +7,8 @@ without modifying the host Python installation. The repository is bind-mounted i
 so edits on the host are live inside it.
 
 This checkout uses Isaac Sim 6.1.0, Isaac Lab 3.0.0, and Arena 0.3.0.
-Use the pinned Docker environment or the optional conda installation below for the workflows on this site.
+Use the pinned Docker environment or one of the optional native installations below for the workflows on this
+site.
 
 Before installing, review the :doc:`support_matrix` for the complete supported software stack,
 hardware requirements, optional cuRobo and XR dependencies, and resource guidance.
@@ -134,6 +135,71 @@ The checked-in example datasets are under ``./datasets/`` relative to the reposi
 dataset directory.
 
 
+Optional Native uv Installation
+-------------------------------
+
+AutoData is a `uv <https://docs.astral.sh/uv/>`__ project. ``uv sync`` installs Isaac Sim **6.1.0.0** (the pip
+version of Sim 6.1.0), PyTorch **2.11.0+cu128**, Isaac Lab, Arena, and AutoData with its test tools into ``.venv``
+at the repository root. The versions come from the repository's ``uv.lock``, which keeps Arena's locked version of
+every package they share. Lab, Arena, and AutoData are editable installations from the checkout, and uv provides Python 3.12.
+
+The uv installation supports Linux x86_64. On the host, install
+`uv <https://docs.astral.sh/uv/getting-started/installation/>`__ **0.12.21 or newer**, Git, CMake, and a C++
+compiler. The environment needs about 35 GB of disk space. On Ubuntu:
+
+.. code-block:: bash
+
+   sudo apt-get install build-essential cmake git git-lfs
+
+After cloning the repository and pulling the LFS datasets, run this command at the repository root:
+
+.. code-block:: bash
+
+   uv sync --locked
+
+Run workflow commands from the repository root, starting each one with ``uv run --locked``. For example:
+
+.. code-block:: bash
+
+   export OMNI_KIT_ACCEPT_EULA=YES ACCEPT_EULA=Y
+   uv run --locked python scripts/generate_dataset.py --help
+
+``--locked`` stops with an error instead of changing ``uv.lock``. Substitute the repository root for the
+Docker-only ``/workspaces/autodata`` path. After updating the checkout and its submodules, run
+``uv sync --locked`` again.
+
+Review and accept the Isaac Sim EULA on first launch. For unattended launches after accepting it, set
+the two variables shown above. ``uv pip check`` reports the discrepancies listed for the conda installation
+below, except ``openpi-client``, which this environment does not install. Arena's ``packaging`` override also
+leaves ``virtualenv`` (used by ``pre-commit``) and ``vcs-versioning`` (used to build cuRobo) below the
+``packaging`` version they declare. Both work with the locked version.
+
+
+.. _installation-uv-curobo:
+
+Optional cuRobo for uv
+^^^^^^^^^^^^^^^^^^^^^^
+
+SkillGen additionally needs cuRobo and a **CUDA Toolkit 12.8** installation containing ``nvcc``. cuRobo
+compiles CUDA kernels for the GPU's compute capability against the environment's PyTorch. Install the toolkit
+using NVIDIA's `CUDA installation guide <https://docs.nvidia.com/cuda/cuda-installation-guide-linux/>`__, then run
+the following at the repository root. Adjust ``CUDA_HOME`` if your toolkit is installed elsewhere:
+
+.. code-block:: bash
+
+   export CUDA_HOME=/usr/local/cuda-12.8
+   export PATH="$CUDA_HOME/bin:$PATH"
+   export TORCH_CUDA_ARCH_LIST="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1)+PTX"
+   export MAX_JOBS=4
+   uv cache clean nvidia-curobo
+   uv sync --locked --group curobo
+
+uv reuses a cached cuRobo build regardless of the GPU or PyTorch version. ``uv cache clean nvidia-curobo``
+makes the sync rebuild it, so run these commands again after changing the GPU or the PyTorch version in
+``uv.lock``. To keep cuRobo, pass ``--group curobo`` to later ``uv sync`` commands. ``uv run`` keeps it either
+way.
+
+
 Optional Conda Installation
 ---------------------------
 
@@ -258,8 +324,9 @@ See :autodata_code_link:`<docs/README.md>` for local build instructions.
 Verifying the Installation
 --------------------------
 
-Run these commands from the repository root in the activated conda environment, or from
-``/workspaces/autodata`` inside the container. The full suite includes SkillGen tests and requires cuRobo.
+Run these commands from the repository root in the activated conda environment, or start them with
+``uv run --locked`` in the uv environment. Inside the container, run them from ``/workspaces/autodata``.
+The full suite includes SkillGen tests and requires cuRobo.
 
 Run the fast unit tests (a few seconds, no Isaac Sim launch):
 

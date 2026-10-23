@@ -1,3 +1,138 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autodata"
+version = "0.1.0"
+description = "Scalable robot demonstration generation for robot learning."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "Apache-2.0"
+dependencies = [
+    "typing_extensions",
+    "pyzmq",
+]
+
+[project.optional-dependencies]
+# The Docker image installs AutoData[dev] with pip on top of Isaac Sim's Python.
+dev = [
+    "pytest",
+    "debugpy",
+]
+
+# pip ignores dependency groups, so they do not change the Docker image.
+[dependency-groups]
+sim = [
+    "isaaclab-arena",
+    "isaaclab-dev[isaacsim,ov,mimic,teleop,rsl-rl,rerun]",
+]
+dev = [
+    "autodata[dev]",
+    "pre-commit==4.6.0",
+]
+# uv installs the rest of the environment, including cuRobo's build requirements, before building cuRobo in it.
+curobo = [
+    "nvidia-curobo",
+    # Parallelizes cuRobo's CUDA compilation.
+    "ninja",
+]
+
+[tool.uv]
+required-version = ">=0.12.21"
+default-groups = ["sim", "dev"]
+# uv reads resolver settings only from the root project, so these mirror Arena's [tool.uv].
+# autodata_tests/utils/test_uv_lock.py checks that they and the locked versions still match.
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+prerelease = "if-necessary"  # uv's replacement for Arena's deprecated if-necessary-or-explicit
+index-strategy = "first-index"
+python-preference = "only-managed"
+override-dependencies = [
+    "numpy==2.3.1",
+    "mujoco~=3.11.0",
+    "mujoco-warp~=3.11.0",
+    "newton[sim]==1.5.2",
+    "newton-usd-schemas>=0.4.1",
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+    "torchaudio==2.11.0",
+    "warp-lang==1.16.0",
+    "coverage==7.4.4",
+    "packaging==26.0",
+    "websockets==16.1.1",
+    "boto3==1.40.61",
+    "botocore==1.40.61",
+    "requests==2.32.3",
+    "s3transfer==0.14.0",
+]
+constraint-dependencies = [
+    "pin-pink==3.3.0",
+    "pyglet<3",
+    "tinyobjloader==2.0.0rc13",
+    "mujoco-usd-converter==0.5.0",
+]
+# cuRobo compiles CUDA kernels against the environment's torch.
+no-build-isolation-package = ["nvidia-curobo"]
+
+[[tool.uv.index]]
+url = "https://pypi.nvidia.com"
+explicit = false
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+# The torch overrides replace Isaac Lab's torch requirements together with their CUDA index route.
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+# The NVIDIA index carries only incompatible prereleases of this package.
+mujoco-usd-converter = { index = "pypi" }
+nvidia-curobo = { git = "https://github.com/NVlabs/curobo.git", rev = "ebb71702f3f70e767f40fd8e050674af0288abe8" }
+isaaclab-arena = { path = "submodules/IsaacLab-Arena", editable = true }
+isaaclab-dev = { path = "submodules/IsaacLab-Arena/submodules/IsaacLab", editable = true }
+
+# egl-probe's CMake project predates CMake 3.5, which CMake 4 no longer configures by default.
+[tool.uv.extra-build-variables]
+egl-probe = { CMAKE_POLICY_VERSION_MINIMUM = "3.5" }
+
+# cuRobo's version comes from setuptools_scm and its build needs torch, so declare its
+# metadata statically to lock it without building it.
+[[tool.uv.dependency-metadata]]
+name = "nvidia-curobo"
+version = "0.7.7.post1.dev5"
+requires-dist = [
+    "pybind11",
+    "networkx",
+    "numpy",
+    "numpy-quaternion",
+    "pyyaml",
+    "setuptools_scm>=6.2",
+    "torch>=1.10",
+    "trimesh",
+    "yourdfpy>=0.0.53",
+    "warp-lang>=0.9.0",
+    "scipy>=1.7.0",
+    "tqdm",
+    "wheel",
+    "importlib_resources",
+    "scikit-image",
+]
+
+[tool.setuptools]
+py-modules = ["sitecustomize"]
+
+[tool.setuptools.packages.find]
+include = ["autodata_core*", "autodata_interfaces*", "autodata_utils*", "autodata_examples*"]
+namespaces = false
+
 [tool.isort]
 
 py_version = 312

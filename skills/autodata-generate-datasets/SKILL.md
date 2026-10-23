@@ -28,19 +28,20 @@ kernels, generic host setup (NVIDIA Container Toolkit install), or non-Isaac dat
 
 ## Prerequisites (state these before starting)
 
-AutoData runs **only inside its Docker dev container** on a
-Linux host with an NVIDIA GPU. Commands in this skill assume you are inside the container,
-where the repo is mounted at `/workspaces/autodata`. Use `/isaac-sim/python.sh` for Python commands rather than host aliases.
-If no container is running, tell the user to start one first:
+AutoData runs on a Linux host with an NVIDIA GPU, inside its Docker dev container or in the repo's uv
+environment. In the container, the repo is mounted at `/workspaces/autodata`; use `/isaac-sim/python.sh` for Python
+commands rather than host aliases. In the uv environment, use `uv run --locked python` from the repo root.
+If neither is available, tell the user to start the container or create the environment first:
 
 ```bash
 ./docker/run_docker.sh        # default dev container
 ./docker/run_docker.sh -c     # include cuRobo — REQUIRED for SkillGen
+uv sync --locked              # native uv environment; SkillGen also needs --group curobo
 ```
 
 The first build can take up to ~30 minutes and requires an NGC login (`docker login nvcr.io`).
-Do not attempt to provision hardware or bypass the container — surface the requirement and let
-the user start it.
+Do not attempt to provision hardware or set up either environment yourself — surface the requirement
+and let the user do it.
 
 ## Workflow
 
@@ -56,7 +57,7 @@ full decision guide.
 |-----------|---------|-----------|
 | `mimicgen` | Single-arm tasks (e.g. Franka cube stacking) | default (`./docker/run_docker.sh`) |
 | `dexmimicgen` | Coordinated multi-arm / bimanual tasks (e.g. GR-1, G1) | default |
-| `skillgen` | Single-arm Franka collision-aware, motion-planned transitions (current support) | cuRobo (`./docker/run_docker.sh -c`) |
+| `skillgen` | Single-arm Franka collision-aware, motion-planned transitions (current support) | cuRobo (`./docker/run_docker.sh -c`, or the uv `curobo` group) |
 
 SkillGen currently supports only single-arm Franka tasks with shipped cuRobo planner profiles. For bimanual tasks, use `dexmimicgen`; bimanual collision-aware planning is not available in the current release.
 
@@ -107,7 +108,8 @@ the completed output automatically (see its `--help`).
 
 ### Step 4 — Validate
 
-Confirm the generated HDF5 is well-formed before using it for training:
+Confirm the generated HDF5 is well-formed before using it for training (in the uv environment, replace
+`/isaac-sim/python.sh` with `uv run --locked python`):
 
 ```bash
 HDF5_USE_FILE_LOCKING=FALSE /isaac-sim/python.sh scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5

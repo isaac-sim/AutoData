@@ -97,15 +97,18 @@ Commands, environment profiles, and source dataset metadata use Lab 3.0's `Isaac
 task names directly. For example, Franka recording uses
 `--task IsaacContrib-Stack-Cube-Franka-IK-Rel`.
 
-Docker is recommended. For a native Python 3.12 environment, the updated
-`./conda_installer.sh -c -i` installs the Sim/Lab stack from Arena's lockfile; see the
-[installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-conda-installation).
+Docker is recommended. For a native environment on Linux x86_64, `uv sync --locked` installs the Sim/Lab stack
+from the repository's `uv.lock`, and `uv run --locked` runs commands in it; see the
+[native uv installation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-native-uv-installation).
+For a conda environment, `./conda_installer.sh -c -i` installs the same stack from Arena's lockfile; see the
+[conda installation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-conda-installation).
 Additional container options are described in the
 [installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html).
 
 ### Generate Your First Dataset
 
-Inside the container, generate ten Franka cube-stacking demonstrations from the pre-annotated dataset:
+Inside the container, generate ten Franka cube-stacking demonstrations from the pre-annotated dataset. In the uv
+environment, start the command with `uv run --locked`:
 
 ```bash
 python scripts/generate_dataset.py \
