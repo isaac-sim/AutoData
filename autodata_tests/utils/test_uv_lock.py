@@ -4,6 +4,7 @@
 """AutoData's uv lock must keep the stack that Arena's lock validated."""
 
 import tomllib
+from collections import defaultdict
 from pathlib import Path
 
 from autodata_tests.utils.constants import TestPaths
@@ -17,14 +18,13 @@ def _load(path: Path) -> dict:
     return tomllib.loads(path.read_text())
 
 
-def _resolution(lock: Path) -> dict[str, tuple[str | None, list[str]]]:
-    return {
-        package["name"]: (
-            package.get("version"),
-            sorted({dependency["name"] for dependency in package.get("dependencies", [])}),
-        )
-        for package in _load(lock)["package"]
-    }
+def _resolution(lock: Path) -> dict[str, list[tuple[str, list[str]]]]:
+    # A lock can hold several records of one package, one per resolution fork.
+    records = defaultdict(list)
+    for package in _load(lock)["package"]:
+        dependencies = sorted({dependency["name"] for dependency in package.get("dependencies", [])})
+        records[package["name"]].append((package.get("version", ""), dependencies))
+    return {name: sorted(entries) for name, entries in records.items()}
 
 
 def test_shared_packages_keep_arena_resolution():

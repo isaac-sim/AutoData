@@ -195,12 +195,12 @@ the following at the repository root. Adjust ``CUDA_HOME`` if your toolkit is in
    export TORCH_CUDA_ARCH_LIST="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1)+PTX"
    export MAX_JOBS=4
    uv cache clean nvidia-curobo
-   uv sync --locked --group curobo
+   uv sync --locked --group curobo --reinstall-package nvidia-curobo
 
-uv reuses a cached cuRobo build regardless of the GPU or PyTorch version. ``uv cache clean nvidia-curobo``
-makes the sync rebuild it, so run these commands again after changing the GPU or the PyTorch version in
-``uv.lock``. To keep cuRobo, pass ``--group curobo`` to later ``uv sync`` commands. ``uv run`` keeps it either
-way.
+uv reuses a cached or installed cuRobo build regardless of the GPU or PyTorch version. Cleaning the cache and
+reinstalling the package makes the sync rebuild it, so run these commands again after changing the GPU or the
+PyTorch version in ``uv.lock``. To keep cuRobo, pass ``--group curobo`` to later ``uv sync`` commands.
+``uv run`` keeps it either way.
 
 
 Optional Conda Installation

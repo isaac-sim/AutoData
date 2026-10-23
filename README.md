@@ -108,7 +108,7 @@ Additional container options are described in the
 ### Generate Your First Dataset
 
 Inside the container, generate ten Franka cube-stacking demonstrations from the pre-annotated dataset. In the uv
-environment, start the command with `uv run --locked`:
+environment, start each Python command with `uv run --locked`:
 
 ```bash
 python scripts/generate_dataset.py \

@@ -111,11 +111,8 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: recursive
-
-      - name: Pull LFS test data
-        run: |
-          git lfs install --local
-          git lfs pull
+          lfs: true
+          persist-credentials: false
 
       - name: Install uv
         run: |

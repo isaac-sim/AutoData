@@ -30,7 +30,7 @@ kernels, generic host setup (NVIDIA Container Toolkit install), or non-Isaac dat
 
 AutoData runs on a Linux host with an NVIDIA GPU, inside its Docker dev container or in the repo's uv
 environment. In the container, the repo is mounted at `/workspaces/autodata`; use `/isaac-sim/python.sh` for Python
-commands rather than host aliases. In the uv environment, use `uv run --locked python` from the repo root.
+commands rather than host aliases. In the uv environment, use `uv run --no-sync python` from the repo root.
 If neither is available, tell the user to start the container or create the environment first:
 
 ```bash
@@ -61,7 +61,7 @@ full decision guide.
 
 SkillGen currently supports only single-arm Franka tasks with shipped cuRobo planner profiles. For bimanual tasks, use `dexmimicgen`; bimanual collision-aware planning is not available in the current release.
 
-SkillGen requires the cuRobo container; the other two do not.
+SkillGen requires cuRobo (the `-c` container or the uv `curobo` group); the other two do not.
 
 ### Step 2 — Assemble the configuration
 
@@ -81,7 +81,7 @@ Start from the shipped examples in `autodata_examples/` (`tasks/`, `embodiments/
 
 ### Step 3 — Generate
 
-Use the bundled helper for generation; it invokes `generate_dataset.py` with the verified container interpreter. Required helper flags are `--alg`, `--task`, `--embodiment`, and `--input`.
+Use the bundled helper for generation; it invokes `generate_dataset.py` with the container's interpreter, or the active environment's `python` under `uv run`. Required helper flags are `--alg`, `--task`, `--embodiment`, and `--input`.
 Use `--env-name`, `--output`, `--trials`, and `--num-envs` for a reproducible run. Full direct-CLI
 flag reference is in `references/cli-reference.md`.
 
@@ -101,7 +101,7 @@ skills/autodata-generate-datasets/scripts/run_generation.sh \
 ```
 
 `--num_envs` controls how many Isaac Lab environments run in parallel; increase it (within GPU
-memory) to speed up generation. For SkillGen, remember to launch with the `-c` (cuRobo) container.
+memory) to speed up generation. For SkillGen, make sure cuRobo is available (the `-c` container or the uv `curobo` group).
 
 The bundled `skills/autodata-generate-datasets/scripts/run_generation.sh` helper resolves the Isaac Sim interpreter and validates
 the completed output automatically (see its `--help`).
@@ -109,7 +109,7 @@ the completed output automatically (see its `--help`).
 ### Step 4 — Validate
 
 Confirm the generated HDF5 is well-formed before using it for training (in the uv environment, replace
-`/isaac-sim/python.sh` with `uv run --locked python`):
+`/isaac-sim/python.sh` with `uv run --no-sync python`):
 
 ```bash
 HDF5_USE_FILE_LOCKING=FALSE /isaac-sim/python.sh scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5
@@ -143,8 +143,8 @@ If no annotated source dataset exists yet:
 
 ## Common Pitfalls
 
-- **Wrong container for SkillGen** — SkillGen needs the cuRobo container (`-c`); the default
-  container will fail. See `references/algorithm-selection.md`.
+- **No cuRobo for SkillGen** — SkillGen needs the cuRobo container (`-c`) or the uv `curobo` group; the
+  default container or uv environment will fail. See `references/algorithm-selection.md`.
 - **Bimanual task with `mimicgen`** — use `dexmimicgen` for coordinated multi-arm embodiments.
 - **Bimanual collision-aware planning** — not supported in the current release; do not select `skillgen`.
 - **Skipping validation** — always run `validate_dataset.py` before treating a dataset as ready.
