@@ -30,13 +30,14 @@ kernels, generic host setup (NVIDIA Container Toolkit install), or non-Isaac dat
 
 AutoData runs on a Linux host with an NVIDIA GPU, inside its Docker dev container or in the repo's uv
 environment. In the container, the repo is mounted at `/workspaces/autodata`; use `/isaac-sim/python.sh` for Python
-commands rather than host aliases. In the uv environment, use `uv run --no-sync python` from the repo root.
+commands rather than host aliases. In the uv environment (Linux x86_64 only), use `uv run --no-sync python` from the repo root.
 If neither is available, tell the user to start the container or create the environment first:
 
 ```bash
 ./docker/run_docker.sh        # default dev container
 ./docker/run_docker.sh -c     # include cuRobo — REQUIRED for SkillGen
-uv sync --locked              # native uv environment; SkillGen also needs --group curobo
+uv sync --locked                 # native uv environment
+uv sync --locked --group curobo  # include cuRobo — REQUIRED for SkillGen; see the installation guide
 ```
 
 The first build can take up to ~30 minutes and requires an NGC login (`docker login nvcr.io`).

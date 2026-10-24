@@ -62,10 +62,12 @@ the amount of manual collection needed to produce datasets for policy training.
 
 - Linux with an NVIDIA GPU and driver that meet the
   [Isaac Sim requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)
-- [Docker](https://docs.docker.com/engine/install/) and the
-  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 - Git and [Git LFS](https://git-lfs.com/)
-- An [NGC](https://catalog.ngc.nvidia.com/) account for the Isaac Sim container image
+- For the recommended Docker installation: [Docker](https://docs.docker.com/engine/install/), the
+  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+  and an [NGC](https://catalog.ngc.nvidia.com/) account for the Isaac Sim container image
+- For the native installation instead: Linux x86_64,
+  [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.12.21 or newer, CMake, and a C++ compiler
 
 ### Installation
 
@@ -89,21 +91,26 @@ The first launch builds the development image and opens a shell in the repositor
 `/workspaces/autodata`. Subsequent launches reuse the image. Use `./docker/run_docker.sh -c` to include cuRobo
 for SkillGen workflows.
 
+For the native installation, skip Docker and install the locked environment at the repository root instead:
+
+```bash
+uv sync --locked
+```
+
 This checkout uses Isaac Sim 6.1.0, Arena 0.3.1 at commit
 `481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7`, and its nested Isaac Lab at commit
 `28a386f063e41c04c07f50e63eefb83fd8408fbe` (v3.0.0-EA plus 3 commits). After updating an existing clone, run
-`git submodule update --init --recursive` and rebuild with `./docker/run_docker.sh -c -r`.
+`git submodule update --init --recursive` and rebuild with `./docker/run_docker.sh -c -r`, or rerun
+`uv sync --locked` for the native installation.
 Commands, environment profiles, and source dataset metadata use Lab 3.0's `IsaacContrib-*`
 task names directly. For example, Franka recording uses
 `--task IsaacContrib-Stack-Cube-Franka-IK-Rel`.
 
-Docker is recommended. For a native environment on Linux x86_64, `uv sync --locked` installs the Sim/Lab stack
-from the repository's `uv.lock`, and `uv run --locked` runs commands in it; see the
-[native uv installation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-native-uv-installation).
-For a conda environment, `./conda_installer.sh -c -i` installs the same stack from Arena's lockfile; see the
-[conda installation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-conda-installation).
-Additional container options are described in the
-[installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html).
+The [installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html) covers the
+[native uv installation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-native-uv-installation)
+including cuRobo, a
+[conda installation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-conda-installation)
+with `./conda_installer.sh -c -i`, and additional container options.
 
 ### Generate Your First Dataset
 

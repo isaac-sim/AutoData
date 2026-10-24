@@ -18,11 +18,15 @@ def _load(path: Path) -> dict:
     return tomllib.loads(path.read_text())
 
 
-def _resolution(lock: Path) -> dict[str, list[tuple[str, list[str]]]]:
-    # A lock can hold several records of one package, one per resolution fork.
+def _resolution(lock: Path) -> dict[str, list]:
+    # A lock can hold several records of one package, one per resolution fork. Dependency markers are left out:
+    # uv writes equivalent markers differently depending on the root project.
     records = defaultdict(list)
     for package in _load(lock)["package"]:
-        dependencies = sorted({dependency["name"] for dependency in package.get("dependencies", [])})
+        dependencies = sorted(
+            (dependency["name"], dependency.get("version", ""), dependency.get("extra", []))
+            for dependency in package.get("dependencies", [])
+        )
         records[package["name"]].append((package.get("version", ""), dependencies))
     return {name: sorted(entries) for name, entries in records.items()}
 
