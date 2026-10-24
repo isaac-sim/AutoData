@@ -82,6 +82,54 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  test_native:
+    name: Native uv install (GPU)
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 120
+
+    env:
+      # A persistent cache on the workspace filesystem lets uv hard-link the environment instead of
+      # downloading and copying about 25 GB on every run.
+      UV_CACHE_DIR: ${{ github.workspace }}/../uv-cache
+      OMNI_KIT_ACCEPT_EULA: "YES"
+      ACCEPT_EULA: "Y"
+
+    steps:
+      - name: nvidia-smi
+        run: nvidia-smi
+
+      - name: Clean up submodules directory
+        run: |
+          rm -f .git/modules/submodules/IsaacLab-Arena/index.lock || true
+          rm -rf submodules/* || true
+
+      - name: Mark repo as safe for git
+        run: git config --global --add safe.directory "$PWD"
+
+      - name: Checkout (recursive submodules)
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          lfs: true
+          persist-credentials: false
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/0.12.21/install.sh | env UV_INSTALL_DIR="${RUNNER_TEMP}/uv" UV_NO_MODIFY_PATH=1 sh
+          echo "${RUNNER_TEMP}/uv" >> "${GITHUB_PATH}"
+
+      - name: Install the locked environment
+        run: uv sync --locked
+
+      - name: Run unit tests
+        run: uv run --locked pytest -sv autodata_tests -m "not with_subprocess"
+
+      - name: Run Franka MimicGen generation
+        run: >-
+          uv run --locked pytest -sv
+          autodata_tests/e2e/test_mimicgen_data_generation.py::test_franka_cube_stack_mimicgen_data_generation_single_env_cuda
+
   publish_docs:
     name: Publish docs (GitHub Pages)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')

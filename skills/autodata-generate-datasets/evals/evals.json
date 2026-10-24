@@ -35,10 +35,10 @@
       "question": "Make collision-aware Franka bin-stacking trajectories with SkillGen in AutoData.",
       "expected_skill": "autodata-generate-datasets",
       "expected_script": null,
-      "ground_truth": "SkillGen requires launching the cuRobo container (./docker/run_docker.sh -c) and using the skillgen task/embodiment YAML (franka_bin_stack_skillgen.yaml, franka_ik_rel_skillgen.yaml) with --alg skillgen.",
+      "ground_truth": "SkillGen requires cuRobo, from the cuRobo container (./docker/run_docker.sh -c) or the uv curobo group, and using the skillgen task/embodiment YAML (franka_bin_stack_skillgen.yaml, franka_ik_rel_skillgen.yaml) with --alg skillgen.",
       "expected_behavior": [
         "Select the skillgen algorithm for collision-aware, motion-planned transitions.",
-        "State that the cuRobo container (./docker/run_docker.sh -c) is required.",
+        "State that cuRobo is required: the cuRobo container (./docker/run_docker.sh -c) or the uv curobo group.",
         "Use franka_bin_stack_skillgen.yaml and franka_ik_rel_skillgen.yaml.",
         "Assemble a generate_dataset.py invocation with --alg skillgen."
       ]
