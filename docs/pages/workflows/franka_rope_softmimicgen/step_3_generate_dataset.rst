@@ -10,8 +10,7 @@ end-effector trajectory to the current rope shape. It then executes the adapted 
 and evaluates task success.
 
 The commands below use the pre-annotated source datasets that ship with the repository.
-You can skip recording and annotation and start here. Use the source dataset that matches
-your physics backend:
+Use the source dataset that matches your physics backend:
 
 .. tabs::
 
@@ -28,8 +27,6 @@ your physics backend:
 
       If you ran Steps 1–2, set ``--input_file`` to
       ``./datasets/dataset_franka_rope_physx_annotated.hdf5`` instead.
-
-These source datasets are Git LFS assets. Use the dataset that matches ``--presets``.
 
 
 Small-Scale Generation
@@ -83,10 +80,9 @@ Start with two parallel environments in a Kit window to inspect the generated mo
 
          Image placeholder: Parallel SoftMimicGen rope data generation with PhysX.
 
-Failed attempts are normal. The task descriptor sets ``guarantee_success: true`` and
-``keep_failed: false``, so generation retries until it reaches the target of 5 successful
+Failed attempts are normal. The task descriptor sets ``guarantee_success: true`` 
+so generation retries until it reaches the target of 5 successful
 demonstrations and exports only successes. The console reports progress and success rate.
-The attempt count and runtime can be higher than the requested demonstration count.
 
 
 Full-Scale Generation
@@ -159,11 +155,5 @@ Key Parameters
      - Render and record the fixed-view and wrist RGB observations.
    * - ``--viz``
      - ``kit`` opens the simulation window; ``none`` runs headless.
-
-The task descriptor marks both subtasks with ``algo_params.object_soft: true`` and uses
-``selection_strategy: registration_cost``. TPS regularization is controlled by ``bend_coef``
-and ``rot_coef``; ``use_rotation_transform`` also adapts end-effector orientations.
-``reset_settling_steps: 10`` lets the scene settle after a randomized reset before generation
-starts. Begin with the supplied settings before tuning the descriptor for your demonstrations.
 
 Continue to :doc:`step_4_validate_dataset`.

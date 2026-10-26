@@ -4,7 +4,7 @@
 Step 2: Annotate Demonstrations
 -------------------------------
 
-Annotation replays the recorded actions and adds the data SoftMimicGen needs: end-effector
+Annotation replays the recorded actions and adds data that SoftMimicGen needs: end-effector
 poses, rope simulation-node positions, and the ``grasp`` subtask termination signal.
 The second subtask, bringing the rope ends together, ends with the trajectory and needs
 no explicit termination signal.
@@ -158,10 +158,5 @@ Check the annotated dataset:
       .. code-block:: bash
 
          python scripts/validate_dataset.py ./datasets/dataset_franka_rope_physx_annotated.hdf5
-
-In each exported episode, ``obs/datagen_info/object_nodal_position/object`` contains the
-rope node positions, and ``obs/datagen_info/subtask_term_signals/grasp`` contains the
-annotated boundary signal. Structural validation checks the general dataset layout;
-SoftMimicGen checks the required nodal annotations when generation starts.
 
 Continue to :doc:`step_3_generate_dataset`.
