@@ -272,7 +272,9 @@ class Datastream:
         return object_pose_matrix
 
     def get_object_nodal_positions(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
-        """Get all deformable-object nodal positions in the env-relative frame.
+        """Get all deformable-object nodal positions in the embodiment's reference frame.
+
+        Without a configured controller frame, positions remain environment-relative.
 
         Args:
             env_ids: Environments to read; ``None`` reads all.
@@ -285,11 +287,17 @@ class Datastream:
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
         scene = self.env.scene
         env_origins = scene.env_origins[index]
+        reference_inverse = self._reference_frame_inverse(env_ids)
         object_nodal_positions: dict[str, torch.Tensor] = {}
         for obj_name, obj in scene.deformable_objects.items():
             nodal_pos_w = obj.data.nodal_pos_w
             nodal_pos_w = nodal_pos_w.torch if hasattr(nodal_pos_w, "torch") else as_torch(nodal_pos_w)
-            object_nodal_positions[obj_name] = nodal_pos_w[index] - env_origins.unsqueeze(1)
+            nodes = nodal_pos_w[index] - env_origins.unsqueeze(1)
+            if reference_inverse is not None:
+                rotation = reference_inverse[:, :3, :3]
+                translation = reference_inverse[:, :3, 3]
+                nodes = nodes @ rotation.transpose(-1, -2) + translation.unsqueeze(1)
+            object_nodal_positions[obj_name] = nodes
         return object_nodal_positions
 
     def get_subtask_term_signals(

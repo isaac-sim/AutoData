@@ -255,6 +255,42 @@ def test_get_object_nodal_positions_is_env_relative():
     assert torch.allclose(nodes[0, 1], torch.tensor([0.2, 0.0, 0.05]))
 
 
+@pytest.mark.parametrize("env_ids", [None, [1], [1, 0]], ids=["all", "subset", "reordered"])
+def test_get_object_nodal_positions_uses_controller_frame(env_ids):
+    datastream, _, adapter, env = _datastream()
+    env.scene.env_origins = torch.tensor([[10.0, 20.0, 1.0], [-5.0, 7.0, 2.0]])
+    world_nodes = torch.tensor([
+        [[12.0, 21.0, 3.0], [14.0, 23.0, 4.0]],
+        [[-4.0, 7.0, 5.0], [-1.0, 8.0, 9.0]],
+    ])
+    env.scene.deformable_objects["rope"].data.nodal_pos_w = world_nodes.clone()
+    reference = torch.tensor([
+        [
+            [0.0, -1.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 2.0],
+            [0.0, 0.0, 1.0, 0.5],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        [
+            [1.0, 0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0, 0.5],
+            [0.0, 1.0, 0.0, 2.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    ])
+    adapter.get_reference_frame_pose = lambda env_ids: reference[slice(None) if env_ids is None else env_ids]
+    expected = torch.tensor([
+        [[-1.0, -1.0, 1.5], [1.0, -3.0, 2.5]],
+        [[2.0, 1.0, 0.5], [5.0, 5.0, -0.5]],
+    ])
+
+    nodes = datastream.get_object_nodal_positions(env_ids=env_ids)["rope"]
+
+    index = slice(None) if env_ids is None else env_ids
+    torch.testing.assert_close(nodes, expected[index])
+    torch.testing.assert_close(env.scene.deformable_objects["rope"].data.nodal_pos_w, world_nodes)
+
+
 def test_articulated_object_poses_use_controller_frame():
     """A moving controller frame must transform articulated roots just like rigid objects."""
     datastream, _, adapter, env = _datastream()

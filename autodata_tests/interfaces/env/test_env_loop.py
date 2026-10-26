@@ -114,6 +114,35 @@ def test_reset_without_settling_completes_without_environment_steps():
         _close_event_loop(loop, tasks)
 
 
+@pytest.mark.parametrize("settling_steps", [0, 2], ids=["immediate", "after_settling"])
+def test_cancelled_reset_completion_releases_queue(settling_steps):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    env = _MockEnv(num_envs=1)
+    reset_queue: asyncio.Queue = asyncio.Queue()
+    completion = loop.create_future()
+    reset_queue.put_nowait(EnvResetRequest(env_id=0, completion=completion))
+    completion.cancel()
+    tasks = asyncio.gather(reset_queue.join())
+    try:
+        completed = env_loop(
+            env=env,
+            env_reset_queue=reset_queue,
+            env_action_queue=asyncio.Queue(),
+            asyncio_event_loop=loop,
+            generation_policy_params=GenerationPolicy(reset_settling_steps=settling_steps),
+            stats={"num_success": 0, "num_failures": 0, "num_attempts": 0},
+            data_gen_tasks=tasks,
+        )
+        assert completed is False
+        assert completion.cancelled()
+        assert env.reset_env_ids == [(0,)]
+        assert len(env.actions) == settling_steps
+        loop.run_until_complete(asyncio.wait_for(reset_queue.join(), timeout=0.1))
+    finally:
+        _close_event_loop(loop, tasks)
+
+
 @pytest.mark.parametrize("settling_env_id", [0, 1])
 @pytest.mark.parametrize("idle_action", [None, [2.0]], ids=["default_zero", "configured"])
 def test_settling_env_uses_idle_action_while_other_env_continues(settling_env_id, idle_action):

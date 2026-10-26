@@ -326,7 +326,8 @@ def env_loop(
                         settling_requests[request.env_id] = request
                         settling_steps_remaining[request.env_id] = reset_settling_steps
                     else:
-                        request.completion.set_result(None)
+                        if not request.completion.done():
+                            request.completion.set_result(None)
                         env_reset_queue.task_done()
 
                 expected_action_count = env.num_envs - len(settling_requests)
@@ -383,7 +384,8 @@ def env_loop(
                 for env_id in settled_env_ids:
                     request = settling_requests.pop(env_id)
                     settling_steps_remaining.pop(env_id)
-                    request.completion.set_result(None)
+                    if not request.completion.done():
+                        request.completion.set_result(None)
                     env_reset_queue.task_done()
 
             if prev_num_attempts != stats["num_attempts"]:
