@@ -114,6 +114,7 @@ Table of Contents
    :caption: Example Workflows
 
    pages/workflows/franka_cube_stack_mimicgen/index
+   pages/workflows/franka_rope_softmimicgen/index
    pages/workflows/humanoid_dexmimicgen/index
    pages/workflows/skillgen/index
 

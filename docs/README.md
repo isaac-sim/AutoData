@@ -31,6 +31,9 @@ make html SPHINXOPTS="-W --keep-going"
 xdg-open _build/current/html/index.html
 ```
 
+Run both commands from `docs/`. `make html` writes to `_build/current/html/`;
+`_build/index.html` is only created by `make multi-docs` (see below).
+
 For an existing docs environment, start at `cd docs` and `source venv_docs/bin/activate`, then run
 the build command above. `-W` makes warnings fail the build. To rebuild every page after changing
 the configuration, use `make html SPHINXOPTS="-E -a -W --keep-going"`.
