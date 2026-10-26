@@ -31,16 +31,21 @@ Run the recording command for your backend:
       .. code-block:: bash
 
          python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
-             --external_callback autodata_examples.envs.register_environments \
              --task Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
-             --teleop_device spacemouse \
-             --no-reset_sim_buffer_each_episode \
-             --dataset_file ./datasets/softmimicgen/recorded_dataset_franka_rope_newton.hdf5 \
-             --num_demos 3 \
+             --external_callback autodata_examples.envs.register_environments \
+             --viz kit \
              --device cuda \
              --enable_cameras \
-             --viz kit
+             --teleop_device spacemouse \
+             --num_demos 3 \
+             --no-reset_sim_buffer_each_episode \
+             --dataset_file ./datasets/dataset_franka_rope_newton.hdf5
+
+      .. note::
+
+         Newton recording requires ``--no-reset_sim_buffer_each_episode``. Keep this flag
+         when using either a SpaceMouse or a keyboard.
 
       .. todo::
 
@@ -51,15 +56,15 @@ Run the recording command for your backend:
       .. code-block:: bash
 
          python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
-             --external_callback autodata_examples.envs.register_environments \
              --task Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
-             --teleop_device spacemouse \
-             --dataset_file ./datasets/softmimicgen/recorded_dataset_franka_rope_physx.hdf5 \
-             --num_demos 3 \
+             --external_callback autodata_examples.envs.register_environments \
+             --viz kit \
              --device cuda \
              --enable_cameras \
-             --viz kit
+             --teleop_device spacemouse \
+             --num_demos 3 \
+             --dataset_file ./datasets/dataset_franka_rope_physx.hdf5
 
       .. todo::
 
@@ -67,11 +72,6 @@ Run the recording command for your backend:
 
 ``--external_callback`` registers AutoData's Arena rope environment before Isaac Lab creates
 it. Keep this option when recording or replaying with Isaac Lab's tools.
-
-.. note::
-
-   Newton recording uses ``--no-reset_sim_buffer_each_episode`` to preserve simulation
-   buffers between attempts. PhysX uses the recorder's default buffer reset behavior.
 
 The SpaceMouse controls are the same as in the cube-stacking workflow:
 
@@ -81,9 +81,9 @@ The SpaceMouse controls are the same as in the cube-stacking workflow:
 
    * - Input
      - Action
-   * - Tilt / push / pull
+   * - Move the puck laterally / vertically
      - Translate the end-effector
-   * - Twist
+   * - Tilt / twist the puck
      - Rotate the end-effector
    * - Left button
      - Toggle gripper (open / close)
@@ -107,8 +107,7 @@ Recording with a Keyboard (Optional)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Replace ``--teleop_device spacemouse`` with ``--teleop_device keyboard`` in the command for
-your backend. No additional device setup is required. Keep the other arguments, including
-Newton's ``--no-reset_sim_buffer_each_episode``.
+your backend. No additional device setup is required.
 
 Use the keyboard controls printed by the recorder: ``W/S``, ``A/D``, ``Q/E`` translate the
 arm; ``Z/X``, ``T/G``, ``C/V`` rotate it; ``K`` toggles the gripper; and ``R`` discards the
@@ -126,14 +125,12 @@ Check that the recorded file contains the successful episodes:
 
       .. code-block:: bash
 
-         python scripts/validate_dataset.py \
-             ./datasets/softmimicgen/recorded_dataset_franka_rope_newton.hdf5
+         python scripts/validate_dataset.py ./datasets/dataset_franka_rope_newton.hdf5
 
    .. group-tab:: PhysX
 
       .. code-block:: bash
 
-         python scripts/validate_dataset.py \
-             ./datasets/softmimicgen/recorded_dataset_franka_rope_physx.hdf5
+         python scripts/validate_dataset.py ./datasets/dataset_franka_rope_physx.hdf5
 
 Continue to :doc:`step_2_annotate_demonstrations`.

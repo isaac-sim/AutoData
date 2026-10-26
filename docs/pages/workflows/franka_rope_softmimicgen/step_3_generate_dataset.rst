@@ -9,20 +9,25 @@ selecting a source demonstration by nodal registration cost, and warping the sou
 end-effector trajectory to the current rope shape. It then executes the adapted trajectory
 and evaluates task success.
 
-The commands below use the annotated files from Steps 1–2. To skip those steps, replace
-``--input_file`` with the pre-annotated dataset for your backend:
+The commands below use the pre-annotated source datasets that ship with the repository.
+You can skip recording and annotation and start here. Use the source dataset that matches
+your physics backend:
 
 .. tabs::
 
    .. group-tab:: Newton
 
-      `autodata_tests/test_data/annotated_dataset_franka_rope_softmimicgen_newton.hdf5
-      <https://github.com/isaac-sim/AutoData/blob/main/autodata_tests/test_data/annotated_dataset_franka_rope_softmimicgen_newton.hdf5>`_
+      :autodata_code_link:`<datasets/annotated_datasets/dataset_franka_rope_newton_annotated.hdf5>`
+
+      If you ran Steps 1–2, set ``--input_file`` to
+      ``./datasets/dataset_franka_rope_newton_annotated.hdf5`` instead.
 
    .. group-tab:: PhysX
 
-      `autodata_tests/test_data/annotated_dataset_franka_rope_softmimicgen.hdf5
-      <https://github.com/isaac-sim/AutoData/blob/main/autodata_tests/test_data/annotated_dataset_franka_rope_softmimicgen.hdf5>`_
+      :autodata_code_link:`<datasets/annotated_datasets/dataset_franka_rope_physx_annotated.hdf5>`
+
+      If you ran Steps 1–2, set ``--input_file`` to
+      ``./datasets/dataset_franka_rope_physx_annotated.hdf5`` instead.
 
 These source datasets are Git LFS assets. Use the dataset that matches ``--presets``.
 
@@ -41,16 +46,16 @@ Start with two parallel environments in a Kit window to inspect the generated mo
          python scripts/generate_dataset.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
-             --alg softmimicgen \
-             --task_descriptor autodata_examples/tasks/franka_rope_softmimicgen.yaml \
-             --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
-             --input_file ./datasets/softmimicgen/annotated_dataset_franka_rope_newton.hdf5 \
-             --output_file ./datasets/softmimicgen/generated_dataset_franka_rope_newton_softmimicgen_small.hdf5 \
-             --generation_num_trials 10 \
-             --num_envs 2 \
+             --viz kit \
              --device cuda \
              --enable_cameras \
-             --viz kit
+             --num_envs 2 \
+             --alg softmimicgen \
+             --generation_num_trials 5 \
+             --task_descriptor autodata_examples/tasks/franka_rope_softmimicgen.yaml \
+             --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
+             --input_file ./datasets/annotated_datasets/dataset_franka_rope_newton_annotated.hdf5 \
+             --output_file ./datasets/generated_dataset_softmimicgen_franka_rope_newton_small.hdf5
 
       .. todo::
 
@@ -63,23 +68,23 @@ Start with two parallel environments in a Kit window to inspect the generated mo
          python scripts/generate_dataset.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
-             --alg softmimicgen \
-             --task_descriptor autodata_examples/tasks/franka_rope_softmimicgen.yaml \
-             --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
-             --input_file ./datasets/softmimicgen/annotated_dataset_franka_rope_physx.hdf5 \
-             --output_file ./datasets/softmimicgen/generated_dataset_franka_rope_physx_softmimicgen_small.hdf5 \
-             --generation_num_trials 10 \
-             --num_envs 2 \
+             --viz kit \
              --device cuda \
              --enable_cameras \
-             --viz kit
+             --num_envs 2 \
+             --alg softmimicgen \
+             --generation_num_trials 5 \
+             --task_descriptor autodata_examples/tasks/franka_rope_softmimicgen.yaml \
+             --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
+             --input_file ./datasets/annotated_datasets/dataset_franka_rope_physx_annotated.hdf5 \
+             --output_file ./datasets/generated_dataset_softmimicgen_franka_rope_physx_small.hdf5
 
       .. todo::
 
          Image placeholder: Parallel SoftMimicGen rope data generation with PhysX.
 
 Failed attempts are normal. The task descriptor sets ``guarantee_success: true`` and
-``keep_failed: false``, so generation retries until it reaches the target of 10 successful
+``keep_failed: false``, so generation retries until it reaches the target of 5 successful
 demonstrations and exports only successes. The console reports progress and success rate.
 The attempt count and runtime can be higher than the requested demonstration count.
 
@@ -87,10 +92,9 @@ The attempt count and runtime can be higher than the requested demonstration cou
 Full-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^
 
-After checking the small run, increase the target and run without the Kit window.
-This example keeps two parallel environments; increase ``--num_envs`` gradually according
-to GPU memory and observed throughput. Deformable simulation and camera recording can be
-expensive, so the cube-stacking workflow's environment count is not a sizing guide for this task.
+After checking the small run, generate 100 successful demonstrations with 10 parallel
+environments and run without the Kit window. Adjust ``--num_envs`` according to GPU memory
+and observed throughput. Deformable simulation and camera recording can be expensive.
 
 .. tabs::
 
@@ -101,16 +105,16 @@ expensive, so the cube-stacking workflow's environment count is not a sizing gui
          python scripts/generate_dataset.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
-             --alg softmimicgen \
-             --task_descriptor autodata_examples/tasks/franka_rope_softmimicgen.yaml \
-             --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
-             --input_file ./datasets/softmimicgen/annotated_dataset_franka_rope_newton.hdf5 \
-             --output_file ./datasets/softmimicgen/generated_dataset_franka_rope_newton_softmimicgen.hdf5 \
-             --generation_num_trials 1000 \
-             --num_envs 2 \
+             --viz none \
              --device cuda \
              --enable_cameras \
-             --viz none
+             --num_envs 10 \
+             --alg softmimicgen \
+             --generation_num_trials 100 \
+             --task_descriptor autodata_examples/tasks/franka_rope_softmimicgen.yaml \
+             --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
+             --input_file ./datasets/annotated_datasets/dataset_franka_rope_newton_annotated.hdf5 \
+             --output_file ./datasets/generated_dataset_softmimicgen_franka_rope_newton.hdf5
 
    .. group-tab:: PhysX
 
@@ -119,16 +123,16 @@ expensive, so the cube-stacking workflow's environment count is not a sizing gui
          python scripts/generate_dataset.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
-             --alg softmimicgen \
-             --task_descriptor autodata_examples/tasks/franka_rope_softmimicgen.yaml \
-             --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
-             --input_file ./datasets/softmimicgen/annotated_dataset_franka_rope_physx.hdf5 \
-             --output_file ./datasets/softmimicgen/generated_dataset_franka_rope_physx_softmimicgen.hdf5 \
-             --generation_num_trials 1000 \
-             --num_envs 2 \
+             --viz none \
              --device cuda \
              --enable_cameras \
-             --viz none
+             --num_envs 10 \
+             --alg softmimicgen \
+             --generation_num_trials 100 \
+             --task_descriptor autodata_examples/tasks/franka_rope_softmimicgen.yaml \
+             --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
+             --input_file ./datasets/annotated_datasets/dataset_franka_rope_physx_annotated.hdf5 \
+             --output_file ./datasets/generated_dataset_softmimicgen_franka_rope_physx.hdf5
 
 To generate state-only datasets, omit ``--enable_cameras``. ``--viz none`` alone does not
 disable image recording.

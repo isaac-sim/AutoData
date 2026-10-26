@@ -49,13 +49,17 @@ until its two ends are close together.
    * - **Physics backends**
      - Newton (``--presets newton``) or PhysX (``--presets physx``)
    * - **Embodiment**
-     - Franka, relative IK task-space actions (7-D: delta pose (xyz, rpy) + binary gripper open/close)
+     - Franka, relative IK task-space actions (7-D: delta position, axis-angle rotation, and gripper open/close)
    * - **Task descriptor**
      - :autodata_code_link:`<autodata_examples/tasks/franka_rope_softmimicgen.yaml>`
    * - **Embodiment config**
      - :autodata_code_link:`<autodata_examples/embodiments/franka_ik_rel.yaml>`
    * - **Subtasks**
      - Approach and grasp the rope (``grasp``) → bring its ends together (``end of trajectory``)
+   * - **Newton source dataset**
+     - :autodata_code_link:`<datasets/annotated_datasets/dataset_franka_rope_newton_annotated.hdf5>`
+   * - **PhysX source dataset**
+     - :autodata_code_link:`<datasets/annotated_datasets/dataset_franka_rope_physx_annotated.hdf5>`
 
 
 How SoftMimicGen Adapts Demonstrations

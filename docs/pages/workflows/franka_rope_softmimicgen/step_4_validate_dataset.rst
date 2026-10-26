@@ -15,15 +15,13 @@ Check the generated HDF5 file and summarize its contents:
 
       .. code-block:: bash
 
-         python scripts/validate_dataset.py \
-             ./datasets/softmimicgen/generated_dataset_franka_rope_newton_softmimicgen.hdf5
+         python scripts/validate_dataset.py ./datasets/generated_dataset_softmimicgen_franka_rope_newton.hdf5
 
    .. group-tab:: PhysX
 
       .. code-block:: bash
 
-         python scripts/validate_dataset.py \
-             ./datasets/softmimicgen/generated_dataset_franka_rope_physx_softmimicgen.hdf5
+         python scripts/validate_dataset.py ./datasets/generated_dataset_softmimicgen_franka_rope_physx.hdf5
 
 If you only ran small-scale generation, use the corresponding ``_small.hdf5`` file instead.
 The validator prints the episode count, environment metadata, and any structural issues.
@@ -48,14 +46,14 @@ generate the dataset, and keep the Arena registration callback:
       .. code-block:: bash
 
          python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
-             --external_callback autodata_examples.envs.register_environments \
              --task Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
-             --dataset_file ./datasets/softmimicgen/generated_dataset_franka_rope_newton_softmimicgen.hdf5 \
-             --num_envs 1 \
+             --external_callback autodata_examples.envs.register_environments \
+             --viz kit \
              --device cuda \
              --enable_cameras \
-             --viz kit
+             --num_envs 1 \
+             --dataset_file ./datasets/generated_dataset_softmimicgen_franka_rope_newton.hdf5
 
       .. todo::
 
@@ -66,18 +64,21 @@ generate the dataset, and keep the Arena registration callback:
       .. code-block:: bash
 
          python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
-             --external_callback autodata_examples.envs.register_environments \
              --task Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
-             --dataset_file ./datasets/softmimicgen/generated_dataset_franka_rope_physx_softmimicgen.hdf5 \
-             --num_envs 1 \
+             --external_callback autodata_examples.envs.register_environments \
+             --viz kit \
              --device cuda \
              --enable_cameras \
-             --viz kit
+             --num_envs 1 \
+             --dataset_file ./datasets/generated_dataset_softmimicgen_franka_rope_physx.hdf5
 
       .. todo::
 
          Image placeholder: Replaying generated Franka rope demonstrations with PhysX.
+
+If you only ran small-scale generation, use the corresponding ``_small.hdf5`` file in the
+replay command as well. Press ``B`` to pause replay and ``N`` to resume.
 
 Look for a firm grasp, smooth motion after the grasp boundary, and the rope ends coming
 together while the rope remains on the table. Watch for slipping grasps, abrupt transitions,
