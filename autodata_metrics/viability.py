@@ -62,6 +62,7 @@ def _counted_attempts(ev: Evidence) -> tuple[list[dict[str, Any]], bool]:
     requires=["attempts"],
 )
 def generation_success_rate(ev: Evidence) -> Value:
+    """Successful attempts over attempts, stop-corrected when the attempt log allows, with a Wilson 95% interval."""
     attempts, corrected = _counted_attempts(ev)
     successes = sum(attempt["success"] for attempt in attempts)
     low, high = wilson_interval(successes, len(attempts))
@@ -80,6 +81,7 @@ def generation_success_rate(ev: Evidence) -> Value:
     requires=["run.generation_time_s", "run.num_gpus", "env_args.autodata.exported_episodes"],
 )
 def demos_per_gpu_hour(ev: Evidence) -> Value:
+    """Exported demonstrations per GPU-hour of generation time."""
     if ev.run["num_gpus"] == 0:
         raise NotApplicable("the run used no GPU")
     gpu_hours = ev.run["generation_time_s"] / 3600 * ev.run["num_gpus"]
@@ -98,6 +100,7 @@ def demos_per_gpu_hour(ev: Evidence) -> Value:
     requires=["run.setup_time_s", "run.generation_time_s"],
 )
 def time_to_dataset(ev: Evidence) -> Value:
+    """Wall time of the automated steps: annotation of the source, setup and generation."""
     annotation = ev.source.env_args.get("autodata", {}).get("annotation", {}) if ev.source else {}
     parts = {
         "annotation_s": annotation.get("time_s"),
@@ -118,6 +121,7 @@ def time_to_dataset(ev: Evidence) -> Value:
     requires=["source.env_args.autodata.annotation"],
 )
 def annotation_pass_rate(ev: Evidence) -> Value:
+    """Share of processed recordings that annotation exported into the source dataset."""
     annotation = ev.source.env_args["autodata"]["annotation"]
     if annotation["processed_episodes"] == 0:
         raise NotApplicable("annotation processed no episodes")
@@ -134,6 +138,7 @@ def annotation_pass_rate(ev: Evidence) -> Value:
     requires=["attempts"],
 )
 def failure_share(ev: Evidence) -> Value:
+    """Share of failed attempts by cause, ``planner`` or ``execution``."""
     attempts, corrected = _counted_attempts(ev)
     causes = Counter(attempt["failure_cause"] for attempt in attempts if not attempt["success"])
     total = sum(causes.values())
@@ -153,6 +158,7 @@ def failure_share(ev: Evidence) -> Value:
     requires=["attempts.extras.planning_time_s"],
 )
 def planning_time(ev: Evidence) -> Value:
+    """p50 and p95 motion-planning time per attempt, and its share of generation time."""
     times = np.array([attempt["extras"]["planning_time_s"] for attempt in ev.attempts])
     p50, p95 = np.percentile(times, [50, 95])
     generation_time = ev.run.get("generation_time_s")

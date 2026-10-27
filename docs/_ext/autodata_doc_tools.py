@@ -8,7 +8,9 @@ RST page before parsing, so recurring snippets (docker commands, code links, clo
 in one place and can switch between internal/external targets on release.
 """
 
+import ast
 import re
+from pathlib import Path
 from typing import Any
 
 from sphinx.application import Sphinx
@@ -69,8 +71,41 @@ def docker_run_command_replacer(app: Sphinx, _: Any, source: list[str]) -> None:
     source[0] = re.sub(r":docker_run_curobo:", curobo_replacer, source[0])
 
 
+def autodata_metrics_table(app: Sphinx, _: Any, source: list[str]) -> None:
+    """Replaces ``:autodata_metrics_table:`` with a table of the built-in metrics.
+
+    The rows are read from the ``@metric`` declarations in ``autodata_metrics/`` instead of importing them, so the
+    docs build needs none of the metrics' dependencies and the table cannot drift from the code.
+    """
+    if ":autodata_metrics_table:" not in source[0]:
+        return
+    rows = []
+    for path in sorted((Path(app.confdir).parent / "autodata_metrics").glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Call) and getattr(decorator.func, "id", None) == "metric":
+                    options = {keyword.arg: ast.literal_eval(keyword.value) for keyword in decorator.keywords}
+                    requires = ", ".join(f"``{key}``" for key in options.get("requires", ())) or "-"
+                    definition = (ast.get_docstring(node) or "").split("\n")[0]
+                    name = ast.literal_eval(decorator.args[0])
+                    rows.append((options["area"], name, options["unit"], requires, definition))
+    table = [
+        ".. list-table::",
+        "   :header-rows: 1",
+        "   :widths: 20 12 14 26 28",
+        "",
+        "   * - Metric\n     - Area\n     - Unit\n     - Requires\n     - Definition",
+    ]
+    for area, name, unit, requires, definition in sorted(rows):
+        table.append(f"   * - ``{name}``\n     - {area}\n     - {unit}\n     - {requires}\n     - {definition}")
+    source[0] = source[0].replace(":autodata_metrics_table:", "\n".join(table) + "\n")
+
+
 def setup(app: Sphinx) -> None:
     app.connect("source-read", autodata_git_clone_code_block)
     app.connect("source-read", autodata_code_link)
     app.connect("source-read", docker_run_command_replacer)
+    app.connect("source-read", autodata_metrics_table)
     app.add_config_value("autodata_docs_config", {}, "env")
