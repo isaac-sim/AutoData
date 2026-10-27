@@ -46,6 +46,44 @@ class DatagenInfo:
         self.target_eef_pose = target_eef_pose
         self.passthrough_action = passthrough_action
 
+    @classmethod
+    def from_episode(cls, ep_grp: dict, eef_name_map: dict[str, str] | None = None) -> DatagenInfo:
+        """Decode one episode's ``obs/datagen_info/*`` group into a record.
+
+        The single decode of this group shared by :meth:`DataGenInfoPool._add_episode` and
+        ``autodata_retargeting``'s ``source_datagen_poses`` (both previously decoded it by hand, which
+        could drift apart). Every field is read with ``.get`` -- absent -> ``None`` on the returned
+        record, consistent with every field here being optional -- so a caller that only needs one or
+        two fields (e.g. just ``eef_pose``) does not require the dataset to carry the full set
+        :class:`DataGenInfoPool` does; it asserts its own required fields.
+
+        Args:
+            ep_grp: One episode's raw data mapping (``EpisodeData.data``), with an ``"obs"`` entry.
+            eef_name_map: Optional ``{source_eef: target_eef}`` renaming applied to the eef-keyed
+                fields (``eef_pose``, ``target_eef_pose``); identity when omitted.
+
+        Returns:
+            A populated record (fields absent from the episode are ``None``); no ``passthrough_action``
+            (decoding that needs an embodiment adapter, not this episode's ``datagen_info``).
+        """
+        obs = ep_grp.get("obs", {})
+        datagen_info = obs.get("datagen_info") if isinstance(obs, dict) else None
+        if not isinstance(datagen_info, dict):
+            raise ValueError("Episode lacks 'datagen_info' obs annotations")
+
+        def _rename(poses: dict[str, torch.Tensor] | None) -> dict[str, torch.Tensor] | None:
+            if poses is None or not eef_name_map:
+                return poses
+            return {eef_name_map.get(name, name): pose for name, pose in poses.items()}
+
+        return cls(
+            eef_pose=_rename(datagen_info.get("eef_pose")),
+            object_poses=datagen_info.get("object_pose"),
+            subtask_term_signals=datagen_info.get("subtask_term_signals"),
+            subtask_start_signals=datagen_info.get("subtask_start_signals"),
+            target_eef_pose=_rename(datagen_info.get("target_eef_pose")),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         """Materialize a dict with only the populated fields."""
         out: dict[str, Any] = {}

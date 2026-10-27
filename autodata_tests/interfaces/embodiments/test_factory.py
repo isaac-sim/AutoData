@@ -38,6 +38,14 @@ def test_registry_contents():
 def test_from_dict_dispatches_single_arm():
     embodiment_adapter = embodiment_adapter_from_dict(_SINGLE_ARM_DICT)
     assert isinstance(embodiment_adapter, DeltaPoseIKSingleArmAdapter)
+
+
+def test_from_dict_attaches_raw_config_for_sections_not_modeled_as_fields():
+    # hand_open/hand_close aren't DeltaPoseIKSingleArmAdapter fields; raw_config is how a consumer
+    # (e.g. autodata_retargeting) reads them without re-opening the embodiment YAML.
+    data = {**_SINGLE_ARM_DICT, "hand_open": {"franka": [0.04]}, "hand_close": {"franka": [0.0]}}
+    embodiment_adapter = embodiment_adapter_from_dict(data)
+    assert embodiment_adapter.raw_config == data
     assert embodiment_adapter.name == "franka"
     assert embodiment_adapter.env is None  # not bound when no env passed
 

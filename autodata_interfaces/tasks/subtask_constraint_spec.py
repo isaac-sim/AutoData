@@ -12,6 +12,7 @@ class SubTaskConstraintType(enum.IntEnum):
 
     SEQUENTIAL = 0
     COORDINATION = 1
+    BARRIER = 4
 
     _SEQUENTIAL_FORMER = 2
     _SEQUENTIAL_LATTER = 3
@@ -33,7 +34,8 @@ class SubtaskConstraint:
         eef_subtask_constraint_tuple: The two associated ``(eef_name, subtask_index)`` pairs, in
             order. For ``SEQUENTIAL``, ``[0]`` is the precondition (former) and ``[1]`` is the
             constrained subtask (latter). For ``COORDINATION``, the two pairs run concurrently.
-        constraint_type: Whether the constraint is sequential or coordination.
+            Unused (stays at its default) for ``BARRIER``, which uses ``members`` instead.
+        constraint_type: Whether the constraint is sequential, coordination, or a barrier.
         sequential_min_time_diff: Minimum step gap before the latter subtask waits on the former;
             the latter executes until this many steps remain, then waits for the former to finish.
             ``-1`` means the latter starts only after the former finishes.
@@ -41,6 +43,9 @@ class SubtaskConstraint:
         coordination_scheme_pos_noise_scale: Position noise scale applied during coordination.
         coordination_scheme_rot_noise_scale: Rotation noise scale applied during coordination.
         coordination_synchronize_start: Whether the two subtasks start on the same step.
+        members: For ``BARRIER`` only: every ``(eef_name, subtask_index)`` that must reach its own
+            subtask's end before any of them may proceed -- an n-way rendezvous, unlike the pairwise
+            ``eef_subtask_constraint_tuple`` the other constraint types use. ``None`` otherwise.
     """
 
     eef_subtask_constraint_tuple: tuple[tuple[str, int], tuple[str, int]] = (("", 0), ("", 0))
@@ -50,6 +55,14 @@ class SubtaskConstraint:
     coordination_scheme_pos_noise_scale: float = 0.0
     coordination_scheme_rot_noise_scale: float = 0.0
     coordination_synchronize_start: bool = False
+    members: tuple[tuple[str, int], ...] | None = None
+
+    def __post_init__(self) -> None:
+        """Validate that ``members`` is set for, and only for, a ``BARRIER`` constraint."""
+        if self.constraint_type == SubTaskConstraintType.BARRIER:
+            assert self.members is not None and len(self.members) >= 2, "a BARRIER constraint needs >= 2 members."
+        else:
+            assert self.members is None, f"members is only used by BARRIER constraints, not {self.constraint_type!r}."
 
     def generate_runtime_subtask_constraints(self) -> dict:
         """Expand this constraint into the runtime-constraint dict the data generator consumes.
