@@ -6,6 +6,7 @@
 from autodata_interfaces.env.env_profile import EnvironmentProfile
 from autodata_interfaces.env.isaaclab_env_interface import (
     apply_env_profile,
+    collect_autodata_entry,
     env_loop,
     get_env_name_from_dataset,
     setup_env_config,
@@ -18,5 +19,6 @@ __all__ = [
     "get_env_name_from_dataset",
     "setup_output_paths",
     "env_loop",
+    "collect_autodata_entry",
     "setup_env_config",
 ]

@@ -7,13 +7,15 @@ import gymnasium as gym
 import numpy as np
 import random
 import torch
+import uuid
 from copy import deepcopy
 
 from isaaclab.utils.datasets import HDF5DatasetFileHandler
 
 from autodata_interfaces.embodiments import embodiment_adapter_from_yaml
-from autodata_interfaces.env import setup_env_config, setup_output_paths
+from autodata_interfaces.env import collect_autodata_entry, setup_env_config, setup_output_paths
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
+from autodata_utils.dataset_metadata import exported_dataset_files, merge_autodata_entry
 
 from .config import RetargetConfig
 from .eef_offset import build_eef_offsets, compose_retarget_eef_offsets_from_adapters
@@ -117,8 +119,10 @@ def run(args, simulation_app) -> int:
     torch.manual_seed(generation_policy.seed)
 
     dataset_file_handler = None
+    autodata_entry = None
     try:
         target_adapter.bind_env(env)
+        autodata_entry = collect_autodata_entry(env, target_adapter, uuid.uuid4().hex)
         env.reset()
         # Snapshot the target's home scene state once; each replay restores its robot from here
         # (deepcopy so later sim steps cannot mutate the cached tensors).
@@ -180,3 +184,6 @@ def run(args, simulation_app) -> int:
         if dataset_file_handler is not None:
             dataset_file_handler.close()
         env.close()
+        if autodata_entry is not None:
+            for dataset_file in exported_dataset_files(output_dir, output_file_name):
+                merge_autodata_entry(dataset_file, autodata_entry)

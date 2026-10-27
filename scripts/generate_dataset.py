@@ -33,6 +33,7 @@ live env, and the HDF5 source dataset, then hands it to :class:`DataGenerator`.
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import time
 
 from isaaclab.app import AppLauncher
 
@@ -41,6 +42,8 @@ from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor
 from autodata_interfaces.tasks.task_descriptor_utils import resolve_task_algorithm
 from autodata_utils.cli import callable_path
+
+PROCESS_START = time.monotonic()
 
 # Hardcoded to keep argparse importable without pulling in the heavy core package.
 # Add new algorithms here when registering them in autodata_core.algorithms.
@@ -97,7 +100,10 @@ parser.add_argument(
     "--result_file",
     type=str,
     default=None,
-    help="Optional JSON path for the final structured generation result.",
+    help=(
+        "Optional JSON path for the final structured generation result. An attempt log with one JSON "
+        "line per attempt is written next to it (<result_file stem>.attempts.jsonl)."
+    ),
 )
 parser.add_argument(
     "--pause_subtask",
@@ -137,24 +143,41 @@ simulation_app = app_launcher.app
 import asyncio  # noqa: E402
 import gymnasium as gym  # noqa: E402
 import numpy as np  # noqa: E402
+import platform  # noqa: E402
 import random  # noqa: E402
 import sys  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
+import uuid  # noqa: E402
+from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
 
 from autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
+from autodata_core.data_generator import GenerationResult  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.env import (  # noqa: E402
     EnvironmentProfile,
+    collect_autodata_entry,
     env_loop,
     get_env_name_from_dataset,
     setup_env_config,
     setup_output_paths,
 )
+from autodata_interfaces.env.datagen_info_recorder import (  # noqa: E402
+    DatagenInfoRecorderManagerCfg,
+    PreStepDatagenInfoRecorder,
+)
 from autodata_interfaces.env.registration import load_callable, register_external_environment  # noqa: E402
-from autodata_utils.generation_result import write_generation_result  # noqa: E402
+from autodata_utils.dataset_metadata import exported_dataset_files, merge_autodata_entry  # noqa: E402
+from autodata_utils.generation_result import (  # noqa: E402
+    AttemptLog,
+    attempts_file_for,
+    code_revision,
+    input_record,
+    write_generation_result,
+)
+from autodata_utils.tensor_utils import as_torch  # noqa: E402
 
 
 async def run_data_generator(
@@ -166,9 +189,11 @@ async def run_data_generator(
     success_term,
     pause_subtask: bool,
     stats: dict,
+    attempt_log: AttemptLog | None,
 ) -> None:
-    """Repeatedly call ``data_generator.generate`` and tally outcomes into ``stats``."""
+    """Repeatedly call ``data_generator.generate``, tally outcomes into ``stats`` and log each attempt."""
     while True:
+        attempt_start = time.monotonic()
         try:
             result = await data_generator.generate(
                 env_id=env_id,
@@ -187,6 +212,45 @@ async def run_data_generator(
         else:
             stats["num_failures"] += 1
         stats["num_attempts"] += 1
+        if attempt_log is not None:
+            attempt_log.write(_attempt_record(env_id, result, attempt_start, time.monotonic()))
+
+
+def _attempt_record(env_id: int, result: GenerationResult, start_time: float, end_time: float) -> dict:
+    """One attempt-log line; times [s] are monotonic-clock readings."""
+    return {
+        "env_id": env_id,
+        "success": result.success,
+        "failure_cause": result.failure_cause,
+        "start_time_s": start_time,
+        "end_time_s": end_time,
+        "initial_object_positions": {
+            name: as_torch(state["root_pose"])[env_id, :2].tolist()
+            for name, state in result.initial_state.get("rigid_object", {}).items()
+        },
+        "extras": result.extras,
+    }
+
+
+def _hardware(device: str) -> dict[str, str | None]:
+    """Model names of the GPU and CPU the run used; physics runs on the CPU when ``device`` is ``cpu``."""
+    gpu = None
+    if torch.cuda.is_available():
+        index = torch.device(device).index if device.startswith("cuda") else None
+        gpu = torch.cuda.get_device_name(torch.cuda.current_device() if index is None else index)
+    cpu = None
+    cpuinfo = Path("/proc/cpuinfo")
+    if cpuinfo.exists():
+        model_lines = (line for line in cpuinfo.read_text().splitlines() if line.startswith("model name"))
+        cpu = next((line.split(":", 1)[1].strip() for line in model_lines), None)
+    return {"gpu": gpu, "num_gpus": 1 if gpu else 0, "cpu": cpu or platform.processor() or None}
+
+
+def _generation_recorder_cfg() -> DatagenInfoRecorderManagerCfg:
+    """Actions and states, plus the per-step poses the dataset metrics read; object poses are left out."""
+    recorder_cfg = DatagenInfoRecorderManagerCfg()
+    recorder_cfg.record_pre_step_datagen_info.record_object_poses = False
+    return recorder_cfg
 
 
 def build_datastream(
@@ -216,6 +280,7 @@ def setup_async_generation(
     success_term,
     algorithm,
     pause_subtask: bool,
+    attempt_log: AttemptLog | None = None,
 ) -> dict:
     """Build a single :class:`DataGenerator` over ``datastream`` and ``num_envs`` async tasks."""
     asyncio_event_loop = asyncio.get_event_loop()
@@ -238,6 +303,7 @@ def setup_async_generation(
                 success_term=success_term,
                 pause_subtask=pause_subtask,
                 stats=stats,
+                attempt_log=attempt_log,
             )
         )
         tasks.append(task)
@@ -327,7 +393,7 @@ def main() -> None:
         num_envs=args_cli.num_envs,
         device=args_cli.device,
         generation_policy_params=generation_policy_params,
-        recorder_cfg=load_callable(args_cli.recorder_cfg)() if args_cli.recorder_cfg else None,
+        recorder_cfg=load_callable(args_cli.recorder_cfg)() if args_cli.recorder_cfg else _generation_recorder_cfg(),
         env_profile=env_profile,
         enable_cameras=args_cli.record_images,
     )
@@ -347,6 +413,9 @@ def main() -> None:
         task_descriptor=task_descriptor,
         embodiment_adapter=embodiment_adapter,
     )
+    PreStepDatagenInfoRecorder.datastream = datastream
+    run_id = uuid.uuid4().hex
+    autodata_entry = collect_autodata_entry(env, embodiment_adapter, run_id)
 
     # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
     motion_planners: dict | None = None
@@ -362,6 +431,8 @@ def main() -> None:
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 
+    attempts_file = attempts_file_for(args_cli.result_file) if args_cli.result_file else None
+    attempt_log = AttemptLog(attempts_file, run_id) if attempts_file else None
     try:
         async_components = setup_async_generation(
             datastream=datastream,
@@ -369,10 +440,12 @@ def main() -> None:
             success_term=success_term,
             algorithm=algorithm,
             pause_subtask=args_cli.pause_subtask,
+            attempt_log=attempt_log,
         )
 
         data_gen_tasks = asyncio.ensure_future(asyncio.gather(*async_components["tasks"]))
         generation_completed = False
+        generation_start = time.monotonic()
         try:
             generation_completed = env_loop(
                 env,
@@ -383,6 +456,7 @@ def main() -> None:
                 stats=async_components["stats"],
                 data_gen_tasks=data_gen_tasks,
             )
+            generation_end = time.monotonic()
         except asyncio.CancelledError:
             print("Async tasks cancelled.")
         finally:
@@ -406,9 +480,28 @@ def main() -> None:
                     if env_profile
                     else None
                 ),
+                run_metadata={
+                    "run_id": run_id,
+                    "seed": generation_policy_params.seed,
+                    "revision": code_revision(),
+                    "inputs": {
+                        "source": input_record(args_cli.input_file),
+                        "embodiment": input_record(args_cli.embodiment),
+                        "task_descriptor": input_record(args_cli.task_descriptor),
+                        "env_profile": input_record(args_cli.env_profile),
+                    },
+                    "device": args_cli.device,
+                    **_hardware(args_cli.device),
+                    "num_envs": args_cli.num_envs,
+                    "setup_time_s": generation_start - PROCESS_START,
+                    "generation_time_s": generation_end - generation_start,
+                    "attempts_file": Path(attempts_file).name,
+                },
             )
     finally:
         env.close()
+        for dataset_file in exported_dataset_files(output_dir, output_file_name):
+            merge_autodata_entry(dataset_file, autodata_entry)
 
 
 if __name__ == "__main__":

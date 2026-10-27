@@ -50,6 +50,15 @@ class EmbodimentAdapter(ABC):
     robot_asset_name: str = "robot"
     raw_config: dict[str, Any] | None = None
 
+    def metric_context(self) -> dict[str, Any]:
+        """Facts about this embodiment that the dataset metrics read, stored with every dataset it records.
+
+        Subclasses add their pose-action layout. The base adds the optional ``hardware_limits`` section of the
+        embodiment config (datasheet joint limits, keyed by joint-name pattern).
+        """
+        hardware_limits = (self.raw_config or {}).get("hardware_limits")
+        return {"hardware_limits": hardware_limits} if hardware_limits else {}
+
     def get_navigation_eef_name(self) -> str | None:
         """Return the configured navigation channel without requiring a live environment."""
 

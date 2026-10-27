@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from isaaclab.managers import TerminationTermCfg
 
@@ -47,10 +47,21 @@ async def _optional_lock(lock: asyncio.Lock | None):
 
 @dataclass(frozen=True)
 class GenerationResult:
-    """Output of one :meth:`DataGenerator.generate` invocation."""
+    """Output of one :meth:`DataGenerator.generate` invocation.
+
+    Attributes:
+        initial_state: Scene state of every env right after this env's reset.
+        success: Whether the task succeeded at any step of the attempt.
+        failure_cause: ``"planner"`` when motion planning aborted the attempt, otherwise ``"execution"``
+            for a failed attempt and None on success.
+        extras: Algorithm-specific facts about the attempt, from
+            :meth:`~autodata_core.algorithms.GenerationAlgorithm.attempt_extras`.
+    """
 
     initial_state: dict
     success: bool
+    failure_cause: Literal["planner", "execution"] | None = None
+    extras: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -76,6 +87,7 @@ class _EEFGenerationState:
     # subtask trajectory here so the follow-up call splices it in.
     pending_subtask_trajectory: WaypointTrajectory | None = None
     is_in_motion_plan: bool = False
+    planning_time_s: float = 0.0
 
 
 class DataGenerator:
@@ -569,7 +581,12 @@ class DataGenerator:
                     )
                     if result is None:
                         # Planning failure (e.g. SkillGen motion planner). Abort with no success.
-                        return GenerationResult(initial_state=initial_state, success=False)
+                        return GenerationResult(
+                            initial_state=initial_state,
+                            success=False,
+                            failure_cause="planner",
+                            extras=self.algorithm.attempt_extras(eef_states.values()),
+                        )
                     next_trajectory, _is_motion_plan = result
                     eef_state.current_trajectory = next_trajectory
                     eef_state.subtask_step_index = 0
@@ -620,6 +637,8 @@ class DataGenerator:
         return GenerationResult(
             initial_state=initial_state,
             success=buffers.success,
+            failure_cause=None if buffers.success else "execution",
+            extras=self.algorithm.attempt_extras(eef_states.values()),
         )
 
     # ------------------------------------------------------------------

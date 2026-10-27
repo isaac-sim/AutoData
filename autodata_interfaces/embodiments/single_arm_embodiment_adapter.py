@@ -133,6 +133,12 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
 
     clip_pose_action_to_unit: bool = True
 
+    def metric_context(self) -> dict[str, Any]:
+        """Adds the pose-action columns and their clip bound."""
+        bound = 1.0 if self.clip_pose_action_to_unit else None
+        pose_action = {self.eef_name: {"columns": [0, _DELTA_POSE_ACTION_DIM], "bound": bound}}
+        return {**super().metric_context(), "pose_action": pose_action}
+
     @property
     def action_dim(self) -> int:
         """Total width of the env action vector."""

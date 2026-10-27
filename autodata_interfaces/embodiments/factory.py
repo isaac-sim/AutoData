@@ -70,7 +70,8 @@ def embodiment_adapter_from_dict(data: dict[str, Any], env: Any = None) -> Embod
         type_key in EMBODIMENT_TYPE_REGISTRY
     ), f"Unknown embodiment type {type_key!r}. Registered: {sorted(EMBODIMENT_TYPE_REGISTRY)}"
     cls = EMBODIMENT_TYPE_REGISTRY[type_key]
-    payload = {k: v for k, v in data.items() if k != "type"}
+    # ``hardware_limits`` is read from ``raw_config`` by :meth:`EmbodimentAdapter.metric_context`.
+    payload = {k: v for k, v in data.items() if k not in ("type", "hardware_limits")}
     adapter = cls.from_dict(payload)  # type: ignore[attr-defined]
     adapter.raw_config = data  # the full parsed config, for sections no typed adapter field models
     if env is not None:

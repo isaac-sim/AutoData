@@ -12,7 +12,7 @@ import pytest
 
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_valid_dataset
+from autodata_tests.utils.utils import assert_recorded_episodes, assert_valid_dataset
 
 
 @pytest.mark.with_subprocess
@@ -38,6 +38,8 @@ def test_automatic_annotation_from_dataset(tmp_path):
         str(output_file),
     ])
     assert_valid_dataset(str(output_file), min_num_demos=1)
+    entry = assert_recorded_episodes(str(output_file))
+    assert entry["annotation"]["annotated_episodes"] == entry["exported_episodes"]
     with h5py.File(input_file, "r") as source, h5py.File(output_file, "r") as annotated:
         assert len(annotated["data"]) == len(source["data"])
         assert json.loads(annotated["data"].attrs["env_args"])["env_name"] == "IsaacContrib-Stack-Cube-Franka-IK-Rel"
