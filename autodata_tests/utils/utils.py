@@ -82,3 +82,20 @@ def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
     run_ids = {entry["run_id"], result["run"]["run_id"], *(attempt["run_id"] for attempt in attempts)}
     assert len(run_ids) == 1, f"The dataset, result and attempt log carry different run ids: {run_ids}"
     return attempts
+
+
+def assert_ok_metrics(report_file: str, expected_ok: set[str]) -> dict:
+    """Assert exactly ``expected_ok`` metrics computed a value; any other metric must say why it did not.
+
+    A renamed recorded key or an adapter that stops recording a stream turns a metric not applicable, which
+    this catches.
+
+    Returns:
+        The report's metric rows.
+    """
+
+    with open(report_file, encoding="utf-8") as report_handle:
+        rows = json.load(report_handle)["metrics"]
+    ok = {name for name, row in rows.items() if row["status"] == "ok"}
+    assert ok == expected_ok, f"Computed {sorted(ok)}, expected {sorted(expected_ok)}: {rows}"
+    return rows

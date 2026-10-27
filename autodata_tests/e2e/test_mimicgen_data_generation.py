@@ -8,10 +8,12 @@ import pytest
 
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_recorded_run, assert_valid_dataset
+from autodata_tests.utils.utils import assert_ok_metrics, assert_recorded_run, assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
+# Metrics a MimicGen run reported with its result file must compute.
+RUN_METRICS = {"generation_success_rate", "demos_per_gpu_hour", "time_to_dataset", "failure_share"}
 
 
 def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
@@ -51,6 +53,18 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
 
         assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
         assert_recorded_run(output_file, result_file)
+        report_file = os.path.join(temp_dir, "report.json")
+        run_subprocess([
+            TestPaths.python_path,
+            os.path.join(TestPaths.scripts_dir, "validate_dataset.py"),
+            output_file,
+            "--report",
+            "--result_file",
+            result_file,
+            "--report_file",
+            report_file,
+        ])
+        assert_ok_metrics(report_file, RUN_METRICS)
 
 
 @pytest.mark.with_subprocess
