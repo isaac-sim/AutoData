@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import MISSING, dataclass, field
-from typing import Any
+from typing import Any, get_origin, get_type_hints
 
 
 @dataclass
@@ -15,7 +15,29 @@ class SubtaskAlgoParams:
     subclass with the fields it needs.
     """
 
-    pass
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SubtaskAlgoParams:
+        """Build this algo-params record from its parsed YAML ``algo_params`` dict.
+
+        Default: coerce list values back to tuples where a field is tuple-typed, then construct
+        directly -- what every algo did before this hook existed. A subclass with structured fields
+        (not plain scalars/tuples -- e.g. retargeting's offset / subtask-end descriptors) overrides
+        this to parse them into their own objects first, so
+        :func:`~.task_descriptor_utils.build_subtask` (the shared task-parsing path) does not need to
+        know about any algo's nested schema.
+
+        Args:
+            data: The subtask's parsed ``algo_params`` mapping.
+
+        Returns:
+            A constructed instance of this algo-params class.
+        """
+        hints = get_type_hints(cls)
+        kwargs = {
+            name: tuple(value) if isinstance(value, list) and get_origin(hints.get(name)) is tuple else value
+            for name, value in data.items()
+        }
+        return cls(**kwargs)
 
 
 @dataclass

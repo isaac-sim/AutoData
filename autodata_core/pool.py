@@ -120,17 +120,19 @@ class DataGenInfoPool:
     def _add_episode(self, episode: EpisodeData) -> None:
         ep_grp = episode.data
 
-        if "datagen_info" not in ep_grp["obs"]:
-            raise ValueError("Episode lacks 'datagen_info' obs annotations")
-
-        eef_pose = ep_grp["obs"]["datagen_info"]["eef_pose"]
-        object_poses_dict = ep_grp["obs"]["datagen_info"].get("object_pose")
-        object_nodal_positions_dict = ep_grp["obs"]["datagen_info"].get("object_nodal_position")
-        target_eef_pose = ep_grp["obs"]["datagen_info"]["target_eef_pose"]
+        ep_datagen_info = DatagenInfo.from_episode(ep_grp)
+        missing = [
+            name
+            for name in ("eef_pose", "target_eef_pose", "subtask_term_signals")
+            if getattr(ep_datagen_info, name) is None
+        ]
+        assert not missing, f"Episode's 'obs/datagen_info' is missing required field(s): {missing}"
 
         # Legacy single-arm datasets use names such as "robot0". With exactly one
         # recorded and one configured EEF, the correspondence is unambiguous.
         # Normalize both pose mappings in memory without modifying the source episode.
+        eef_pose = ep_datagen_info.eef_pose
+        target_eef_pose = ep_datagen_info.target_eef_pose
         expected_eefs = set(self.task_descriptor.get_eef_names())
         recorded_eefs = set(eef_pose)
         assert recorded_eefs == set(target_eef_pose), (
@@ -145,23 +147,10 @@ class DataGenInfoPool:
             )
             source_eef = next(iter(recorded_eefs))
             configured_eef = next(iter(expected_eefs))
-            eef_pose = {configured_eef: eef_pose[source_eef]}
-            target_eef_pose = {configured_eef: target_eef_pose[source_eef]}
+            ep_datagen_info.eef_pose = {configured_eef: eef_pose[source_eef]}
+            ep_datagen_info.target_eef_pose = {configured_eef: target_eef_pose[source_eef]}
 
-        subtask_term_signals_dict = ep_grp["obs"]["datagen_info"]["subtask_term_signals"]
-        subtask_start_signals_dict = ep_grp["obs"]["datagen_info"].get("subtask_start_signals")
-
-        passthrough_actions = self.embodiment_adapter.actions_to_passthrough_actions(ep_grp["actions"])
-
-        ep_datagen_info = DatagenInfo(
-            eef_pose=eef_pose,
-            object_poses=object_poses_dict,
-            object_nodal_positions=object_nodal_positions_dict,
-            subtask_start_signals=subtask_start_signals_dict,
-            subtask_term_signals=subtask_term_signals_dict,
-            target_eef_pose=target_eef_pose,
-            passthrough_action=passthrough_actions,
-        )
+        ep_datagen_info.passthrough_action = self.embodiment_adapter.actions_to_passthrough_actions(ep_grp["actions"])
         self._datagen_infos.append(ep_datagen_info)
 
         for eef_name in self.subtask_term_signal_names.keys():
