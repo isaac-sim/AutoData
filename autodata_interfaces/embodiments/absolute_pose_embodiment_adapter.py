@@ -77,6 +77,18 @@ class AbsolutePoseEmbodimentAdapter(EmbodimentAdapter):
         """Build the adapter from a validated descriptor."""
         return cls(**data)
 
+    def metric_context(self) -> dict[str, Any]:
+        """Each end effector with a ``pose_action_slice`` commands its target pose there: position, then quaternion.
+
+        These entries are not clipped.
+        """
+        pose_action = {
+            name: {"action_slice": list(spec["pose_action_slice"]), "bound": None}
+            for name, spec in self.eefs.items()
+            if spec.get("pose_action_slice") is not None
+        }
+        return {**super().metric_context(), "pose_action": pose_action}
+
     def get_eef_names(self) -> tuple[str, ...]:
         return tuple(self.eefs)
 

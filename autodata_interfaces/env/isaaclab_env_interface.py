@@ -18,7 +18,7 @@ import asyncio
 import contextlib
 import os
 import torch
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
@@ -32,9 +32,43 @@ from isaaclab.utils.string import string_to_callable
 from isaaclab_physx.sim.schemas import PhysxRigidBodyPropertiesCfg
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
+from autodata_interfaces.env.datagen_info_recorder import add_step_success_recorder
 from autodata_interfaces.env.env_profile import EnvironmentProfile, convert_event_params
 from autodata_interfaces.env.pink_ik_action import PinkInverseKinematicsActionSharedUrdf
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
+from autodata_utils.dataset_metadata import AUTODATA_ENTRY_VERSION
+from autodata_utils.tensor_utils import as_torch
+
+if TYPE_CHECKING:
+    from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+
+
+def collect_autodata_entry(env: Any, embodiment_adapter: EmbodimentAdapter, run_id: str) -> dict[str, Any]:
+    """The ``autodata`` entry of the datasets this env exports, read while the env is alive.
+
+    It holds the run id, the embodiment's metric context, and the robot's joint names with env 0's simulator
+    position limits [rad or m] and velocity limits [rad/s or m/s]. Unbounded limits are stored as None.
+    :func:`~autodata_utils.dataset_metadata.merge_autodata_entry` writes it once the env has closed the file.
+
+    Args:
+        env: Live environment.
+        embodiment_adapter: Adapter of the embodiment the env drives.
+        run_id: Identifier shared by everything this run writes.
+    """
+    entry: dict[str, Any] = {"version": AUTODATA_ENTRY_VERSION, "run_id": run_id, **embodiment_adapter.metric_context()}
+    robot = env.scene.articulations.get(embodiment_adapter.robot_asset_name)
+    if robot is not None:
+        entry["joints"] = {
+            "names": list(robot.joint_names),
+            "position_limits": _finite_or_none(as_torch(robot.data.joint_pos_limits)[0].cpu()),
+            "velocity_limits": _finite_or_none(as_torch(robot.data.joint_vel_limits)[0].cpu()),
+        }
+    return entry
+
+
+def _finite_or_none(values: torch.Tensor) -> list:
+    """Nested lists of ``values`` with non-finite entries as None, so the JSON stays standard."""
+    return [_finite_or_none(row) if row.dim() else (row.item() if torch.isfinite(row) else None) for row in values]
 
 
 def setup_output_paths(output_file_path: str) -> tuple[str, str]:
@@ -166,6 +200,7 @@ def setup_env_config(
     recorder_cfg: RecorderManagerBaseCfg | None = None,
     env_profile: EnvironmentProfile | None = None,
     enable_cameras: bool = False,
+    record_step_success: bool = False,
 ) -> tuple[Any, Any]:
     """Configure the environment for data generation.
 
@@ -186,6 +221,8 @@ def setup_env_config(
             reset-event changes) before the generation-specific adjustments below.
         enable_cameras: Record the task's image observations. Defaults to low-dimensional
             observations, excluding the cameras used for teleoperation previews.
+        record_step_success: Also record whether the task's success term holds after each step, as
+            ``step_success``, for the dataset metrics.
 
     Returns:
         A tuple of the environment configuration and the success termination condition.
@@ -231,6 +268,8 @@ def setup_env_config(
         env_cfg.recorders = ActionStateRecorderManagerCfg()
     else:
         env_cfg.recorders = recorder_cfg
+    if record_step_success:
+        add_step_success_recorder(env_cfg.recorders, success_term)
     env_cfg.recorders.dataset_export_dir_path = output_dir
     env_cfg.recorders.dataset_filename = output_file_name
 

@@ -3,6 +3,9 @@
 
 """Unit tests for :mod:`autodata_core.algorithms`."""
 
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
 
 from autodata_core.algorithms import (
@@ -14,6 +17,7 @@ from autodata_core.algorithms import (
     get_algorithm,
     iter_algorithms,
 )
+from autodata_core.data_generator import _EEFGenerationState
 
 
 def test_registry_contents():
@@ -81,3 +85,23 @@ def test_get_algorithm_skillgen_needs_planners():
     assert isinstance(
         get_algorithm("skillgen", motion_planners={0: object()}), SkillGen
     )  # base implementation must not raise
+
+
+def test_skillgen_reports_a_failed_motion_plan():
+    planner = Mock(update_world_and_plan_motion=Mock(return_value=False))
+    algorithm = SkillGen(motion_planners={0: planner})
+    data_generator = Mock()
+    data_generator.generate_eef_subtask_trajectory.return_value = [SimpleNamespace(pose=None, passthrough_action=None)]
+    eef_state = _EEFGenerationState()
+
+    result = algorithm.plan_subtask_trajectory(
+        data_generator=data_generator,
+        env_id=0,
+        eef_name="franka",
+        eef_state=eef_state,
+        all_randomized_subtask_boundaries={},
+        runtime_subtask_constraints_dict={},
+        selected_src_demo_inds={},
+    )
+
+    assert result is None and algorithm.attempt_extras([eef_state])["planning_failed"] is True

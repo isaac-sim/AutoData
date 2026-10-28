@@ -17,7 +17,7 @@ import pytest
 
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_valid_dataset
+from autodata_tests.utils.utils import assert_recorded_run, assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
@@ -50,6 +50,7 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
             output_file,
             "--result_file",
             result_file,
+            "--record_metric_inputs",
             "--generation_num_trials",
             str(GENERATION_NUM_TRIALS),
             "--num_envs",
@@ -62,6 +63,9 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
         run_subprocess(args)
 
         assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
+        attempts = assert_recorded_run(output_file, result_file)
+        # Every SkillGen attempt plans at least one transit, and the algorithm reports how long it took.
+        assert all(attempt["extras"]["planning_time_s"] > 0 for attempt in attempts)
 
         with open(result_file, encoding="utf-8") as result_handle:
             result = json.load(result_handle)

@@ -41,3 +41,58 @@ def read_generation_result(result_file: str) -> tuple[int, int]:
     assert num_attempts > 0, f"Generation result has invalid num_attempts: {num_attempts}."
     assert num_success + num_failures == num_attempts, "Generation result counts do not add up."
     return num_success, num_attempts
+
+
+def assert_recorded_episodes(dataset_file: str) -> dict:
+    """Assert the per-step recording and the ``autodata`` entry agree with the dataset's episodes.
+
+    Every episode has one ``step_success`` value per action, its success attribute equals whether
+    ``step_success`` ever held, and the entry counts every exported episode.
+
+    Returns:
+        The dataset's ``autodata`` entry.
+    """
+
+    with h5py.File(dataset_file, "r") as h5_file:
+        data = h5_file["data"]
+        entry = json.loads(data.attrs["env_args"])["autodata"]
+        assert entry["exported_episodes"] == len(data), f"The entry counts {entry['exported_episodes']} episodes."
+        for name, episode in data.items():
+            step_success = episode["step_success"][:]
+            assert len(step_success) == len(episode["actions"]), f"{name}: step_success and actions differ in length."
+            assert bool(step_success.any()) == bool(episode.attrs["success"]), f"{name}: step_success disagrees."
+    return entry
+
+
+def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
+    """Assert a generation run's dataset, result JSON and attempt log describe the same run.
+
+    Returns:
+        The attempt-log lines.
+    """
+
+    entry = assert_recorded_episodes(dataset_file)
+    with open(result_file, encoding="utf-8") as result_handle:
+        result = json.load(result_handle)
+    attempts_file = os.path.join(os.path.dirname(result_file), result["run"]["attempts_file"])
+    with open(attempts_file, encoding="utf-8") as attempts_handle:
+        attempts = [json.loads(line) for line in attempts_handle if line.strip()]
+    assert entry["exported_episodes"] == result["num_success"], "The dataset and result count different successes."
+    assert len(attempts) == result["num_attempts"], "The attempt log and result count different attempts."
+    assert (
+        sum(attempt["success"] for attempt in attempts) == result["num_success"]
+    ), "The attempt log and result count different successes."
+    run_ids = {entry["run_id"], result["run"]["run_id"], *(attempt["run_id"] for attempt in attempts)}
+    assert len(run_ids) == 1, f"The dataset, result and attempt log carry different run ids: {run_ids}"
+    return attempts
+
+
+def assert_no_metric_inputs(dataset_file: str) -> None:
+    """Assert a dataset recorded without ``--record_metric_inputs`` has no metric inputs, as before they existed."""
+
+    with h5py.File(dataset_file, "r") as h5_file:
+        data = h5_file["data"]
+        assert "autodata" not in json.loads(data.attrs["env_args"]), "The dataset has an autodata entry."
+        for name, episode in data.items():
+            assert "step_success" not in episode, f"{name} records step_success."
+            assert "datagen_info" not in episode["obs"], f"{name} records datagen_info."
