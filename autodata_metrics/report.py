@@ -8,6 +8,8 @@ from __future__ import annotations
 import contextlib
 import h5py
 import json
+import math
+import numbers
 import yaml
 from collections.abc import Mapping
 from pathlib import Path
@@ -92,7 +94,16 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         return {**row, "status": "not_applicable", "reason": str(exc)}
     except Exception as exc:  # A failing metric must not sink the report of every other metric.
         return {**row, "status": "error", "reason": f"{type(exc).__name__}: {exc}"}
+    if not _is_finite(value.value):
+        return {**row, "status": "error", "reason": f"non-finite value {value.value}"}
     return {**row, "status": "ok", "value": value.value, "n": value.n, "details": dict(value.details)}
+
+
+def _is_finite(value: Any) -> bool:
+    """Whether ``value`` is a finite number, or a mapping of finite numbers."""
+    if isinstance(value, Mapping):
+        return all(_is_finite(item) for item in value.values())
+    return isinstance(value, numbers.Real) and math.isfinite(value)
 
 
 def build_report(
@@ -150,8 +161,11 @@ def gate_violations(report: Mapping[str, Any], gate_file: str) -> list[str]:
             violations.append(f"{name}: version {row['version']}, gate written for version {bound['version']}")
             continue
         key = bound.get("key", row["primary"])
-        value = row["value"][key] if key else row["value"]
+        value = row["value"].get(key) if key else row["value"]
         assert not isinstance(value, Mapping), f"Gate entry {name!r} needs a key into {sorted(value)}."
+        if not _is_finite(value):
+            violations.append(f"{name}: {value!r} is not a finite number")
+            continue
         if "min" in bound and value < bound["min"]:
             violations.append(f"{name}: {value:.4g} is below {bound['min']}")
         if "max" in bound and value > bound["max"]:

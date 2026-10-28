@@ -62,7 +62,7 @@ jobs:
     # trials each) are heavy and run in the nightly instead. No marker filter, so
     # both subprocess and unit tests run.
     env:
-      TEST_PATH: "autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/ autodata_tests/utils/ autodata_tests/retargeting/"
+      TEST_PATH: "autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/ autodata_tests/utils/ autodata_tests/retargeting/ autodata_tests/metrics/"
 
     steps:
       - name: nvidia-smi

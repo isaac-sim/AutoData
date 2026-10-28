@@ -21,8 +21,14 @@ from autodata_tests.utils.utils import assert_ok_metrics, assert_recorded_run, a
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
-# Metrics a SkillGen run reported with its result file must compute; planning time is SkillGen's own.
-RUN_METRICS = {"generation_success_rate", "demos_per_gpu_hour", "time_to_dataset", "failure_share", "planning_time"}
+# Metrics a SkillGen run reported with its result file must compute; the planning metrics are SkillGen's own.
+RUN_METRICS = {
+    "generation_success_rate",
+    "demos_per_gpu_hour",
+    "time_to_dataset",
+    "planning_time",
+    "planning_failure_rate",
+}
 
 
 def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:

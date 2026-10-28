@@ -130,21 +130,19 @@ def annotation_pass_rate(ev: Evidence) -> Value:
 
 
 @metric(
-    "failure_share",
+    "planning_failure_rate",
     area="diagnostics",
     signal="failure causes",
     scope="run",
-    unit="fraction of failures",
-    requires=["attempts"],
+    unit="fraction of attempts",
+    better="lower",
+    requires=["attempts.extras.planning_failed"],
 )
-def failure_share(ev: Evidence) -> Value:
-    """Share of failed attempts by cause, ``planner`` or ``execution``."""
+def planning_failure_rate(ev: Evidence) -> Value:
+    """Share of attempts whose motion planning failed, stop-corrected when the attempt log allows."""
     attempts, corrected = _counted_attempts(ev)
-    causes = Counter(attempt["failure_cause"] for attempt in attempts if not attempt["success"])
-    total = sum(causes.values())
-    return Value(
-        {cause: count / total for cause, count in causes.items()}, n=total, details={"stop_corrected": corrected}
-    )
+    failed = sum(attempt["extras"]["planning_failed"] for attempt in attempts)
+    return Value(failed / len(attempts), n=len(attempts), details={"stop_corrected": corrected})
 
 
 @metric(

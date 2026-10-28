@@ -13,7 +13,7 @@ from autodata_tests.utils.utils import assert_ok_metrics, assert_recorded_run, a
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
 # Metrics a MimicGen run reported with its result file must compute.
-RUN_METRICS = {"generation_success_rate", "demos_per_gpu_hour", "time_to_dataset", "failure_share"}
+RUN_METRICS = {"generation_success_rate", "demos_per_gpu_hour", "time_to_dataset"}
 
 
 def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:

@@ -88,15 +88,27 @@ def test_report_refuses_merged_data(tmp_path):
         build_report(_dataset(tmp_path / "merged.hdf5", num_episodes=2, entry=entry), metrics={})
 
 
-def test_gate_fails_on_bound_inapplicable_metric_and_outdated_version(tmp_path):
+def test_gate_fails_on_bound_inapplicable_missing_and_outdated_metric(tmp_path):
     row = {"status": "ok", "value": 0.4, "primary": None, "version": 2}
-    report = {"metrics": {"low": row, "old": row, "fine": row, "absent": {"status": "not_applicable"}}}
+    missing = {"status": "ok", "value": {"p50": 1.0}, "primary": "p95", "version": 1}
+    report = {"metrics": {"low": row, "old": row, "fine": row, "absent": {"status": "not_applicable"}, "gap": missing}}
     gate = tmp_path / "gate.yaml"
-    gate.write_text("low: {min: 0.5}\nold: {version: 1}\nfine: {min: 0.3, max: 0.5, version: 2}\nabsent: {min: 0}\n")
+    gate.write_text(
+        "low: {min: 0.5}\nold: {version: 1}\nfine: {min: 0.3, max: 0.5, version: 2}\nabsent: {min: 0}\ngap: {max: 2}\n"
+    )
 
     violations = gate_violations(report, str(gate))
 
-    assert [violation.split(":")[0] for violation in violations] == ["low", "old", "absent"]
+    assert [violation.split(":")[0] for violation in violations] == ["low", "old", "absent", "gap"]
+
+
+def test_non_finite_value_is_an_error_and_fails_the_gate(tmp_path):
+    report = build_report(_dataset(tmp_path / "d.hdf5"), metrics={"m": _spec("m", lambda ev: Value(float("nan"), n=1))})
+    gate = tmp_path / "gate.yaml"
+    gate.write_text("m: {min: 0}\n")
+
+    assert report["metrics"]["m"]["status"] == "error"
+    assert gate_violations(report, str(gate)) == ["m: error"]
 
 
 def test_metrics_import_without_torch_or_isaaclab():

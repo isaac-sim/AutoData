@@ -3,7 +3,8 @@ Metrics
 
 ``scripts/validate_dataset.py --report`` computes the metrics of a dataset and, given its result
 file, of the generation run that produced it. Metrics are computed from recorded files and need no
-simulator.
+simulator. Generate, annotate or retarget with ``--record_metric_inputs`` to record what they read;
+without it, most metrics report that their inputs are missing.
 
 .. code-block:: bash
 
