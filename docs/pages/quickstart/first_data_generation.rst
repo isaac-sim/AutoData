@@ -12,7 +12,7 @@ Prerequisites
 -------------
 
 * Installation is complete — repo cloned with submodules, NGC login, Docker with the NVIDIA
-  Container Toolkit (see :doc:`installation`).
+  Container Toolkit, or the optional native uv environment (see :doc:`installation`).
 * Git LFS data is pulled — the source dataset lives at
   ``./datasets/annotated_datasets`` in the repository (``/workspaces/autodata/datasets/annotated_datasets``
   inside the container).
@@ -29,6 +29,9 @@ Start the Dev Container
 It will take a few minutes to build the container the first time you run it.
 Once built, the script will automatically drop you into a shell at ``/workspaces/autodata``
 inside the container. All following commands are run from there.
+
+In the native uv environment, skip the container. Run the following commands from the repository root
+and start each Python command with ``uv run --locked``.
 
 Generate a Dataset
 ------------------
