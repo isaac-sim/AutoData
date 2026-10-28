@@ -160,6 +160,8 @@ import uuid  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
 
+from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg  # noqa: E402
+
 from autodata_core import DataGenerator, get_algorithm  # noqa: E402
 from autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
 from autodata_core.data_generator import GenerationResult  # noqa: E402
@@ -172,10 +174,7 @@ from autodata_interfaces.env import (  # noqa: E402
     setup_env_config,
     setup_output_paths,
 )
-from autodata_interfaces.env.datagen_info_recorder import (  # noqa: E402
-    DatagenInfoRecorderManagerCfg,
-    PreStepDatagenInfoRecorder,
-)
+from autodata_interfaces.env.datagen_info_recorder import PreStepDatagenInfoRecorder, add_pose_recorder  # noqa: E402
 from autodata_interfaces.env.registration import load_callable, register_external_environment  # noqa: E402
 from autodata_utils.dataset_metadata import exported_dataset_files, merge_autodata_entry  # noqa: E402
 from autodata_utils.generation_result import (  # noqa: E402
@@ -251,13 +250,6 @@ def _hardware(device: str) -> dict[str, str | None]:
         model_lines = (line for line in cpuinfo.read_text().splitlines() if line.startswith("model name"))
         cpu = next((line.split(":", 1)[1].strip() for line in model_lines), None)
     return {"gpu": gpu, "num_gpus": 1 if gpu else 0, "cpu": cpu or platform.processor() or None}
-
-
-def _generation_recorder_cfg() -> DatagenInfoRecorderManagerCfg:
-    """Actions and states, plus the per-step poses the dataset metrics read; object poses are left out."""
-    recorder_cfg = DatagenInfoRecorderManagerCfg()
-    recorder_cfg.record_pre_step_datagen_info.record_object_poses = False
-    return recorder_cfg
 
 
 def build_datastream(
@@ -393,6 +385,10 @@ def main() -> None:
     # names the motion-planner profile tuned for the resulting scene.
     env_profile = EnvironmentProfile.from_yaml(args_cli.env_profile) if args_cli.env_profile else None
 
+    recorder_cfg = load_callable(args_cli.recorder_cfg)() if args_cli.recorder_cfg else None
+    if args_cli.record_metric_inputs:
+        recorder_cfg = recorder_cfg or ActionStateRecorderManagerCfg()
+        add_pose_recorder(recorder_cfg)
     env_cfg, success_term = setup_env_config(
         env_name=env_name,
         output_dir=output_dir,
@@ -400,11 +396,7 @@ def main() -> None:
         num_envs=args_cli.num_envs,
         device=args_cli.device,
         generation_policy_params=generation_policy_params,
-        recorder_cfg=(
-            load_callable(args_cli.recorder_cfg)()
-            if args_cli.recorder_cfg
-            else _generation_recorder_cfg() if args_cli.record_metric_inputs else None
-        ),
+        recorder_cfg=recorder_cfg,
         record_step_success=args_cli.record_metric_inputs,
         env_profile=env_profile,
         enable_cameras=args_cli.record_images,
