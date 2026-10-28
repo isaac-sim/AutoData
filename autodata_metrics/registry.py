@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    from autodata_metrics.evidence import Evidence
+    from autodata_metrics.evidence import Episode, Evidence
 
 AREAS = ("validity", "diversity", "viability", "diagnostics")
 
@@ -47,15 +47,28 @@ class MetricSpec:
     compute: Callable[[Evidence], Value]
     area: str
     signal: str
-    scope: Literal["dataset", "run"]
+    scope: Literal["episode", "dataset", "run"]
     unit: str
     better: Literal["higher", "lower"] | None
     requires: tuple[str, ...]
     primary: str | None
     version: int
+    baseline: bool = False
+
+
+@dataclass(frozen=True)
+class CheckSpec:
+    """A registered episode check."""
+
+    name: str
+    check: Callable[[Episode, Evidence], str | None]
+    group: str
+    requires: tuple[str, ...]
 
 
 REGISTERED_METRICS: dict[str, MetricSpec] = {}
+REGISTERED_CHECKS: dict[str, CheckSpec] = {}
+CHECK_GROUPS = ("correctness", "image")
 
 
 def metric(
@@ -63,12 +76,13 @@ def metric(
     *,
     area: str,
     signal: str,
-    scope: Literal["dataset", "run"],
+    scope: Literal["episode", "dataset", "run"],
     unit: str,
     better: Literal["higher", "lower"] | None = None,
     requires: tuple[str, ...] | list[str] = (),
     primary: str | None = None,
     version: int = 1,
+    baseline: bool = False,
 ) -> Callable[[Callable[[Evidence], Value]], Callable[[Evidence], Value]]:
     """Register the decorated function as the metric ``name``.
 
@@ -76,12 +90,14 @@ def metric(
         name: Unique metric name, used in reports and gates.
         area: One of :data:`AREAS`.
         signal: What the metric measures within its area, e.g. ``"task correctness"``.
-        scope: ``"dataset"`` metrics read episodes; ``"run"`` metrics read attempts and the run record.
+        scope: ``"episode"`` metrics summarize the episode checks over every episode; ``"dataset"`` metrics read
+            the episodes that passed them; ``"run"`` metrics read attempts and the run record.
         unit: Unit of the value.
         better: Which direction is better, if either.
         requires: Evidence keys; see :meth:`~autodata_metrics.evidence.Evidence.has`.
         primary: For a dict value, the entry a gate checks by default.
         version: Raise it whenever the definition changes, so gates pinned to the old one fail.
+        baseline: Also compute the metric on the source dataset, with the generated run's context.
     """
     assert area in AREAS, f"Metric {name!r} has area {area!r}; expected one of {AREAS}."
 
@@ -98,7 +114,31 @@ def metric(
             requires=tuple(requires),
             primary=primary,
             version=version,
+            baseline=baseline,
         )
         return compute
+
+    return register
+
+
+def check(
+    name: str, *, group: str = "correctness", requires: tuple[str, ...] | list[str] = ()
+) -> Callable[[Callable[[Episode, Evidence], str | None]], Callable[[Episode, Evidence], str | None]]:
+    """Register the decorated function as the episode check ``name``.
+
+    A check returns None for an episode that passes, a reason for one that fails, or raises :class:`NotApplicable`
+    for an episode it does not cover. Episodes that fail any check are left out of every dataset metric.
+
+    Args:
+        name: Unique check name.
+        group: One of :data:`CHECK_GROUPS`; the pass-rate metric the check counts toward.
+        requires: Evidence keys the check needs; without them it does not run.
+    """
+    assert group in CHECK_GROUPS, f"Check {name!r} has group {group!r}; expected one of {CHECK_GROUPS}."
+
+    def register(function: Callable[[Episode, Evidence], str | None]) -> Callable[[Episode, Evidence], str | None]:
+        assert name not in REGISTERED_CHECKS, f"Check {name!r} is already registered."
+        REGISTERED_CHECKS[name] = CheckSpec(name=name, check=function, group=group, requires=tuple(requires))
+        return function
 
     return register

@@ -71,6 +71,11 @@ def docker_run_command_replacer(app: Sphinx, _: Any, source: list[str]) -> None:
     source[0] = re.sub(r":docker_run_curobo:", curobo_replacer, source[0])
 
 
+def _first_line(docstring: str | None) -> str:
+    """The docstring's summary line, with Sphinx roles turned into literals that need no reference target."""
+    return re.sub(r":\w+:`~?([^`]+)`", r"``\1``", (docstring or "").split("\n")[0])
+
+
 def autodata_metrics_table(app: Sphinx, _: Any, source: list[str]) -> None:
     """Replaces ``:autodata_metrics_table:`` with a table of the built-in metrics.
 
@@ -87,8 +92,8 @@ def autodata_metrics_table(app: Sphinx, _: Any, source: list[str]) -> None:
             for decorator in node.decorator_list:
                 if isinstance(decorator, ast.Call) and getattr(decorator.func, "id", None) == "metric":
                     options = {keyword.arg: ast.literal_eval(keyword.value) for keyword in decorator.keywords}
-                    requires = ", ".join(f"``{key}``" for key in options.get("requires", ())) or "-"
-                    definition = (ast.get_docstring(node) or "").split("\n")[0]
+                    requires = ", ".join(f"``{key}``" for key in options.get("requires", ())) or "none"
+                    definition = _first_line(ast.get_docstring(node))
                     name = ast.literal_eval(decorator.args[0])
                     rows.append((options["area"], name, options["unit"], requires, definition))
     table = [
@@ -99,8 +104,35 @@ def autodata_metrics_table(app: Sphinx, _: Any, source: list[str]) -> None:
         "   * - Metric\n     - Area\n     - Unit\n     - Requires\n     - Definition",
     ]
     for area, name, unit, requires, definition in sorted(rows):
+        unit, definition = (text.replace("|", "\\|") for text in (unit, definition))
         table.append(f"   * - ``{name}``\n     - {area}\n     - {unit}\n     - {requires}\n     - {definition}")
     source[0] = source[0].replace(":autodata_metrics_table:", "\n".join(table) + "\n")
+
+
+def autodata_checks_table(app: Sphinx, _: Any, source: list[str]) -> None:
+    """Replaces ``:autodata_checks_table:`` with a table of the episode checks, read like the metrics table."""
+    if ":autodata_checks_table:" not in source[0]:
+        return
+    rows = []
+    for path in sorted((Path(app.confdir).parent / "autodata_metrics").glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Call) and getattr(decorator.func, "id", None) == "check":
+                    options = {keyword.arg: ast.literal_eval(keyword.value) for keyword in decorator.keywords}
+                    definition = _first_line(ast.get_docstring(node))
+                    rows.append((options.get("group", "correctness"), ast.literal_eval(decorator.args[0]), definition))
+    table = [
+        ".. list-table::",
+        "   :header-rows: 1",
+        "   :widths: 22 14 64",
+        "",
+        "   * - Check\n     - Group\n     - Definition",
+    ]
+    for group, name, definition in sorted(rows):
+        table.append(f"   * - ``{name}``\n     - {group}\n     - {definition}")
+    source[0] = source[0].replace(":autodata_checks_table:", "\n".join(table) + "\n")
 
 
 def setup(app: Sphinx) -> None:
@@ -108,4 +140,5 @@ def setup(app: Sphinx) -> None:
     app.connect("source-read", autodata_code_link)
     app.connect("source-read", docker_run_command_replacer)
     app.connect("source-read", autodata_metrics_table)
+    app.connect("source-read", autodata_checks_table)
     app.add_config_value("autodata_docs_config", {}, "env")

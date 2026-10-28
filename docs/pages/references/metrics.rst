@@ -35,6 +35,15 @@ Gating
 A gated metric also violates the gate if it is not applicable, fails, or reports a different
 ``version``.
 
+Episode checks
+--------------
+
+Before any metric, every episode goes through the checks below. An episode that fails one is counted in
+``correctness_pass_rate`` or ``image_stream_pass_rate`` and left out of every dataset metric; the report lists
+the failures per check, with examples.
+
+:autodata_checks_table:
+
 Built-in metrics
 ----------------
 

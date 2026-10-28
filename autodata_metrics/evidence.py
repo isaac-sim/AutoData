@@ -5,10 +5,11 @@
 
 from __future__ import annotations
 
+import copy
 import h5py
 import json
 import numpy as np
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 _MISSING = object()
@@ -47,12 +48,27 @@ class Episode:
     def __getitem__(self, key: str) -> np.ndarray:
         return self._group[key][()]
 
+    def children(self, key: str) -> list[str]:
+        """Names under the group ``key``, such as the end effectors under ``obs/datagen_info/eef_pose``."""
+        return list(self._group[key])
+
+    def datasets(self) -> Iterator[tuple[str, h5py.Dataset]]:
+        """Every dataset of the episode with its path, unread until accessed."""
+        found: list[tuple[str, h5py.Dataset]] = []
+        self._group.visititems(
+            lambda path, item: found.append((path, item)) if isinstance(item, h5py.Dataset) else None
+        )
+        yield from found
+
 
 class Evidence:
     """A dataset, and optionally the generation run that produced it, as metrics read them.
 
     Attributes:
-        episodes: The dataset's episodes.
+        all_episodes: The dataset's episodes.
+        episodes: The episodes that passed every episode check; dataset metrics read these.
+        failures: Per episode check that ran, the failing episodes' names and reasons.
+        check_groups: Per episode check that ran, its group.
         env_args: The dataset's ``env_args``; its ``autodata`` entry was written by the producer.
         result: Generation result, or None for a dataset without a run record or an interrupted run.
         run: The result's ``run`` block, or empty.
@@ -68,7 +84,10 @@ class Evidence:
         source: Evidence | None = None,
     ) -> None:
         self.env_args = read_env_args(h5_file)
-        self.episodes = [Episode(group) for group in h5_file["data"].values()]
+        self.all_episodes = [Episode(group) for group in h5_file["data"].values()]
+        self.episodes = list(self.all_episodes)
+        self.failures: dict[str, dict[str, str]] = {}
+        self.check_groups: dict[str, str] = {}
         self.result = result
         self.run: Mapping[str, Any] = (result or {}).get("run", {})
         self.attempts = attempts
@@ -94,3 +113,26 @@ class Evidence:
         if head == "run":
             return is_present(lookup(self.run, rest))
         return bool(self.episodes) and all(key in episode for episode in self.episodes)
+
+    @property
+    def entry(self) -> Mapping[str, Any]:
+        """The ``autodata`` entry of ``env_args``, or empty."""
+        return self.env_args.get("autodata", {})
+
+    @property
+    def step_dt(self) -> float | None:
+        """Control step [s]: the simulation step times the decimation, or None when not recorded."""
+        sim_args = self.env_args.get("sim_args") or {}
+        return float(sim_args["dt"]) * int(sim_args["decimation"]) if {"dt", "decimation"} <= set(sim_args) else None
+
+    def as_baseline_for(self, run: Evidence) -> Evidence:
+        """This source dataset as the baseline of ``run``: its own episodes, with the run's entry and control step.
+
+        Shipped sources predate the ``autodata`` entry, so a metric reads the robot's layout and limits from the run.
+        """
+        baseline = copy.copy(self)
+        baseline.env_args = {**self.env_args, "autodata": run.entry}
+        if self.step_dt is None and "sim_args" in run.env_args:
+            baseline.env_args["sim_args"] = run.env_args["sim_args"]
+        baseline.result, baseline.run, baseline.attempts, baseline.source = None, {}, None, None
+        return baseline

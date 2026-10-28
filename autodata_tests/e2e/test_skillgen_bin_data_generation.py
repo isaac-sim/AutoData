@@ -21,13 +21,16 @@ from autodata_tests.utils.utils import assert_ok_metrics, assert_recorded_run, a
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
-# Metrics a SkillGen run reported with its result file must compute; the planning metrics are SkillGen's own.
-RUN_METRICS = {
+# Metrics a SkillGen run recorded with --record_metric_inputs must compute; the planning metrics are SkillGen's own.
+METRICS = {
     "generation_success_rate",
     "demos_per_gpu_hour",
     "time_to_dataset",
     "planning_time",
     "planning_failure_rate",
+    "correctness_pass_rate",
+    "final_success_rate",
+    "action_rotation_error",
 }
 
 
@@ -85,7 +88,7 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
             "--report_file",
             report_file,
         ])
-        assert_ok_metrics(report_file, RUN_METRICS)
+        assert_ok_metrics(report_file, METRICS)
 
         with open(result_file, encoding="utf-8") as result_handle:
             result = json.load(result_handle)

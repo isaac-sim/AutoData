@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from autodata_metrics.evidence import Evidence, read_env_args
-from autodata_metrics.registry import AREAS, REGISTERED_METRICS, MetricSpec, NotApplicable
+from autodata_metrics.registry import AREAS, REGISTERED_CHECKS, REGISTERED_METRICS, CheckSpec, MetricSpec, NotApplicable
 from autodata_utils.generation_result import attempts_file_for, code_revision, input_record
 
 SCHEMA_VERSION = 1
@@ -74,7 +74,31 @@ def check_same_run(evidence: Evidence) -> list[str]:
     return []
 
 
-def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
+def run_checks(evidence: Evidence, checks: Mapping[str, CheckSpec]) -> None:
+    """Run the episode checks and keep only the episodes that pass all of them in ``evidence.episodes``."""
+    for spec in checks.values():
+        if any(not evidence.has(key) for key in spec.requires):
+            continue
+        failed: dict[str, str] = {}
+        applied = False
+        for episode in evidence.all_episodes:
+            try:
+                reason = spec.check(episode, evidence)
+            except NotApplicable:
+                continue
+            except Exception as exc:  # A broken check fails its episodes visibly instead of sinking the report.
+                reason = f"{type(exc).__name__}: {exc}"
+            applied = True
+            if reason is not None:
+                failed[episode.name] = reason
+        if applied:
+            evidence.failures[spec.name] = failed
+            evidence.check_groups[spec.name] = spec.group
+    failing = {name for failed in evidence.failures.values() for name in failed}
+    evidence.episodes = [episode for episode in evidence.all_episodes if episode.name not in failing]
+
+
+def evaluate(spec: MetricSpec, evidence: Evidence, with_baseline: bool = True) -> dict[str, Any]:
     """One report row: the metric's value, or why it is not applicable or failed."""
     row = {
         "area": spec.area,
@@ -85,6 +109,8 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         "primary": spec.primary,
         "version": spec.version,
     }
+    if spec.scope == "dataset" and not evidence.episodes:
+        return {**row, "status": "not_applicable", "reason": "no valid episodes"}
     missing = next((key for key in spec.requires if not evidence.has(key)), None)
     if missing is not None:
         return {**row, "status": "not_applicable", "reason": f"missing {missing}"}
@@ -96,7 +122,10 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         return {**row, "status": "error", "reason": f"{type(exc).__name__}: {exc}"}
     if not _is_finite(value.value):
         return {**row, "status": "error", "reason": f"non-finite value {value.value}"}
-    return {**row, "status": "ok", "value": value.value, "n": value.n, "details": dict(value.details)}
+    row = {**row, "status": "ok", "value": value.value, "n": value.n, "details": dict(value.details)}
+    if with_baseline and spec.baseline and evidence.source is not None:
+        row["baseline"] = evaluate(spec, evidence.source.as_baseline_for(evidence), with_baseline=False).get("value")
+    return row
 
 
 def _is_finite(value: Any) -> bool:
@@ -111,6 +140,7 @@ def build_report(
     result_file: str | None = None,
     source: str | None = None,
     metrics: Mapping[str, MetricSpec] | None = None,
+    checks: Mapping[str, CheckSpec] | None = None,
 ) -> dict[str, Any]:
     """Compute every metric for a dataset and, when ``result_file`` is given, its generation run.
 
@@ -119,6 +149,7 @@ def build_report(
         result_file: Generation result (``generate_dataset.py --result_file``); its attempt log is read beside it.
         source: Source dataset the run started from.
         metrics: Metrics to compute; defaults to every registered metric.
+        checks: Episode checks to run first; defaults to every registered check.
     """
     with contextlib.ExitStack() as stack:
         h5_file = stack.enter_context(h5py.File(dataset, "r"))
@@ -127,8 +158,16 @@ def build_report(
         source_evidence = Evidence(stack.enter_context(h5py.File(source, "r"))) if source else None
         evidence = Evidence(h5_file, result, attempts, source_evidence)
         warnings += check_same_run(evidence)
+        for checked in (evidence, source_evidence):
+            if checked is not None:
+                run_checks(checked, REGISTERED_CHECKS if checks is None else checks)
         rows = {name: evaluate(spec, evidence) for name, spec in (metrics or REGISTERED_METRICS).items()}
-        num_episodes = len(evidence.episodes)
+        num_episodes = len(evidence.all_episodes)
+        num_valid = len(evidence.episodes)
+        failures = {
+            name: {"failed": len(failed), "examples": dict(list(failed.items())[:3])}
+            for name, failed in evidence.failures.items()
+        }
     return {
         "schema_version": SCHEMA_VERSION,
         "inputs": {
@@ -139,6 +178,8 @@ def build_report(
             "revision": code_revision(),
         },
         "num_episodes": num_episodes,
+        "num_valid_episodes": num_valid,
+        "check_failures": failures,
         "warnings": warnings,
         "metrics": rows,
     }
@@ -190,5 +231,10 @@ def format_report(report: Mapping[str, Any]) -> str:
     widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
     lines = ["  ".join(cell.ljust(width) for cell, width in zip(row, widths)).rstrip() for row in rows]
     lines.insert(1, "  ".join("-" * width for width in widths))
+    failed = [f"{name}={entry['failed']}" for name, entry in report["check_failures"].items() if entry["failed"]]
+    lines.append(
+        f"episodes: {report['num_valid_episodes']} valid of {report['num_episodes']}"
+        + (f"; failed checks: {', '.join(failed)}" if failed else "")
+    )
     lines += [f"warning: {warning}" for warning in report["warnings"]]
     return "\n".join(lines)
