@@ -339,7 +339,7 @@ def main() -> int:
     finally:
         env.close()
         if autodata_entry is not None:
-            for dataset_file in exported_dataset_files(output_dir, output_file_name):
+            for dataset_file in exported_dataset_files(output_dir, output_file_name, kept_failed=False):
                 merge_autodata_entry(dataset_file, autodata_entry)
 
 

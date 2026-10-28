@@ -75,9 +75,9 @@ def write_generation_result(
             os.unlink(temporary_file_name)
 
 
-def attempts_file_for(result_file: str) -> str:
-    """Path of the attempt log written next to ``result_file``."""
-    return str(Path(result_file).with_suffix(".attempts.jsonl"))
+def attempts_file_for(result_file: str, run_id: str) -> str:
+    """Path of the run's attempt log, next to ``result_file``; each run writes its own, so a rerun keeps earlier logs."""
+    return str(Path(result_file).with_suffix(f".{run_id}.attempts.jsonl"))
 
 
 class AttemptLog:

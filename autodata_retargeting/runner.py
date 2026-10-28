@@ -185,5 +185,5 @@ def run(args, simulation_app) -> int:
             dataset_file_handler.close()
         env.close()
         if autodata_entry is not None:
-            for dataset_file in exported_dataset_files(output_dir, output_file_name):
+            for dataset_file in exported_dataset_files(output_dir, output_file_name, generation_policy.keep_failed):
                 merge_autodata_entry(dataset_file, autodata_entry)

@@ -14,9 +14,19 @@ from typing import Any
 AUTODATA_ENTRY_VERSION = 1
 
 
-def exported_dataset_files(output_dir: str, output_file_name: str) -> list[str]:
-    """The HDF5 files a recorder exported: the dataset and, when failed episodes were kept, its ``_failed`` file."""
-    candidates = [os.path.join(output_dir, f"{output_file_name}{suffix}.hdf5") for suffix in ("", "_failed")]
+def exported_dataset_files(output_dir: str, output_file_name: str, kept_failed: bool) -> list[str]:
+    """The HDF5 files this run's recorder exported.
+
+    A ``_failed`` file counts only when this run kept failed episodes; otherwise one left by an earlier run would be
+    labelled with this run's id.
+
+    Args:
+        output_dir: Export directory.
+        output_file_name: Dataset file name without the extension.
+        kept_failed: Whether the run exported failed episodes to a separate ``_failed`` file.
+    """
+    suffixes = ("", "_failed") if kept_failed else ("",)
+    candidates = [os.path.join(output_dir, f"{output_file_name}{suffix}.hdf5") for suffix in suffixes]
     return [path for path in candidates if os.path.exists(path)]
 
 
