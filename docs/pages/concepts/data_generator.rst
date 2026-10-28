@@ -129,7 +129,7 @@ Four layers report what happened:
 * **Per attempt** — ``GenerationResult``: ``success``, ``failure_cause`` (``planner`` or
   ``execution``), ``extras`` from the algorithm's ``attempt_extras()``, and ``initial_state``. With
   ``--result_file``, each completed attempt is also written as one line of
-  ``<result_file stem>.attempts.jsonl``.
+  ``<result_file stem>.<run_id>.attempts.jsonl``.
 * **Per run, in memory** — the ``stats`` counters: ``num_success``, ``num_failures``,
   ``num_attempts`` (``num_success + num_failures = num_attempts``).
 * **Per run, on disk** — with ``--result_file``, a JSON sidecar is written atomically at the
@@ -160,7 +160,7 @@ Four layers report what happened:
          },
          "device": "cuda:0", "gpu": "...", "num_gpus": 1, "cpu": "...", "num_envs": 1,
          "setup_time_s": 22.3, "generation_time_s": 228.5,
-         "attempts_file": "generation_result.attempts.jsonl"
+         "attempts_file": "generation_result.3f2a9c.attempts.jsonl"
        }
      }
 
@@ -171,8 +171,8 @@ Four layers report what happened:
 Every exported dataset, whether from generation, annotation or retargeting, also carries an ``autodata``
 entry in its ``env_args`` attribute. The entry holds the ``run_id`` and the number of exported
 episodes, the embodiment's pose-action layout, the robot's joint names with their simulator limits,
-and the embodiment's optional datasheet ``hardware_limits``. The ``run_id`` ties the dataset to its
-result file and attempt log.
+and the embodiment's optional datasheet ``hardware_limits``. For a generated dataset, the ``run_id``
+ties it to its result file and attempt log.
 
 The GenerationAlgorithm Plug-In
 -------------------------------

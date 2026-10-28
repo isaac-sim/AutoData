@@ -102,7 +102,7 @@ parser.add_argument(
     default=None,
     help=(
         "Optional JSON path for the final structured generation result. An attempt log with one JSON "
-        "line per attempt is written next to it (<result_file stem>.attempts.jsonl)."
+        "line per attempt is written next to it (<result_file stem>.<run id>.attempts.jsonl)."
     ),
 )
 parser.add_argument(
@@ -431,7 +431,7 @@ def main() -> None:
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 
-    attempts_file = attempts_file_for(args_cli.result_file) if args_cli.result_file else None
+    attempts_file = attempts_file_for(args_cli.result_file, run_id) if args_cli.result_file else None
     attempt_log = AttemptLog(attempts_file, run_id) if attempts_file else None
     try:
         async_components = setup_async_generation(
@@ -500,7 +500,7 @@ def main() -> None:
             )
     finally:
         env.close()
-        for dataset_file in exported_dataset_files(output_dir, output_file_name):
+        for dataset_file in exported_dataset_files(output_dir, output_file_name, generation_policy_params.keep_failed):
             merge_autodata_entry(dataset_file, autodata_entry)
 
 

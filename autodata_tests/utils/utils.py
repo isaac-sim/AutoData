@@ -79,6 +79,9 @@ def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
         attempts = [json.loads(line) for line in attempts_handle if line.strip()]
     assert entry["exported_episodes"] == result["num_success"], "The dataset and result count different successes."
     assert len(attempts) == result["num_attempts"], "The attempt log and result count different attempts."
+    assert (
+        sum(attempt["success"] for attempt in attempts) == result["num_success"]
+    ), "The attempt log and result count different successes."
     run_ids = {entry["run_id"], result["run"]["run_id"], *(attempt["run_id"] for attempt in attempts)}
     assert len(run_ids) == 1, f"The dataset, result and attempt log carry different run ids: {run_ids}"
     return attempts
