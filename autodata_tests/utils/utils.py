@@ -85,3 +85,14 @@ def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
     run_ids = {entry["run_id"], result["run"]["run_id"], *(attempt["run_id"] for attempt in attempts)}
     assert len(run_ids) == 1, f"The dataset, result and attempt log carry different run ids: {run_ids}"
     return attempts
+
+
+def assert_no_metric_inputs(dataset_file: str) -> None:
+    """Assert a dataset recorded without ``--record_metric_inputs`` has no metric inputs, as before they existed."""
+
+    with h5py.File(dataset_file, "r") as h5_file:
+        data = h5_file["data"]
+        assert "autodata" not in json.loads(data.attrs["env_args"]), "The dataset has an autodata entry."
+        for name, episode in data.items():
+            assert "step_success" not in episode, f"{name} records step_success."
+            assert "datagen_info" not in episode["obs"], f"{name} records datagen_info."

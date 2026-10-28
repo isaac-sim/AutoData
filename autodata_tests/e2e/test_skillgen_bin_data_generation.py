@@ -50,6 +50,7 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
             output_file,
             "--result_file",
             result_file,
+            "--record_metric_inputs",
             "--generation_num_trials",
             str(GENERATION_NUM_TRIALS),
             "--num_envs",

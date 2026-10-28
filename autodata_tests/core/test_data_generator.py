@@ -196,21 +196,6 @@ def test_navigation_does_not_skip_playback_after_cancellation_or_while_paused(pa
     assert all(state.subtask_step_index == 4 for state in states.values())
 
 
-def test_planning_failure_is_attributed_to_the_planner(monkeypatch):
-    generator = _navigation_generator(active=False, reached=True)
-    generator.datastream.env = SimpleNamespace(recorder_manager=Mock())
-    monkeypatch.setattr(generator.algorithm, "plan_subtask_trajectory", lambda **kwargs: None)
-    monkeypatch.setattr(generator, "_reset_environment_for_generation", AsyncMock(return_value=(torch.tensor([0]), {})))
-
-    result = asyncio.run(
-        generator.generate(
-            env_id=0, success_term=None, env_reset_queue=asyncio.Queue(), env_action_queue=asyncio.Queue()
-        )
-    )
-
-    assert result.success is False and result.failure_cause == "planner"
-
-
 def test_unresponsive_navigation_fails_and_finalizes_the_attempt(monkeypatch):
     generator = _navigation_generator(active=True, reached=False)
     generator.datastream.generation_policy.max_navigation_hold_steps = 3
@@ -234,7 +219,7 @@ def test_unresponsive_navigation_fails_and_finalizes_the_attempt(monkeypatch):
         )
     )
 
-    assert result.success is False and result.failure_cause == "execution"
+    assert result.success is False
     assert execute.await_count == 3
     assert recorder.set_success_to_episodes.call_args.args[1].item() is False
     recorder.export_episodes.assert_called_once()

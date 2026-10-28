@@ -38,6 +38,7 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
             output_file,
             "--result_file",
             result_file,
+            "--record_metric_inputs",
             "--generation_num_trials",
             str(GENERATION_NUM_TRIALS),
             "--num_envs",

@@ -88,6 +88,11 @@ parser.add_argument(
     action="store_true",
     help="Render and record the task's image observations.",
 )
+parser.add_argument(
+    "--record_metric_inputs",
+    action="store_true",
+    help="Record what the dataset metrics read: per-step task success and run metadata in the dataset. Off by default.",
+)
 AppLauncher.add_app_launcher_args(parser)
 parser.add_argument("--external_callback", type=callable_path, help="Callable registering environments after startup.")
 args_cli, environment_args = parser.parse_known_args()
@@ -248,6 +253,7 @@ def main() -> int:
         generation_policy_params=generation_policy,
         recorder_cfg=DatagenInfoRecorderManagerCfg(),
         enable_cameras=args_cli.record_images,
+        record_step_success=args_cli.record_metric_inputs,
     )
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
     env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY
@@ -271,7 +277,8 @@ def main() -> int:
             uses_start_signals=annotate_start_signals,
         )
         PreStepDatagenInfoRecorder.datastream = _datastream
-        autodata_entry = collect_autodata_entry(env, embodiment_adapter, uuid.uuid4().hex)
+        if args_cli.record_metric_inputs:
+            autodata_entry = collect_autodata_entry(env, embodiment_adapter, uuid.uuid4().hex)
 
         env.reset()
 
@@ -328,12 +335,13 @@ def main() -> int:
             f"\nExported {exported_episode_count} (out of {processed_episode_count}) annotated"
             f" episode{'s' if exported_episode_count != 1 else ''} to {args_cli.output_file}."
         )
-        autodata_entry["annotation"] = {
-            "input_episodes": len(episode_names),
-            "processed_episodes": processed_episode_count,
-            "annotated_episodes": exported_episode_count,
-            "time_s": time.monotonic() - annotation_start,
-        }
+        if autodata_entry is not None:
+            autodata_entry["annotation"] = {
+                "input_episodes": len(episode_names),
+                "processed_episodes": processed_episode_count,
+                "annotated_episodes": exported_episode_count,
+                "time_s": time.monotonic() - annotation_start,
+            }
         print("Exiting the app.")
         return exported_episode_count
     finally:

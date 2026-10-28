@@ -200,6 +200,7 @@ def setup_env_config(
     recorder_cfg: RecorderManagerBaseCfg | None = None,
     env_profile: EnvironmentProfile | None = None,
     enable_cameras: bool = False,
+    record_step_success: bool = False,
 ) -> tuple[Any, Any]:
     """Configure the environment for data generation.
 
@@ -220,6 +221,8 @@ def setup_env_config(
             reset-event changes) before the generation-specific adjustments below.
         enable_cameras: Record the task's image observations. Defaults to low-dimensional
             observations, excluding the cameras used for teleoperation previews.
+        record_step_success: Also record whether the task's success term holds after each step, as
+            ``step_success``, for the dataset metrics.
 
     Returns:
         A tuple of the environment configuration and the success termination condition.
@@ -265,7 +268,8 @@ def setup_env_config(
         env_cfg.recorders = ActionStateRecorderManagerCfg()
     else:
         env_cfg.recorders = recorder_cfg
-    add_step_success_recorder(env_cfg.recorders, success_term)
+    if record_step_success:
+        add_step_success_recorder(env_cfg.recorders, success_term)
     env_cfg.recorders.dataset_export_dir_path = output_dir
     env_cfg.recorders.dataset_filename = output_file_name
 

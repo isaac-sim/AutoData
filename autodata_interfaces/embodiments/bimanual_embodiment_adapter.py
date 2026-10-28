@@ -192,10 +192,13 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
         return max([self.hand_joints_slice[1], *channel_ends])
 
     def metric_context(self) -> dict[str, Any]:
-        """Adds the pose-action columns of both hands; they are not clipped."""
+        """``left_pose_slice`` and ``right_pose_slice`` of the action vector hold the hands' target poses.
+
+        Each holds a position, then a quaternion. These entries are not clipped.
+        """
         pose_action = {
-            self.left.name: {"columns": list(self.left_pose_slice), "bound": None},
-            self.right.name: {"columns": list(self.right_pose_slice), "bound": None},
+            self.left.name: {"action_slice": list(self.left_pose_slice), "bound": None},
+            self.right.name: {"action_slice": list(self.right_pose_slice), "bound": None},
         }
         return {**super().metric_context(), "pose_action": pose_action}
 
