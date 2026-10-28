@@ -13,26 +13,38 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from autodata_metrics.evidence import Evidence
+from autodata_metrics.evidence import Evidence, read_env_args
 from autodata_metrics.registry import AREAS, REGISTERED_METRICS, MetricSpec, NotApplicable
 from autodata_utils.generation_result import attempts_file_for, code_revision, input_record
 
 SCHEMA_VERSION = 1
 
 
-def read_run(result_file: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]] | None]:
-    """The generation result and its attempt log, each None when its file is missing.
+def read_run(
+    result_file: str, run_id: str | None
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]] | None, list[str]]:
+    """The generation result and attempt log of run ``run_id``, each None when missing, and any warnings.
 
-    An interrupted run leaves an attempt log without a result.
+    A rerun with the same result file leaves the earlier result in place until it completes, so a result from
+    another run is set aside and the run is reported from its own attempt log.
     """
     result_path = Path(result_file)
-    attempts_path = Path(attempts_file_for(result_file))
     result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else None
+    warnings = []
+    if result is not None and run_id is not None and result.get("run", {}).get("run_id") != run_id:
+        warnings.append(f"{result_file} belongs to another run, so the run is reported from its attempt log")
+        result = None
+    if result is not None and "attempts_file" in result.get("run", {}):
+        attempts_path = result_path.parent / result["run"]["attempts_file"]
+    elif run_id is not None:
+        attempts_path = Path(attempts_file_for(result_file, run_id))
+    else:
+        return result, None, warnings
     attempts = None
     if attempts_path.exists():
         lines = attempts_path.read_text(encoding="utf-8").splitlines()
         attempts = [json.loads(line) for line in lines if line.strip()]
-    return result, attempts
+    return result, attempts, warnings
 
 
 def check_same_run(evidence: Evidence) -> list[str]:
@@ -97,13 +109,14 @@ def build_report(
         source: Source dataset the run started from.
         metrics: Metrics to compute; defaults to every registered metric.
     """
-    result, attempts = read_run(result_file) if result_file else (None, None)
     with contextlib.ExitStack() as stack:
+        h5_file = stack.enter_context(h5py.File(dataset, "r"))
+        run_id = read_env_args(h5_file).get("autodata", {}).get("run_id")
+        result, attempts, warnings = read_run(result_file, run_id) if result_file else (None, None, [])
         source_evidence = Evidence(stack.enter_context(h5py.File(source, "r"))) if source else None
-        evidence = Evidence(stack.enter_context(h5py.File(dataset, "r")), result, attempts, source_evidence)
-        warnings = check_same_run(evidence)
+        evidence = Evidence(h5_file, result, attempts, source_evidence)
+        warnings += check_same_run(evidence)
         rows = {name: evaluate(spec, evidence) for name, spec in (metrics or REGISTERED_METRICS).items()}
-        run_id = evidence.env_args.get("autodata", {}).get("run_id")
         num_episodes = len(evidence.episodes)
     return {
         "schema_version": SCHEMA_VERSION,

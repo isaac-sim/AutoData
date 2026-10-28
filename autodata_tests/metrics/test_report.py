@@ -38,10 +38,17 @@ def _dataset(path: Path, num_episodes: int = 1, entry: dict | None = None) -> st
     return str(path)
 
 
-def _run(tmp_path: Path, run_id: str, num_success: int = 1) -> str:
+def _log(tmp_path: Path, run_id: str, successes: list[bool]) -> None:
+    lines = [json.dumps({"run_id": run_id, "success": success}) for success in successes]
+    (tmp_path / f"result.{run_id}.attempts.jsonl").write_text("\n".join(lines) + "\n")
+
+
+def _run(tmp_path: Path, run_id: str) -> str:
+    """A completed run: its result file and attempt log."""
     result_file = tmp_path / "result.json"
-    result_file.write_text(json.dumps({"num_success": num_success, "run": {"run_id": run_id}}))
-    (tmp_path / "result.attempts.jsonl").write_text(json.dumps({"run_id": run_id, "success": True}) + "\n")
+    run = {"run_id": run_id, "attempts_file": f"result.{run_id}.attempts.jsonl"}
+    result_file.write_text(json.dumps({"num_success": 1, "num_attempts": 1, "run": run}))
+    _log(tmp_path, run_id, [True])
     return str(result_file)
 
 
@@ -63,10 +70,20 @@ def test_failing_metric_is_an_error_and_the_rest_are_still_computed(tmp_path):
     assert rows["fine"]["status"] == "ok" and rows["fine"]["value"] == 0.5
 
 
-def test_report_refuses_data_from_another_run_or_merged_data(tmp_path):
+def test_interrupted_rerun_is_reported_from_its_own_attempt_log(tmp_path):
+    result_file = _run(tmp_path, "run-a")
+    _log(tmp_path, "run-b", [True, False])
+    dataset = _dataset(tmp_path / "d.hdf5", entry={"run_id": "run-b", "exported_episodes": 1})
+    count = {"attempts": _spec("attempts", lambda ev: Value(len(ev.attempts), n=1), ("attempts",))}
+
+    report = build_report(dataset, result_file=result_file, metrics=count)
+
+    assert report["metrics"]["attempts"]["value"] == 2
+    assert "belongs to another run" in report["warnings"][0]
+
+
+def test_report_refuses_merged_data(tmp_path):
     entry = {"run_id": "run-a", "exported_episodes": 1}
-    with pytest.raises(AssertionError, match="different runs"):
-        build_report(_dataset(tmp_path / "d.hdf5", entry=entry), result_file=_run(tmp_path, "run-b"), metrics={})
     with pytest.raises(AssertionError, match="merged or edited"):
         build_report(_dataset(tmp_path / "merged.hdf5", num_episodes=2, entry=entry), metrics={})
 

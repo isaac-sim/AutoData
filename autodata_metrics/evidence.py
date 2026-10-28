@@ -23,6 +23,12 @@ def lookup(record: Any, dotted_key: str) -> Any:
     return record
 
 
+def read_env_args(h5_file: h5py.File) -> dict[str, Any]:
+    """The dataset's ``env_args``; its ``autodata`` entry was written by the producer."""
+    raw_env_args = h5_file["data"].attrs.get("env_args", "{}")
+    return json.loads(raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args)
+
+
 def is_present(value: Any) -> bool:
     """Whether a :func:`lookup` found its key."""
     return value is not _MISSING
@@ -61,12 +67,8 @@ class Evidence:
         attempts: list[dict[str, Any]] | None = None,
         source: Evidence | None = None,
     ) -> None:
-        data = h5_file["data"]
-        raw_env_args = data.attrs.get("env_args", "{}")
-        self.env_args: dict[str, Any] = json.loads(
-            raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args
-        )
-        self.episodes = [Episode(group) for group in data.values()]
+        self.env_args = read_env_args(h5_file)
+        self.episodes = [Episode(group) for group in h5_file["data"].values()]
         self.result = result
         self.run: Mapping[str, Any] = (result or {}).get("run", {})
         self.attempts = attempts
