@@ -98,6 +98,7 @@ def run(args, simulation_app) -> int:
         num_envs=num_envs,
         device=args.device,
         generation_policy_params=generation_policy,
+        record_step_success=getattr(args, "record_metric_inputs", False),
     )
 
     # Compensate the target env's (auto-detected) arm-action scale *in the encoded action* rather than
@@ -122,7 +123,8 @@ def run(args, simulation_app) -> int:
     autodata_entry = None
     try:
         target_adapter.bind_env(env)
-        autodata_entry = collect_autodata_entry(env, target_adapter, uuid.uuid4().hex)
+        if getattr(args, "record_metric_inputs", False):
+            autodata_entry = collect_autodata_entry(env, target_adapter, uuid.uuid4().hex)
         env.reset()
         # Snapshot the target's home scene state once; each replay restores its robot from here
         # (deepcopy so later sim steps cannot mutate the cached tensors).

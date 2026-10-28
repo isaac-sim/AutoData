@@ -36,6 +36,7 @@ def test_automatic_annotation_from_dataset(tmp_path):
         str(input_file),
         "--output_file",
         str(output_file),
+        "--record_metric_inputs",
     ])
     assert_valid_dataset(str(output_file), min_num_demos=1)
     entry = assert_recorded_episodes(str(output_file))

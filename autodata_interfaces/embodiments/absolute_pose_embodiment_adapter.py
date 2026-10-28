@@ -78,9 +78,12 @@ class AbsolutePoseEmbodimentAdapter(EmbodimentAdapter):
         return cls(**data)
 
     def metric_context(self) -> dict[str, Any]:
-        """Adds the pose-action columns of every EEF that commands a pose; they are not clipped."""
+        """Each end effector with a ``pose_action_slice`` commands its target pose there: position, then quaternion.
+
+        These entries are not clipped.
+        """
         pose_action = {
-            name: {"columns": list(spec["pose_action_slice"]), "bound": None}
+            name: {"action_slice": list(spec["pose_action_slice"]), "bound": None}
             for name, spec in self.eefs.items()
             if spec.get("pose_action_slice") is not None
         }

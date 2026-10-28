@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from isaaclab.managers import TerminationTermCfg
 
@@ -52,15 +52,12 @@ class GenerationResult:
     Attributes:
         initial_state: Scene state of every env right after this env's reset.
         success: Whether the task succeeded at any step of the attempt.
-        failure_cause: ``"planner"`` when motion planning aborted the attempt, otherwise ``"execution"``
-            for a failed attempt and None on success.
         extras: Algorithm-specific facts about the attempt, from
             :meth:`~autodata_core.algorithms.GenerationAlgorithm.attempt_extras`.
     """
 
     initial_state: dict
     success: bool
-    failure_cause: Literal["planner", "execution"] | None = None
     extras: dict[str, Any] = field(default_factory=dict)
 
 
@@ -88,6 +85,7 @@ class _EEFGenerationState:
     pending_subtask_trajectory: WaypointTrajectory | None = None
     is_in_motion_plan: bool = False
     planning_time_s: float = 0.0
+    planning_failed: bool = False
 
 
 class DataGenerator:
@@ -584,7 +582,6 @@ class DataGenerator:
                         return GenerationResult(
                             initial_state=initial_state,
                             success=False,
-                            failure_cause="planner",
                             extras=self.algorithm.attempt_extras(eef_states.values()),
                         )
                     next_trajectory, _is_motion_plan = result
@@ -637,7 +634,6 @@ class DataGenerator:
         return GenerationResult(
             initial_state=initial_state,
             success=buffers.success,
-            failure_cause=None if buffers.success else "execution",
             extras=self.algorithm.attempt_extras(eef_states.values()),
         )
 

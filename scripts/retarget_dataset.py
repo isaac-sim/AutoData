@@ -138,6 +138,11 @@ parser.add_argument(
         "expected to be low."
     ),
 )
+parser.add_argument(
+    "--record_metric_inputs",
+    action="store_true",
+    help="Record what the dataset metrics read: per-step task success and run metadata in the dataset. Off by default.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 

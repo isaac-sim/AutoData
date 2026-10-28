@@ -123,13 +123,13 @@ Results and Statistics
 
 Four layers report what happened:
 
-* **Per step** — every exported episode records ``step_success``, whether the task's success term
-  held after each step. Generation also records the end-effector pose and its commanded target under
-  ``obs/datagen_info``; object poses are recorded there only during annotation, for the source pool.
-* **Per attempt** — ``GenerationResult``: ``success``, ``failure_cause`` (``planner`` or
-  ``execution``), ``extras`` from the algorithm's ``attempt_extras()``, and ``initial_state``. With
-  ``--result_file``, each completed attempt is also written as one line of
-  ``<result_file stem>.<run_id>.attempts.jsonl``.
+* **Per step** — annotation records ``obs/datagen_info`` (object, end-effector and commanded
+  target poses) for the source pool. With ``--record_metric_inputs``, every exported episode also
+  records ``step_success``, whether the task's success term held after each step, and generation
+  records the end-effector pose and its commanded target.
+* **Per attempt** — ``GenerationResult``: ``success``, ``extras`` from the algorithm's
+  ``attempt_extras()``, and ``initial_state``. With ``--record_metric_inputs`` and ``--result_file``,
+  each completed attempt is also written as one line of ``<result_file stem>.<run_id>.attempts.jsonl``.
 * **Per run, in memory** — the ``stats`` counters: ``num_success``, ``num_failures``,
   ``num_attempts`` (``num_success + num_failures = num_attempts``).
 * **Per run, on disk** — with ``--result_file``, a JSON sidecar is written atomically at the
@@ -168,11 +168,12 @@ Four layers report what happened:
   applied — the generated dataset itself records only the base env id, so the sidecar is
   what documents that the scene was modified.
 
-Every exported dataset, whether from generation, annotation or retargeting, also carries an ``autodata``
-entry in its ``env_args`` attribute. The entry holds the ``run_id`` and the number of exported
-episodes, the embodiment's pose-action layout, the robot's joint names with their simulator limits,
-and the embodiment's optional datasheet ``hardware_limits``. For a dataset generated with
-``--result_file``, the ``run_id`` ties it to that run's result file and attempt log.
+The ``run`` block is written only with ``--record_metric_inputs``. With that option, every exported
+dataset, whether from generation, annotation or retargeting, also carries an ``autodata`` entry in
+its ``env_args`` attribute. The entry holds the ``run_id`` and the number of exported episodes, the
+embodiment's pose-action layout, the robot's joint names with their simulator limits, and the
+embodiment's optional datasheet ``hardware_limits``. For a dataset generated with ``--result_file``,
+the ``run_id`` ties it to that run's attempt log and, once the run completes, its result file.
 
 The GenerationAlgorithm Plug-In
 -------------------------------
@@ -203,7 +204,8 @@ The shipped algorithms — ``mimicgen``, ``dexmimicgen``, ``skillgen`` — are d
 :doc:`algorithms`.
 
 An algorithm can also override ``attempt_extras()`` to report facts about each attempt in its
-attempt-log line; SkillGen reports its motion-planning time as ``planning_time_s``.
+attempt-log line. SkillGen reports its motion-planning time as ``planning_time_s`` and whether a
+motion plan failed as ``planning_failed``.
 
 The behavioral hook: ``plan_subtask_trajectory``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

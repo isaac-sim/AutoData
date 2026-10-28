@@ -101,8 +101,16 @@ parser.add_argument(
     type=str,
     default=None,
     help=(
-        "Optional JSON path for the final structured generation result. An attempt log with one JSON "
-        "line per attempt is written next to it (<result_file stem>.<run id>.attempts.jsonl)."
+        "Optional JSON path for the final structured generation result. With --record_metric_inputs, an attempt "
+        "log with one JSON line per attempt is written next to it (<result_file stem>.<run id>.attempts.jsonl)."
+    ),
+)
+parser.add_argument(
+    "--record_metric_inputs",
+    action="store_true",
+    help=(
+        "Record what the dataset metrics read: per-step end-effector and target poses and task success, run "
+        "metadata in the dataset and, with --result_file, a run block and an attempt log. Off by default."
     ),
 )
 parser.add_argument(
@@ -221,7 +229,6 @@ def _attempt_record(env_id: int, result: GenerationResult, start_time: float, en
     return {
         "env_id": env_id,
         "success": result.success,
-        "failure_cause": result.failure_cause,
         "start_time_s": start_time,
         "end_time_s": end_time,
         "initial_object_positions": {
@@ -393,7 +400,12 @@ def main() -> None:
         num_envs=args_cli.num_envs,
         device=args_cli.device,
         generation_policy_params=generation_policy_params,
-        recorder_cfg=load_callable(args_cli.recorder_cfg)() if args_cli.recorder_cfg else _generation_recorder_cfg(),
+        recorder_cfg=(
+            load_callable(args_cli.recorder_cfg)()
+            if args_cli.recorder_cfg
+            else _generation_recorder_cfg() if args_cli.record_metric_inputs else None
+        ),
+        record_step_success=args_cli.record_metric_inputs,
         env_profile=env_profile,
         enable_cameras=args_cli.record_images,
     )
@@ -415,7 +427,7 @@ def main() -> None:
     )
     PreStepDatagenInfoRecorder.datastream = datastream
     run_id = uuid.uuid4().hex
-    autodata_entry = collect_autodata_entry(env, embodiment_adapter, run_id)
+    autodata_entry = collect_autodata_entry(env, embodiment_adapter, run_id) if args_cli.record_metric_inputs else None
 
     # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
     motion_planners: dict | None = None
@@ -431,7 +443,7 @@ def main() -> None:
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
 
-    attempts_file = attempts_file_for(args_cli.result_file, run_id) if args_cli.result_file else None
+    attempts_file = attempts_file_for(args_cli.result_file, run_id) if autodata_entry and args_cli.result_file else None
     attempt_log = AttemptLog(attempts_file, run_id) if attempts_file else None
     try:
         async_components = setup_async_generation(
@@ -480,28 +492,35 @@ def main() -> None:
                     if env_profile
                     else None
                 ),
-                run_metadata={
-                    "run_id": run_id,
-                    "seed": generation_policy_params.seed,
-                    "revision": code_revision(),
-                    "inputs": {
-                        "source": input_record(args_cli.input_file),
-                        "embodiment": input_record(args_cli.embodiment),
-                        "task_descriptor": input_record(args_cli.task_descriptor),
-                        "env_profile": input_record(args_cli.env_profile),
-                    },
-                    "device": args_cli.device,
-                    **_hardware(args_cli.device),
-                    "num_envs": args_cli.num_envs,
-                    "setup_time_s": generation_start - PROCESS_START,
-                    "generation_time_s": generation_end - generation_start,
-                    "attempts_file": Path(attempts_file).name,
-                },
+                run_metadata=(
+                    None
+                    if autodata_entry is None
+                    else {
+                        "run_id": run_id,
+                        "seed": generation_policy_params.seed,
+                        "revision": code_revision(),
+                        "inputs": {
+                            "source": input_record(args_cli.input_file),
+                            "embodiment": input_record(args_cli.embodiment),
+                            "task_descriptor": input_record(args_cli.task_descriptor),
+                            "env_profile": input_record(args_cli.env_profile),
+                        },
+                        "device": args_cli.device,
+                        **_hardware(args_cli.device),
+                        "num_envs": args_cli.num_envs,
+                        "setup_time_s": generation_start - PROCESS_START,
+                        "generation_time_s": generation_end - generation_start,
+                        "attempts_file": Path(attempts_file).name,
+                    }
+                ),
             )
     finally:
         env.close()
-        for dataset_file in exported_dataset_files(output_dir, output_file_name, generation_policy_params.keep_failed):
-            merge_autodata_entry(dataset_file, autodata_entry)
+        if autodata_entry is not None:
+            for dataset_file in exported_dataset_files(
+                output_dir, output_file_name, generation_policy_params.keep_failed
+            ):
+                merge_autodata_entry(dataset_file, autodata_entry)
 
 
 if __name__ == "__main__":

@@ -51,10 +51,12 @@ class EmbodimentAdapter(ABC):
     raw_config: dict[str, Any] | None = None
 
     def metric_context(self) -> dict[str, Any]:
-        """Facts about this embodiment that the dataset metrics read, stored with every dataset it records.
+        """Describe this embodiment for the dataset metrics; the description is saved with every dataset it records.
 
-        Subclasses add their pose-action layout. The base adds the optional ``hardware_limits`` section of the
-        embodiment config (datasheet joint limits, keyed by joint-name pattern).
+        The base returns the optional ``hardware_limits`` section of the embodiment config: datasheet joint limits
+        keyed by joint-name pattern. Subclasses add ``pose_action``, which says for each end effector which part of
+        the action vector commands its pose (``action_slice``, a half-open ``[start, end)`` index range) and the
+        value the adapter clips those entries to (``bound``, or None when they are not clipped).
         """
         hardware_limits = (self.raw_config or {}).get("hardware_limits")
         return {"hardware_limits": hardware_limits} if hardware_limits else {}

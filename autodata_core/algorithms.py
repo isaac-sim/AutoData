@@ -200,8 +200,12 @@ class SkillGen(GenerationAlgorithm):
         self.motion_planners = motion_planners
 
     def attempt_extras(self, eef_states: Iterable[_EEFGenerationState]) -> dict[str, Any]:
-        """Report the attempt's wall-clock motion-planning time [s] as ``planning_time_s``."""
-        return {"planning_time_s": sum(state.planning_time_s for state in eef_states)}
+        """Report the attempt's wall-clock motion-planning time [s] and whether a motion plan failed."""
+        states = list(eef_states)
+        return {
+            "planning_time_s": sum(state.planning_time_s for state in states),
+            "planning_failed": any(state.planning_failed for state in states),
+        }
 
     def plan_subtask_trajectory(
         self,
@@ -261,6 +265,7 @@ class SkillGen(GenerationAlgorithm):
         )
         eef_state.planning_time_s += time.perf_counter() - start_time
         if not planning_success:
+            eef_state.planning_failed = True
             return None
 
         mp_waypoints = self._convert_planned_trajectory_to_waypoints(planner, target_passthrough_action)

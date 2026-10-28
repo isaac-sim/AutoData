@@ -25,7 +25,8 @@ YAML, live env, and HDF5 source dataset, then runs the selected generation algor
 | `--output_file <path.hdf5>` | no | `./datasets/output_dataset.hdf5` | Destination for generated demos. |
 | `--generation_num_trials <N>` | no | `None` | Number of demos to generate. |
 | `--num_envs <N>` | no | `1` | Number of parallel simulation environments. |
-| `--result_file <path>` | no | — | Where to write the generation result summary. An attempt log (`<stem>.<run id>.attempts.jsonl`) is written next to it. |
+| `--result_file <path>` | no | — | Where to write the generation result summary. With `--record_metric_inputs`, an attempt log (`<stem>.<run id>.attempts.jsonl`) is written next to it. |
+| `--record_metric_inputs` | no | off | Record what the dataset metrics read: per-step poses and task success, run metadata, and the attempt log. |
 | `--pause_subtask` | no | off | Pause at subtask boundaries (debugging). |
 | `--visualize_plan` | no | off | Visualize the motion plan (SkillGen debugging). |
 

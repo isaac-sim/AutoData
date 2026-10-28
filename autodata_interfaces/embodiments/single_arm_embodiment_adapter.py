@@ -134,9 +134,12 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
     clip_pose_action_to_unit: bool = True
 
     def metric_context(self) -> dict[str, Any]:
-        """Adds the pose-action columns and their clip bound."""
+        """Action entries 0-5 command the end effector's pose change: delta position, then axis-angle rotation.
+
+        They are clipped to ±1 when ``clip_pose_action_to_unit`` is set.
+        """
         bound = 1.0 if self.clip_pose_action_to_unit else None
-        pose_action = {self.eef_name: {"columns": [0, _DELTA_POSE_ACTION_DIM], "bound": bound}}
+        pose_action = {self.eef_name: {"action_slice": [0, _DELTA_POSE_ACTION_DIM], "bound": bound}}
         return {**super().metric_context(), "pose_action": pose_action}
 
     @property
