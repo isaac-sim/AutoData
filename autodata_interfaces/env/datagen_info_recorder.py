@@ -69,11 +69,27 @@ class DatagenInfoRecorderManagerCfg(ActionStateRecorderManagerCfg):
     record_pre_step_datagen_info = PreStepDatagenInfoRecorderCfg()
 
 
-def add_step_success_recorder(recorder_cfg: object, success_term: TerminationTermCfg) -> None:
+def add_step_success_recorder(recorder_cfg: object, success_term: TerminationTermCfg | None) -> None:
     """Add the ``step_success`` term to any recorder manager configuration.
+
+    Nothing is added without a success term, since there is then no success to record.
 
     Args:
         recorder_cfg: Recorder manager configuration the env will be built with.
-        success_term: The task's success term.
+        success_term: The task's success term, or None when the task has none.
     """
-    recorder_cfg.record_post_step_success = PostStepSuccessRecorderCfg(success_term=success_term)
+    if success_term is not None:
+        recorder_cfg.record_post_step_success = PostStepSuccessRecorderCfg(success_term=success_term)
+
+
+def add_pose_recorder(recorder_cfg: object) -> None:
+    """Add the per-step end-effector and commanded target pose term to any recorder manager configuration.
+
+    Object poses are left out, as no metric reads them. A configuration that already has the
+    ``record_pre_step_datagen_info`` term, such as :class:`DatagenInfoRecorderManagerCfg`, keeps its own.
+
+    Args:
+        recorder_cfg: Recorder manager configuration the env will be built with.
+    """
+    if not hasattr(recorder_cfg, "record_pre_step_datagen_info"):
+        recorder_cfg.record_pre_step_datagen_info = PreStepDatagenInfoRecorderCfg(record_object_poses=False)
