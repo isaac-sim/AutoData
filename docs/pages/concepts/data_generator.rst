@@ -171,8 +171,8 @@ Four layers report what happened:
 Every exported dataset, whether from generation, annotation or retargeting, also carries an ``autodata``
 entry in its ``env_args`` attribute. The entry holds the ``run_id`` and the number of exported
 episodes, the embodiment's pose-action layout, the robot's joint names with their simulator limits,
-and the embodiment's optional datasheet ``hardware_limits``. For a generated dataset, the ``run_id``
-ties it to its result file and attempt log.
+and the embodiment's optional datasheet ``hardware_limits``. For a dataset generated with
+``--result_file``, the ``run_id`` ties it to that run's result file and attempt log.
 
 The GenerationAlgorithm Plug-In
 -------------------------------
