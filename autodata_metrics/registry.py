@@ -49,6 +49,7 @@ class MetricSpec:
     signal: str
     scope: Literal["episode", "dataset", "run"]
     unit: str
+    sample: str
     better: Literal["higher", "lower"] | None
     requires: tuple[str, ...]
     primary: str | None
@@ -78,6 +79,7 @@ def metric(
     signal: str,
     scope: Literal["episode", "dataset", "run"],
     unit: str,
+    sample: str,
     better: Literal["higher", "lower"] | None = None,
     requires: tuple[str, ...] | list[str] = (),
     primary: str | None = None,
@@ -93,6 +95,7 @@ def metric(
         scope: ``"episode"`` metrics summarize the episode checks over every episode; ``"dataset"`` metrics read
             the episodes that passed them; ``"run"`` metrics read attempts and the run record.
         unit: Unit of the value.
+        sample: What the value's sample count counts, in the plural, e.g. ``"attempts"`` or ``"episodes"``.
         better: Which direction is better, if either.
         requires: Evidence keys; see :meth:`~autodata_metrics.evidence.Evidence.has`.
         primary: For a dict value, the entry a gate checks by default.
@@ -110,6 +113,7 @@ def metric(
             signal=signal,
             scope=scope,
             unit=unit,
+            sample=sample,
             better=better,
             requires=tuple(requires),
             primary=primary,

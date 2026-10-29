@@ -1,17 +1,18 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests of how the report runs metrics, refuses mismatched runs and gates values."""
+"""Tests of how the report runs metrics, refuses mismatched runs, gates values and summarizes them."""
 
 import h5py
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from autodata_metrics import MetricSpec, Value, build_report, gate_violations
+from autodata_metrics import MetricSpec, Value, build_report, format_report, gate_results
 
 
 def _spec(name: str, compute, requires: tuple[str, ...] = ()) -> MetricSpec:
@@ -22,6 +23,7 @@ def _spec(name: str, compute, requires: tuple[str, ...] = ()) -> MetricSpec:
         signal="test",
         scope="run",
         unit="fraction",
+        sample="samples",
         better="higher",
         requires=requires,
         primary=None,
@@ -116,13 +118,14 @@ def test_gate_flags_violations_and_refuses_a_non_finite_bound(tmp_path):
         "low: {min: 0.5}\nold: {version: 1}\nfine: {min: 0.3, max: 0.5, version: 2}\nabsent: {min: 0}\ngap: {max: 2}\n"
     )
 
-    violations = gate_violations(report, str(gate))
+    results = gate_results(report, str(gate))
 
-    assert [violation.split(":")[0] for violation in violations] == ["low", "old", "absent", "gap"]
+    assert [name for name, reason in results.items() if reason is not None] == ["low", "old", "absent", "gap"]
+    assert results["fine"] is None
     for bad_bound in (".nan", "false", "{p95: 1}"):
         gate.write_text(f"absent: {{min: {bad_bound}}}\n")
         with pytest.raises(ValueError, match="not a finite number"):
-            gate_violations(report, str(gate))
+            gate_results(report, str(gate))
 
 
 def test_non_finite_numbers_never_reach_the_report(tmp_path):
@@ -135,8 +138,26 @@ def test_non_finite_numbers_never_reach_the_report(tmp_path):
     gate.write_text("m: {min: 0}\n")
 
     assert report["metrics"]["m"]["status"] == "error"
-    assert gate_violations(report, str(gate)) == ["m: error"]
+    assert gate_results(report, str(gate)) == {"m": "error"}
     assert report["metrics"]["d"]["details"] == {"interval_95": [0.5, None]}
+
+
+def test_console_summary_marks_the_gate_and_says_how_to_compute_the_rest(tmp_path):
+    metrics = {
+        "rate": _spec("rate", lambda ev: Value(0.25, n=4)),
+        "held": _spec("held", lambda ev: Value(1.0, n=1), ("step_success",)),
+        "planned": _spec("planned", lambda ev: Value(1.0, n=1), ("attempts.extras.planning_time_s",)),
+    }
+    report = build_report(_dataset(tmp_path / "d.hdf5"), metrics=metrics)
+    gate = tmp_path / "gate.yaml"
+    gate.write_text("rate: {min: 0.5}\n")
+
+    summary = format_report(report, gate_results(report, str(gate)))
+
+    assert "gate failed on 1 of 1" in summary
+    assert re.search(r"✗ rate +25% +4 samples", summary)
+    assert "needs --record_metric_inputs: held" in summary
+    assert "not reported by this algorithm: planned" in summary
 
 
 def test_metrics_import_without_torch_or_isaaclab():

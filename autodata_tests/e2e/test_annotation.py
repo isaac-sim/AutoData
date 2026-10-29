@@ -41,6 +41,7 @@ def test_automatic_annotation_from_dataset(tmp_path):
     assert_valid_dataset(str(output_file), min_num_demos=1)
     entry = assert_recorded_episodes(str(output_file))
     assert entry["annotation"]["annotated_episodes"] == entry["exported_episodes"]
+    assert entry["annotation"]["mode"] == "auto" and entry["annotation"]["setup_time_s"] > 0
     with h5py.File(input_file, "r") as source, h5py.File(output_file, "r") as annotated:
         assert len(annotated["data"]) == len(source["data"])
         assert json.loads(annotated["data"].attrs["env_args"])["env_name"] == "IsaacContrib-Stack-Cube-Franka-IK-Rel"

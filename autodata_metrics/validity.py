@@ -71,7 +71,7 @@ def valid_rotations(episode: Episode, ev: Evidence) -> str | None:
 
     Both tests hold for either quaternion order, so the check needs no convention.
     """
-    bad = []
+    bad, checked = [], False
     for path, dataset in episode.datasets():
         if path.startswith(OBSERVED_POSE_PATHS) and dataset.shape[-2:] == (4, 4):
             error = _rotation_errors(dataset[()]).max(initial=0.0)
@@ -79,8 +79,11 @@ def valid_rotations(episode: Episode, ev: Evidence) -> str | None:
             error = np.abs(np.linalg.norm(dataset[()][..., 3:7], axis=-1) - 1.0).max(initial=0.0)
         else:
             continue
+        checked = True
         if error > ROTATION_TOLERANCE:
             bad.append(path)
+    if not checked:
+        raise NotApplicable("no recorded rotations")
     return f"invalid rotations in {', '.join(bad)}" if bad else None
 
 
@@ -132,14 +135,15 @@ def no_frozen_frames(episode: Episode, ev: Evidence) -> str | None:
     return None
 
 
-def _pass_rate(ev: Evidence, group: str) -> Value:
+def _pass_rate(ev: Evidence, group: str, none_apply: str) -> Value:
     names = [name for name, check_group in ev.check_groups.items() if check_group == group]
     if not names:
-        raise NotApplicable(f"no {group} check applies to this dataset")
+        raise NotApplicable(none_apply)
     if not ev.all_episodes:
         raise NotApplicable("the dataset has no episodes")
     failing = {episode for name in names for episode in ev.failures[name]}
-    details = {f"{name}_failed": len(ev.failures[name]) for name in names}
+    skipped = [name for name, check_group in ev.skipped_checks.items() if check_group == group]
+    details = {"checks_run": names, "checks_skipped": skipped}
     return Value(1 - len(failing) / len(ev.all_episodes), n=len(ev.all_episodes), details=details)
 
 
@@ -149,11 +153,12 @@ def _pass_rate(ev: Evidence, group: str) -> Value:
     signal="data correctness",
     scope="episode",
     unit="fraction",
+    sample="episodes",
     better="higher",
 )
 def correctness_pass_rate(ev: Evidence) -> Value:
     """Share of episodes passing every correctness check: finite, aligned, valid rotations, actions in bounds."""
-    return _pass_rate(ev, "correctness")
+    return _pass_rate(ev, "correctness", "no correctness check applies to this dataset")
 
 
 @metric(
@@ -162,11 +167,12 @@ def correctness_pass_rate(ev: Evidence) -> Value:
     signal="data correctness",
     scope="episode",
     unit="fraction",
+    sample="episodes",
     better="higher",
 )
 def image_stream_pass_rate(ev: Evidence) -> Value:
     """Share of episodes whose camera streams hold one frame per step, no black frame and no frozen run."""
-    return _pass_rate(ev, "image")
+    return _pass_rate(ev, "image", "no camera streams")
 
 
 @metric(
@@ -175,6 +181,7 @@ def image_stream_pass_rate(ev: Evidence) -> Value:
     signal="task correctness",
     scope="dataset",
     unit="fraction",
+    sample="episodes",
     better="higher",
     requires=["step_success"],
     baseline=True,
@@ -191,6 +198,7 @@ def final_success_rate(ev: Evidence) -> Value:
     signal="data correctness",
     scope="dataset",
     unit="max |R^T R - I|",
+    sample="poses",
     better="lower",
     primary="p95",
     requires=["obs/datagen_info/target_eef_pose"],

@@ -10,6 +10,8 @@ import h5py
 import json
 import math
 import numbers
+import re
+import textwrap
 import yaml
 from collections.abc import Mapping
 from pathlib import Path
@@ -73,7 +75,9 @@ def check_same_run(evidence: Evidence) -> list[str]:
             )
     entry = evidence.env_args.get("autodata")
     if entry is None and result is not None:
-        return ["the dataset has no autodata entry, so it is matched to its run by episode count only"]
+        return [
+            "the dataset was recorded without --record_metric_inputs, so it is matched to its run by episode count only"
+        ]
     if entry is None:
         return []
     if entry["exported_episodes"] != num_episodes:
@@ -93,6 +97,7 @@ def run_checks(evidence: Evidence, checks: Mapping[str, CheckSpec]) -> None:
     """Run the episode checks and keep only the episodes that pass all of them in ``evidence.episodes``."""
     for spec in checks.values():
         if any(not evidence.has(key) for key in spec.requires):
+            evidence.skipped_checks[spec.name] = spec.group
             continue
         failed: dict[str, str] = {}
         applied = False
@@ -109,6 +114,8 @@ def run_checks(evidence: Evidence, checks: Mapping[str, CheckSpec]) -> None:
         if applied:
             evidence.failures[spec.name] = failed
             evidence.check_groups[spec.name] = spec.group
+        else:
+            evidence.skipped_checks[spec.name] = spec.group
     failing = {name for failed in evidence.failures.values() for name in failed}
     evidence.episodes = [episode for episode in evidence.all_episodes if episode.name not in failing]
 
@@ -120,6 +127,7 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         "signal": spec.signal,
         "scope": spec.scope,
         "unit": spec.unit,
+        "sample": spec.sample,
         "better": spec.better,
         "primary": spec.primary,
         "version": spec.version,
@@ -128,7 +136,7 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         return {**row, "status": "not_applicable", "reason": "no valid episodes"}
     missing = next((key for key in spec.requires if not evidence.has(key)), None)
     if missing is not None:
-        return {**row, "status": "not_applicable", "reason": f"missing {missing}"}
+        return {**row, "status": "not_applicable", "reason": f"missing {missing}", "missing": missing}
     try:
         value = spec.compute(evidence)
     except NotApplicable as exc:
@@ -218,41 +226,42 @@ def build_report(
     }
 
 
-def gate_violations(report: Mapping[str, Any], gate_file: str) -> list[str]:
-    """Bounds in ``gate_file`` that the report violates.
+def gate_results(report: Mapping[str, Any], gate_file: str) -> dict[str, str | None]:
+    """Per metric in ``gate_file``, None when the report meets its bounds, else why it does not.
 
     The gate maps metric names to ``min``/``max`` bounds, an optional ``key`` into a dict value (default: the
     metric's primary entry) and an optional ``version``. A gated metric that is missing, not applicable, errored or
-    at another version is a violation.
+    at another version fails.
 
     Raises:
         ValueError: If a gate entry has a bound that is not a finite number, or bounds a dict value without a
             ``key`` and the metric has no primary entry.
     """
-    violations = []
+    results = {}
     for name, bound in yaml.safe_load(Path(gate_file).read_text(encoding="utf-8")).items():
         limits = [bound[side] for side in ("min", "max") if side in bound]
         if not all(_is_bound(limit) for limit in limits):
             raise ValueError(f"Gate entry {name!r} has a bound that is not a finite number: {limits}.")
-        row = report["metrics"].get(name)
-        if row is None or row["status"] != "ok":
-            violations.append(f"{name}: {'not reported' if row is None else row['status']}")
-            continue
-        if "version" in bound and bound["version"] != row["version"]:
-            violations.append(f"{name}: version {row['version']}, gate written for version {bound['version']}")
-            continue
-        key = bound.get("key", row["primary"])
-        value = row["value"].get(key) if key else row["value"]
-        if isinstance(value, Mapping):
-            raise ValueError(f"Gate entry {name!r} needs a key into {sorted(value)}.")
-        if not _is_finite(value):
-            violations.append(f"{name}: {value!r} is not a finite number")
-            continue
-        if "min" in bound and value < bound["min"]:
-            violations.append(f"{name}: {value:.4g} is below {bound['min']}")
-        if "max" in bound and value > bound["max"]:
-            violations.append(f"{name}: {value:.4g} is above {bound['max']}")
-    return violations
+        results[name] = _gate_failure(name, report["metrics"].get(name), bound)
+    return results
+
+
+def _gate_failure(name: str, row: Mapping[str, Any] | None, bound: Mapping[str, Any]) -> str | None:
+    if row is None or row["status"] != "ok":
+        return "not reported" if row is None else row["status"]
+    if "version" in bound and bound["version"] != row["version"]:
+        return f"version {row['version']}, gate written for version {bound['version']}"
+    key = bound.get("key", row["primary"])
+    value = row["value"].get(key) if key else row["value"]
+    if isinstance(value, Mapping):
+        raise ValueError(f"Gate entry {name!r} needs a key into {sorted(value)}.")
+    if not _is_finite(value):
+        return f"{value!r} is not a finite number"
+    if "min" in bound and value < bound["min"]:
+        return f"{value:.4g} is below {bound['min']}"
+    if "max" in bound and value > bound["max"]:
+        return f"{value:.4g} is above {bound['max']}"
+    return None
 
 
 def _is_bound(limit: Any) -> bool:
@@ -260,27 +269,143 @@ def _is_bound(limit: Any) -> bool:
     return isinstance(limit, int | float) and not isinstance(limit, bool) and math.isfinite(limit)
 
 
-def _format_value(value: Any) -> str:
-    if isinstance(value, Mapping):
-        return ", ".join(f"{key}={_format_value(item)}" for key, item in value.items()) or "none"
-    return f"{value:.3g}" if isinstance(value, float) else str(value)
+CONSOLE_WIDTH = 100
+"""Width the console summary wraps its lists of metrics to."""
 
 
-def format_report(report: Mapping[str, Any]) -> str:
-    """The report as an aligned text table, grouped by area."""
-    rows = [("Metric", "Area", "Value", "Unit", "n")]
-    for name, row in sorted(report["metrics"].items(), key=lambda item: (AREAS.index(item[1]["area"]), item[0])):
-        if row["status"] == "ok":
-            rows.append((name, row["area"], _format_value(row["value"]), row["unit"], str(row["n"])))
-        else:
-            rows.append((name, row["area"], f"{row['status']}: {row['reason']}", "", ""))
-    widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
-    lines = ["  ".join(cell.ljust(width) for cell, width in zip(row, widths)).rstrip() for row in rows]
-    lines.insert(1, "  ".join("-" * width for width in widths))
-    failed = [f"{name}={entry['failed']}" for name, entry in report["check_failures"].items() if entry["failed"]]
-    lines.append(
-        f"episodes: {report['num_valid_episodes']} valid of {report['num_episodes']}"
-        + (f"; failed checks: {', '.join(failed)}" if failed else "")
-    )
-    lines += [f"warning: {warning}" for warning in report["warnings"]]
+def format_report(report: Mapping[str, Any], gate: Mapping[str, str | None] | None = None) -> str:
+    """The report as a console summary: a verdict, the computed metrics by area, and what was not computed and why.
+
+    The JSON report holds every detail; the summary keeps a metric's primary value, its source baseline, its sample
+    count and, for rates, the 95% interval.
+
+    Args:
+        report: A report from :func:`build_report`.
+        gate: Results from :func:`gate_results`, to mark each gated metric as met or failed.
+    """
+    inputs, metrics = report["inputs"], report["metrics"]
+    computed = {name: row for name, row in metrics.items() if row["status"] == "ok"}
+    errors = {name: row for name, row in metrics.items() if row["status"] == "error"}
+    skipped = {name: row for name, row in metrics.items() if row["status"] == "not_applicable"}
+
+    title = [f"AutoData metrics · {Path(inputs['dataset']['path']).name}"]
+    title += [f"run {inputs['run_id'][:8]}"] if inputs["run_id"] else []
+    title += [f"source {Path(inputs['source']['path']).name}"] if inputs["source"] else []
+    verdict = [f"{report['num_valid_episodes']}/{report['num_episodes']} episodes valid", f"{len(computed)} computed"]
+    verdict += [f"{len(skipped)} not computed"] if skipped else []
+    verdict += [_count(len(errors), "errors")] if errors else []
+    if gate is not None:
+        failed = sum(reason is not None for reason in gate.values())
+        verdict.append(
+            f"gate failed on {failed} of {len(gate)}" if failed else f"gate passed on {len(gate)} of {len(gate)}"
+        )
+    lines = [" · ".join(title), " · ".join(verdict)]
+    for name, entry in report["check_failures"].items():
+        if entry["failed"]:
+            more = ", …" if entry["failed"] > len(entry["examples"]) else ""
+            lines.append(
+                f"  ✗ {name} failed {_count(entry['failed'], 'episodes')}: {', '.join(entry['examples'])}{more}"
+            )
+
+    rows = []
+    for name, row in computed.items():
+        mark = " " if gate is None or name not in gate else ("✗" if gate[name] else "✓")
+        baseline = row.get("baseline")
+        source = "" if baseline is None else _console_value(baseline, row, labelled=False)
+        rows.append((row["area"], mark, name, _console_value(row["value"], row), source, _based_on(row)))
+    if rows:
+        has_source = any(row[4] for row in rows)
+        name_width = max(len(row[2]) for row in rows)
+        value_width = max(len(row[3]) for row in rows + [("", "", "", "Value")])
+        source_width = max(len(row[4]) for row in rows + [("", "", "", "", "Source")])
+
+        def line(mark: str, name: str, value: str, source: str, based_on: str) -> str:
+            cells = [f"{mark} {name.ljust(name_width)}", value.rjust(value_width)]
+            cells += [source.rjust(source_width)] if has_source else []
+            return "  ".join(cells + [based_on]).rstrip()
+
+        lines += ["", line(" ", "", "Value", "Source", "Based on")]
+        for area in AREAS:
+            area_rows = sorted((row for row in rows if row[0] == area), key=lambda row: row[2])
+            if area_rows:
+                lines.append(area.upper())
+                lines += [line(*row[1:]) for row in area_rows]
+    if errors:
+        lines += ["", "ERRORS"] + [f"  {name}: {row['reason']}" for name, row in errors.items()]
+    if skipped:
+        groups: dict[str, list[str]] = {}
+        for name, row in skipped.items():
+            groups.setdefault(_not_computed_because(row, inputs), []).append(name)
+        lines += ["", "NOT COMPUTED"]
+        for reason, names in sorted(groups.items(), key=lambda item: -len(item[1])):
+            lines += textwrap.wrap(
+                ", ".join(sorted(names)), CONSOLE_WIDTH, initial_indent=f"  {reason}: ", subsequent_indent="      "
+            )
+    if report["warnings"]:
+        lines += [""] + [f"Warning: {warning}" for warning in report["warnings"]]
     return "\n".join(lines)
+
+
+def _count(count: int, noun: str) -> str:
+    return f"{count:,} {noun.removesuffix('s') if count == 1 else noun}"
+
+
+def _based_on(row: Mapping[str, Any]) -> str:
+    """The sample count, with a rate's 95% interval and a pass rate's check coverage."""
+    parts = [_count(row["n"], row["sample"])]
+    interval = row["details"].get("interval_95")
+    if interval:
+        low, high = (_console_number(bound, row["unit"]) for bound in interval)
+        parts.append(f"95% CI {low.removesuffix('%')}–{high}")
+    if row["details"].get("checks_skipped"):
+        run, skipped = len(row["details"]["checks_run"]), len(row["details"]["checks_skipped"])
+        parts.append(f"{run} of {run + skipped} checks")
+    return " · ".join(parts)
+
+
+def _console_value(value: Any, row: Mapping[str, Any], labelled: bool = True) -> str:
+    """A value, or a dict value's primary entry (every entry without one), as the console shows it."""
+    if not isinstance(value, Mapping):
+        return _console_number(value, row["unit"])
+    keys = [row["primary"]] if row["primary"] else list(value)
+    return ", ".join((f"{key} " if labelled else "") + _console_number(value[key], row["unit"]) for key in keys)
+
+
+def _console_number(value: float, unit: str) -> str:
+    """Fractions as percentages, seconds as durations; other units follow the number unless they hold a space, which
+    marks a description of the quantity rather than a unit."""
+    if unit.startswith("fraction"):
+        return f"{100 * value:.3g}%"
+    if unit == "s" or unit.startswith("s "):
+        return _duration(value)
+    text = f"{value:,.0f}" if abs(value) >= 100 else re.sub(r"e\+?(-?)0*(\d)", r"e\1\2", f"{value:.3g}")
+    return text if " " in unit else f"{text} {unit}"
+
+
+def _duration(seconds: float) -> str:
+    if seconds < 120:
+        return f"{seconds:.3g} s"
+    minutes, rest = divmod(round(seconds), 60)
+    if minutes < 120:
+        return f"{minutes} min {rest:02d} s"
+    return f"{minutes // 60} h {minutes % 60:02d} min"
+
+
+_METRIC_INPUT_KEYS = ("env_args.autodata", "step_success", "obs/datagen_info/")
+"""Evidence keys a generated dataset holds only when recorded with ``--record_metric_inputs``."""
+
+
+def _not_computed_because(row: Mapping[str, Any], inputs: Mapping[str, Any]) -> str:
+    """What would make a not-applicable metric computable, or its own reason."""
+    missing = row.get("missing")
+    if missing is None:
+        return row["reason"]
+    if missing.startswith("attempts.extras."):
+        return "not reported by this algorithm"
+    if missing.partition(".")[0] == "source":
+        return "needs --source" if inputs["source"] is None else "needs a --source recorded with --record_metric_inputs"
+    if missing == "attempts" or missing.startswith("run."):
+        return "needs --result_file" if inputs["result_file"] is None else "needs --record_metric_inputs"
+    if missing.startswith(_METRIC_INPUT_KEYS):
+        return "needs --record_metric_inputs"
+    return row["reason"]

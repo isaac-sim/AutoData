@@ -23,7 +23,7 @@ import json
 import os
 import sys
 
-from autodata_metrics import build_report, format_report, gate_violations
+from autodata_metrics import build_report, format_report, gate_results
 
 REQUIRED_DEMO_FIELDS = {
     "actions": h5py.Dataset,
@@ -196,14 +196,15 @@ def main(argv: list[str] | None = None) -> int:
         for module in args.metrics:
             importlib.import_module(module)
         report = build_report(args.files[0], result_file=args.result_file, source=args.source)
+        gate = gate_results(report, args.gate) if args.gate else None
         print()
-        print(format_report(report))
+        print(format_report(report, gate))
         if args.report_file:
             with open(args.report_file, "w", encoding="utf-8") as report_handle:
                 json.dump(report, report_handle, indent=2, default=_json_value)
                 report_handle.write("\n")
-        if args.gate:
-            violations = gate_violations(report, args.gate)
+        if gate is not None:
+            violations = [f"{name}: {reason}" for name, reason in gate.items() if reason is not None]
             print("\nGate passed." if not violations else "\nGate failed:\n  " + "\n  ".join(violations))
 
     return 1 if num_invalid or violations else 0

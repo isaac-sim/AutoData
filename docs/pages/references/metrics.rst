@@ -13,11 +13,35 @@ without it, most metrics report that their inputs are missing.
        --source datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --report_file datasets/generated_report.json
 
-Each metric reports one of three things:
+The command prints a summary; ``--report_file`` writes the full report, with every detail, as JSON.
 
-- a value, with its unit and sample count;
-- ``not_applicable``, with the reason, such as a missing recorded input;
-- ``error``, when it fails. The other metrics are still computed.
+.. code-block:: text
+
+   AutoData metrics · gr1.hdf5 · run e79e37b1 · source dataset_gr1_annotated.hdf5
+   6/6 episodes valid · 7 computed · 3 not computed · gate failed on 2 of 4
+
+                                         Value   Source  Based on
+   VALIDITY
+   ✗ action_rotation_error          p95 0.0345  3.58e-7  1,612 poses
+   ✓ correctness_pass_rate                100%           6 episodes
+   ✓ final_success_rate                   100%           6 episodes
+     image_stream_pass_rate               100%           6 episodes
+   VIABILITY
+     demos_per_gpu_hour       65.8 demos/GPU-h           6 demos
+   ✗ generation_success_rate             21.4%           28 attempts · 95% CI 10.2–39.5%
+     time_to_dataset                6 min 11 s           1 run
+
+   NOT COMPUTED
+     not reported by this algorithm: planning_failure_rate, planning_time
+     needs a --source recorded with --record_metric_inputs: annotation_pass_rate
+
+- The second line is the verdict: valid episodes, how many metrics were computed, and the gate.
+- **Value** is the metric's value; a metric with percentiles shows the one a gate checks by default.
+  **Source** is the same metric on the ``--source`` dataset. **Based on** is the sample count, with a
+  rate's 95% interval and, when some checks did not apply, how many checks a pass rate rests on.
+- With ``--gate``, ✓ and ✗ mark the gated metrics.
+- **Not computed** groups the metrics that do not apply by what would make them apply.
+- A metric that fails is listed under **Errors**; the other metrics are still computed.
 
 The report reads the run named by the dataset's run id. A result file from another run, such as the
 earlier result of an interrupted rerun, is set aside with a warning, and the run is reported from its own
@@ -69,6 +93,7 @@ requires. Without that evidence, the report says which key is missing and does n
        signal="generation performance",
        scope="run",
        unit="s",
+       sample="attempts",
        better="lower",
        requires=["attempts.extras.planning_time_s"],
    )

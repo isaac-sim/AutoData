@@ -17,6 +17,22 @@ checked for the required fields (``actions``, ``initial_state``, ``obs``):
 For unreadable, invalid, or truncated files, see :ref:`troubleshooting-hdf5`.
 
 
+Metrics
+^^^^^^^
+
+For a dataset generated with ``--record_metric_inputs`` and ``--result_file``, report its metrics:
+
+.. code-block:: bash
+
+   python scripts/validate_dataset.py ./datasets/generated_dataset_mimicgen_franka.hdf5 \
+       --report \
+       --result_file ./datasets/generated_dataset_mimicgen_franka.json \
+       --source ./datasets/annotated_datasets/dataset_franka_annotated.hdf5
+
+The summary lists each metric's value, the metrics that do not apply and what would make them apply.
+See :doc:`../../references/metrics` for what each metric means and how to gate on it.
+
+
 Visual Validation
 ^^^^^^^^^^^^^^^^^
 

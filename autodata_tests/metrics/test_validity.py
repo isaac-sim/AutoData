@@ -42,6 +42,10 @@ def test_failing_episodes_are_counted_and_left_out_of_dataset_metrics(tmp_path):
     )
 
     assert report["metrics"]["correctness_pass_rate"]["value"] == pytest.approx(1 / 3)
+    assert report["metrics"]["correctness_pass_rate"]["details"]["checks_skipped"] == [
+        "valid_rotations",
+        "pose_action_bounds",
+    ]
     assert report["metrics"]["final_success_rate"]["value"] == 1.0 and report["metrics"]["final_success_rate"]["n"] == 1
     assert {name: entry["failed"] for name, entry in report["check_failures"].items() if entry["failed"]} == {
         "finite": 1,
