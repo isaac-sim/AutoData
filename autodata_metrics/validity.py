@@ -19,6 +19,10 @@ FROZEN_FRAMES = 10
 """Identical consecutive camera frames that count as a frozen stream."""
 FRAME_CHUNK = 64
 """Camera frames read at a time, so image checks stream instead of loading whole episodes."""
+PER_EPISODE_PATHS = ("initial_state", "obs/datagen_info/subtask_term_signals", "obs/datagen_info/subtask_start_signals")
+"""Paths whose arrays are not one entry per step: the initial state, and annotation's subtask signals."""
+OBSERVED_POSE_PATHS = ("obs/datagen_info/eef_pose/", "obs/datagen_info/object_pose/")
+"""Recorded poses that are observations; commanded targets are measured by ``action_rotation_error`` instead."""
 
 
 def _is_image(dataset: h5py.Dataset) -> bool:
@@ -41,10 +45,6 @@ def finite(episode: Episode, ev: Evidence) -> str | None:
     return f"non-finite values in {', '.join(bad)}" if bad else None
 
 
-PER_EPISODE_PATHS = ("initial_state", "obs/datagen_info/subtask_term_signals", "obs/datagen_info/subtask_start_signals")
-"""Paths whose arrays are not one entry per step: the initial state, and annotation's subtask signals."""
-
-
 @check("aligned_lengths")
 def aligned_lengths(episode: Episode, ev: Evidence) -> str | None:
     """Fails an episode whose per-step arrays do not all hold one entry per action; camera streams are checked apart."""
@@ -57,10 +57,6 @@ def aligned_lengths(episode: Episode, ev: Evidence) -> str | None:
         if not path.startswith(PER_EPISODE_PATHS) and not _is_image(dataset) and len(dataset) != num_steps
     ]
     return f"{', '.join(bad)} do not hold {num_steps} steps" if bad else None
-
-
-OBSERVED_POSE_PATHS = ("obs/datagen_info/eef_pose/", "obs/datagen_info/object_pose/")
-"""Recorded poses that are observations; commanded targets are measured by ``action_rotation_error`` instead."""
 
 
 def _rotation_errors(poses: np.ndarray) -> np.ndarray:
@@ -93,7 +89,7 @@ def pose_action_bounds(episode: Episode, ev: Evidence) -> str | None:
     """Fails an episode whose pose actions exceed the bound the embodiment clips them to."""
     actions = episode["actions"]
     bad = []
-    for eef, layout in ev.entry["pose_action"].items():
+    for eef, layout in ev.env_args["autodata"]["pose_action"].items():
         if layout["bound"] is None:
             continue
         start, end = layout["action_slice"]

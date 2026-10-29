@@ -97,7 +97,7 @@ def metric(
         requires: Evidence keys; see :meth:`~autodata_metrics.evidence.Evidence.has`.
         primary: For a dict value, the entry a gate checks by default.
         version: Raise it whenever the definition changes, so gates pinned to the old one fail.
-        baseline: Also compute the metric on the source dataset, with the generated run's context.
+        baseline: Also compute the metric on the source dataset.
     """
     assert area in AREAS, f"Metric {name!r} has area {area!r}; expected one of {AREAS}."
 

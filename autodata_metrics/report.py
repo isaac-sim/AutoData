@@ -58,7 +58,7 @@ def check_same_run(evidence: Evidence) -> list[str]:
     Raises:
         ValueError: If the dataset, result and attempt log disagree on their run or their counts.
     """
-    num_episodes = len(evidence.episodes)
+    num_episodes = len(evidence.all_episodes)
     result = evidence.result
     if result is not None and num_episodes != result["num_success"]:
         raise ValueError(
@@ -111,7 +111,7 @@ def run_checks(evidence: Evidence, checks: Mapping[str, CheckSpec]) -> None:
     evidence.episodes = [episode for episode in evidence.all_episodes if episode.name not in failing]
 
 
-def evaluate(spec: MetricSpec, evidence: Evidence, with_baseline: bool = True) -> dict[str, Any]:
+def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
     """One report row: the metric's value, or why it is not applicable or failed."""
     row = {
         "area": spec.area,
@@ -136,8 +136,8 @@ def evaluate(spec: MetricSpec, evidence: Evidence, with_baseline: bool = True) -
     if not _is_finite(value.value):
         return {**row, "status": "error", "reason": f"non-finite value {value.value}"}
     row = {**row, "status": "ok", "value": value.value, "n": value.n, "details": _finite_or_none(value.details)}
-    if with_baseline and spec.baseline and evidence.source is not None:
-        row["baseline"] = evaluate(spec, evidence.source.as_baseline_for(evidence), with_baseline=False).get("value")
+    if spec.baseline and evidence.source is not None:
+        row["baseline"] = evaluate(spec, evidence.source).get("value")
     return row
 
 
