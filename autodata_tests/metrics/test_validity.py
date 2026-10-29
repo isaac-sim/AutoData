@@ -35,13 +35,14 @@ def test_failing_episodes_are_counted_and_left_out_of_dataset_metrics(tmp_path):
     good = {"actions": actions, "step_success": np.array([False, False, True])}
     non_finite = {"actions": np.where(np.eye(3, 7) > 0, np.nan, 0.0), "step_success": np.array([True, True, False])}
     short = {"actions": actions, "step_success": np.array([False, False])}
+    empty = {"actions": np.zeros((0, 7)), "step_success": np.zeros(0, dtype=bool)}
 
     report = build_report(
-        _write(tmp_path / "d.hdf5", [good, non_finite, short]),
+        _write(tmp_path / "d.hdf5", [good, non_finite, short, empty]),
         metrics=_metrics("correctness_pass_rate", "final_success_rate"),
     )
 
-    assert report["metrics"]["correctness_pass_rate"]["value"] == pytest.approx(1 / 3)
+    assert report["metrics"]["correctness_pass_rate"]["value"] == pytest.approx(1 / 4)
     assert report["metrics"]["correctness_pass_rate"]["details"]["checks_skipped"] == [
         "valid_rotations",
         "pose_action_bounds",
@@ -49,7 +50,7 @@ def test_failing_episodes_are_counted_and_left_out_of_dataset_metrics(tmp_path):
     assert report["metrics"]["final_success_rate"]["value"] == 1.0 and report["metrics"]["final_success_rate"]["n"] == 1
     assert {name: entry["failed"] for name, entry in report["check_failures"].items() if entry["failed"]} == {
         "finite": 1,
-        "aligned_lengths": 1,
+        "aligned_lengths": 2,
     }
 
 
@@ -59,11 +60,15 @@ def test_rotation_and_bound_checks_flag_their_defects(tmp_path):
     clipped = {"actions": np.zeros((3, 7)), "obs/datagen_info/eef_pose/arm": pose}
     beyond_bound = {"actions": np.full((3, 7), 1.5), "obs/datagen_info/eef_pose/arm": pose}
     skewed = {"actions": np.zeros((3, 7)), "obs/datagen_info/eef_pose/arm": pose * [[1.1], [1.0], [1.0], [1.0]]}
+    zero = {"actions": np.zeros((3, 7)), "obs/datagen_info/eef_pose/arm": np.zeros((3, 4, 4))}
+    reflected = {"actions": np.zeros((3, 7)), "obs/datagen_info/eef_pose/arm": pose * [[-1.0], [1.0], [1.0], [1.0]]}
+    episodes = [clipped, beyond_bound, skewed, zero, reflected]
+    entry["exported_episodes"] = len(episodes)
 
-    report = build_report(_write(tmp_path / "d.hdf5", [clipped, beyond_bound, skewed], entry), metrics={})
+    report = build_report(_write(tmp_path / "d.hdf5", episodes, entry), metrics={})
 
     failures = {name: sorted(entry["examples"]) for name, entry in report["check_failures"].items() if entry["failed"]}
-    assert failures == {"pose_action_bounds": ["demo_1"], "valid_rotations": ["demo_2"]}
+    assert failures == {"pose_action_bounds": ["demo_1"], "valid_rotations": ["demo_2", "demo_3", "demo_4"]}
 
 
 def test_image_checks_flag_black_frozen_and_missing_frames(tmp_path):
@@ -80,12 +85,17 @@ def test_image_checks_flag_black_frozen_and_missing_frames(tmp_path):
         {"actions": np.zeros((steps, 7)), "obs/camera": camera}
         for camera in (frames(steps), black, frozen, frames(steps - 1))
     ]
+    episodes.append({"actions": np.zeros((steps, 7))})
 
     report = build_report(_write(tmp_path / "d.hdf5", episodes), metrics=_metrics("image_stream_pass_rate"))
 
     failures = {name: sorted(entry["examples"]) for name, entry in report["check_failures"].items() if entry["failed"]}
-    assert failures == {"no_black_frames": ["demo_1"], "no_frozen_frames": ["demo_2"], "one_frame_per_step": ["demo_3"]}
-    assert report["metrics"]["image_stream_pass_rate"]["value"] == pytest.approx(1 / 4)
+    assert failures == {
+        "no_black_frames": ["demo_1"],
+        "no_frozen_frames": ["demo_2"],
+        "one_frame_per_step": ["demo_3", "demo_4"],
+    }
+    assert report["metrics"]["image_stream_pass_rate"]["value"] == pytest.approx(1 / 5)
 
 
 def test_final_success_rate_reports_the_source_baseline(tmp_path):

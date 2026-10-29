@@ -9,6 +9,7 @@ import h5py
 import json
 import numpy as np
 from collections.abc import Mapping
+from functools import cached_property
 from typing import Any
 
 
@@ -108,3 +109,13 @@ class Evidence:
         if head == "run":
             return _has_path(self.run, rest)
         return bool(self.episodes) and all(key in episode for episode in self.episodes)
+
+    @cached_property
+    def camera_paths(self) -> frozenset[str]:
+        """Paths of the camera streams, 4-D ``uint8`` arrays, that any episode records."""
+        return frozenset(
+            path
+            for episode in self.all_episodes
+            for path, dataset in episode.datasets()
+            if dataset.dtype == np.uint8 and dataset.ndim == 4
+        )

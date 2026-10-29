@@ -12,62 +12,64 @@ from autodata_metrics.evidence import Episode, Evidence
 from autodata_metrics.registry import NotApplicable, Value, check, metric
 
 ROTATION_TOLERANCE = 1e-3
-"""Largest deviation from an orthonormal rotation, or from a unit quaternion, a recorded pose may show."""
+"""Largest deviation from a proper rotation, or from a unit quaternion, a recorded pose may show."""
 BLACK_FRAME_MEAN = 2.0
 """Mean pixel value, out of 255, below which a camera frame counts as black."""
 FROZEN_FRAMES = 10
 """Identical consecutive camera frames that count as a frozen stream."""
 FRAME_CHUNK = 64
-"""Camera frames read at a time, so image checks stream instead of loading whole episodes."""
+"""Steps read at a time, so checks of camera frames and other large arrays stream instead of loading whole episodes."""
 PER_EPISODE_PATHS = ("initial_state", "obs/datagen_info/subtask_term_signals", "obs/datagen_info/subtask_start_signals")
 """Paths whose arrays are not one entry per step: the initial state, and annotation's subtask signals."""
 OBSERVED_POSE_PATHS = ("obs/datagen_info/eef_pose/", "obs/datagen_info/object_pose/")
 """Recorded poses that are observations; commanded targets are measured by ``action_rotation_error`` instead."""
 
 
-def _is_image(dataset: h5py.Dataset) -> bool:
-    return dataset.dtype == np.uint8 and dataset.ndim == 4
-
-
-def _image_streams(episode: Episode) -> list[tuple[str, h5py.Dataset]]:
-    streams = [(path, dataset) for path, dataset in episode.datasets() if _is_image(dataset)]
-    if not streams:
+def _image_streams(episode: Episode, ev: Evidence) -> dict[str, h5py.Dataset]:
+    """The episode's camera streams; not applicable to a dataset that records none."""
+    if not ev.camera_paths:
         raise NotApplicable("no camera streams")
-    return streams
+    return {path: dataset for path, dataset in episode.datasets() if path in ev.camera_paths}
+
+
+def _all_finite(dataset: h5py.Dataset) -> bool:
+    if dataset.ndim == 0:
+        return bool(np.isfinite(dataset[()]))
+    return all(np.isfinite(dataset[start : start + FRAME_CHUNK]).all() for start in range(0, len(dataset), FRAME_CHUNK))
 
 
 @check("finite")
 def finite(episode: Episode, ev: Evidence) -> str | None:
     """Fails an episode with a NaN or infinite value in any floating-point array."""
-    bad = [
-        path for path, dataset in episode.datasets() if dataset.dtype.kind == "f" and not np.isfinite(dataset[()]).all()
-    ]
+    bad = [path for path, dataset in episode.datasets() if dataset.dtype.kind == "f" and not _all_finite(dataset)]
     return f"non-finite values in {', '.join(bad)}" if bad else None
 
 
 @check("aligned_lengths")
 def aligned_lengths(episode: Episode, ev: Evidence) -> str | None:
     """Fails an episode whose per-step arrays do not all hold one entry per action; camera streams are checked apart."""
-    if "actions" not in episode:
+    num_steps = len(episode["actions"]) if "actions" in episode else 0
+    if num_steps == 0:
         return "no actions"
-    num_steps = len(episode["actions"])
     bad = [
         path
         for path, dataset in episode.datasets()
-        if not path.startswith(PER_EPISODE_PATHS) and not _is_image(dataset) and len(dataset) != num_steps
+        if not path.startswith(PER_EPISODE_PATHS) and path not in ev.camera_paths and len(dataset) != num_steps
     ]
     return f"{', '.join(bad)} do not hold {num_steps} steps" if bad else None
 
 
 def _rotation_errors(poses: np.ndarray) -> np.ndarray:
-    """Per pose, the largest entry of ``|R^T R - I|``; all-zero poses, a channel's placeholder target, are skipped."""
-    rotations = poses[np.abs(poses).reshape(len(poses), -1).max(axis=1) > 0][..., :3, :3]
-    return np.abs(np.einsum("...ji,...jk->...ik", rotations, rotations) - np.eye(3)).max(axis=(-2, -1))
+    """Per 4x4 pose, how far its rotation is from a proper one: the larger of the largest entry of ``|R^T R - I|``
+    and ``|det R - 1|``, which also catches reflections."""
+    rotations = poses[..., :3, :3]
+    orthonormality = np.abs(np.einsum("...ji,...jk->...ik", rotations, rotations) - np.eye(3)).max(axis=(-2, -1))
+    return np.maximum(orthonormality, np.abs(np.linalg.det(rotations) - 1.0))
 
 
 @check("valid_rotations")
 def valid_rotations(episode: Episode, ev: Evidence) -> str | None:
-    """Fails an episode with an observed pose rotation that is not orthonormal or a root quaternion that is not unit.
+    """Fails an episode with an observed pose rotation that is not a proper rotation or a root quaternion that is not unit.
 
     Both tests hold for either quaternion order, so the check needs no convention.
     """
@@ -104,16 +106,20 @@ def pose_action_bounds(episode: Episode, ev: Evidence) -> str | None:
 
 @check("one_frame_per_step", group="image")
 def one_frame_per_step(episode: Episode, ev: Evidence) -> str | None:
-    """Fails an episode whose camera streams do not hold one frame per action."""
+    """Fails an episode that lacks a camera stream the dataset records, or whose streams do not hold one frame per action."""
+    streams = _image_streams(episode, ev)
+    missing = sorted(ev.camera_paths - streams.keys())
+    if missing:
+        return f"{', '.join(missing)} not recorded"
     num_steps = len(episode["actions"])
-    bad = [path for path, dataset in _image_streams(episode) if len(dataset) != num_steps]
+    bad = [path for path, dataset in streams.items() if len(dataset) != num_steps]
     return f"{', '.join(bad)} do not hold {num_steps} frames" if bad else None
 
 
 @check("no_black_frames", group="image")
 def no_black_frames(episode: Episode, ev: Evidence) -> str | None:
     """Fails an episode with a camera frame whose mean pixel value is below :data:`BLACK_FRAME_MEAN`."""
-    for path, dataset in _image_streams(episode):
+    for path, dataset in _image_streams(episode, ev).items():
         for start in range(0, len(dataset), FRAME_CHUNK):
             means = dataset[start : start + FRAME_CHUNK].mean(axis=(1, 2, 3))
             if (means < BLACK_FRAME_MEAN).any():
@@ -124,7 +130,7 @@ def no_black_frames(episode: Episode, ev: Evidence) -> str | None:
 @check("no_frozen_frames", group="image")
 def no_frozen_frames(episode: Episode, ev: Evidence) -> str | None:
     """Fails an episode whose camera repeats one frame :data:`FROZEN_FRAMES` times in a row."""
-    for path, dataset in _image_streams(episode):
+    for path, dataset in _image_streams(episode, ev).items():
         previous, repeats = None, 1
         for start in range(0, len(dataset), FRAME_CHUNK):
             for offset, frame in enumerate(dataset[start : start + FRAME_CHUNK]):
@@ -197,7 +203,7 @@ def final_success_rate(ev: Evidence) -> Value:
     area="validity",
     signal="data correctness",
     scope="dataset",
-    unit="max |R^T R - I|",
+    unit="max(|R^T R - I|, |det R - 1|)",
     sample="poses",
     better="lower",
     primary="p95",
@@ -206,11 +212,13 @@ def final_success_rate(ev: Evidence) -> Value:
 )
 def action_rotation_error(ev: Evidence) -> Value:
     """p50 and p95 deviation of the commanded target rotations from a valid rotation, over every step and end effector."""
-    errors = np.concatenate([
-        _rotation_errors(episode[f"obs/datagen_info/target_eef_pose/{eef}"])
-        for episode in ev.episodes
-        for eef in episode.children("obs/datagen_info/target_eef_pose")
-    ])
+    errors = []
+    for episode in ev.episodes:
+        for eef in episode.children("obs/datagen_info/target_eef_pose"):
+            targets = episode[f"obs/datagen_info/target_eef_pose/{eef}"]
+            # A channel that commands no pose records all-zero targets, which are not rotations.
+            errors.append(_rotation_errors(targets[np.abs(targets).reshape(len(targets), -1).max(axis=1) > 0]))
+    errors = np.concatenate(errors)
     if not len(errors):
         raise NotApplicable("no end effector commands a pose")
     p50, p95 = np.percentile(errors, [50, 95])
