@@ -220,12 +220,13 @@ class DataGenerator:
         eef_name: str,
         eef_pose: torch.Tensor,
         object_pose: torch.Tensor | None,
-        object_nodal_positions: torch.Tensor | None,
         src_demo_current_subtask_boundaries: np.ndarray,
         subtask_object_name: str | None,
-        subtask_object_soft: bool,
         selection_strategy_name: str,
         selection_strategy_kwargs: dict | None = None,
+        *,
+        object_nodal_positions: torch.Tensor | None = None,
+        subtask_object_soft: bool = False,
     ) -> int:
         """Pick a source demonstration index for a subtask via the configured strategy."""
         if subtask_object_name is None:

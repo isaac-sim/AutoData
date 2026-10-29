@@ -70,11 +70,20 @@ class GenerationAlgorithm(metaclass=_AlgorithmMeta):
     supports_coordination: bool = False
 
     def validate_setup(self, datastream: Datastream) -> None:
-        """Algorithm-specific validation against the composed datastream. Default: no-op.
+        """Validate source annotations against the composed datastream.
 
-        Subclasses can read ``datastream.get_subtasks(eef)``, ``datastream.get_task_constraints()``,
-        or ``datastream.get_env()`` (escape hatch) to enforce algorithm-specific invariants.
+        Rigid reference objects require source object-pose annotations. Subclasses can call this
+        implementation before enforcing their algorithm-specific invariants.
         """
+        for eef_name in datastream.get_eef_names():
+            for subtask_index, subtask in enumerate(datastream.get_subtasks(eef_name)):
+                if not subtask.object_ref or self.is_deformable_subtask(subtask):
+                    continue
+                for demo_index, info in enumerate(datastream.source_pool.datagen_infos):
+                    assert info.object_poses is not None and subtask.object_ref in info.object_poses, (
+                        f"Source demo {demo_index} lacks object_pose for {subtask.object_ref!r} "
+                        f"required by {eef_name}[{subtask_index}]"
+                    )
 
     def is_deformable_subtask(self, subtask: Subtask) -> bool:
         """Return whether ``subtask`` uses deformable nodal state instead of a rigid pose."""
@@ -234,6 +243,7 @@ class SoftMimicGen(GenerationAlgorithm):
         return bool(getattr(subtask.algo_params, "object_soft", False))
 
     def validate_setup(self, datastream: Datastream) -> None:
+        super().validate_setup(datastream)
         live_nodal_positions = datastream.get_object_nodal_positions()
         for eef_name in datastream.get_eef_names():
             for subtask_index, subtask in enumerate(datastream.get_subtasks(eef_name)):

@@ -106,7 +106,14 @@ def test_softmimicgen_validates_selection_strategy_at_setup(object_soft, strateg
         get_eef_names=lambda: ["franka"],
         get_subtasks=lambda _eef: [subtask],
         get_object_nodal_positions=lambda: {"object": nodes},
-        source_pool=SimpleNamespace(datagen_infos=[DatagenInfo(object_nodal_positions={"object": nodes})]),
+        source_pool=SimpleNamespace(
+            datagen_infos=[
+                DatagenInfo(
+                    object_poses=None if object_soft else {"object": torch.eye(4).unsqueeze(0)},
+                    object_nodal_positions={"object": nodes},
+                )
+            ]
+        ),
     )
     algorithm = SoftMimicGen()
     if compatible:
