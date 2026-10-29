@@ -191,6 +191,17 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
         channel_ends = [channel_slice[1] for channel_slice in self.passthrough_channels.values()]
         return max([self.hand_joints_slice[1], *channel_ends])
 
+    def metric_context(self) -> dict[str, Any]:
+        """``left_pose_slice`` and ``right_pose_slice`` of the action vector hold the hands' target poses.
+
+        Each holds a position, then a quaternion. These entries are not clipped.
+        """
+        pose_action = {
+            self.left.name: {"action_slice": list(self.left_pose_slice), "bound": None},
+            self.right.name: {"action_slice": list(self.right_pose_slice), "bound": None},
+        }
+        return {**super().metric_context(), "pose_action": pose_action}
+
     def action_to_target_eef_pose(self, action: torch.Tensor) -> dict[str, torch.Tensor]:
         """Convert env action to target EEF poses for both arms.
 

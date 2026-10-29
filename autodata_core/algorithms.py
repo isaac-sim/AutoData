@@ -15,8 +15,9 @@ default object-pose transform while SoftMimicGen overrides it with nodal TPS reg
 
 from __future__ import annotations
 
+import time
 import torch
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, Any
 
 from autodata_core.selection_strategy import make_selection_strategy
@@ -113,6 +114,14 @@ class GenerationAlgorithm(metaclass=_AlgorithmMeta):
             coord_transform_scheme=coord_transform_scheme,
             runtime_subtask_constraints_dict=runtime_subtask_constraints_dict,
         )
+
+    def attempt_extras(self, eef_states: Iterable[_EEFGenerationState]) -> dict[str, Any]:
+        """Algorithm-specific facts about one finished attempt, written to its attempt-log line. Default: none.
+
+        Args:
+            eef_states: Per-EEF generation state of the attempt.
+        """
+        return {}
 
     def plan_subtask_trajectory(
         self,
@@ -333,6 +342,14 @@ class SkillGen(GenerationAlgorithm):
         assert motion_planners, "SkillGen requires at least one motion planner"
         self.motion_planners = motion_planners
 
+    def attempt_extras(self, eef_states: Iterable[_EEFGenerationState]) -> dict[str, Any]:
+        """Report the attempt's wall-clock motion-planning time [s] and whether a motion plan failed."""
+        states = list(eef_states)
+        return {
+            "planning_time_s": sum(state.planning_time_s for state in states),
+            "planning_failed": any(state.planning_failed for state in states),
+        }
+
     def plan_subtask_trajectory(
         self,
         *,
@@ -381,6 +398,7 @@ class SkillGen(GenerationAlgorithm):
         )
 
         planner = self.motion_planners[env_id]
+        start_time = time.perf_counter()
         planning_success = planner.update_world_and_plan_motion(
             target_pose=target_pose,
             expected_attached_object=expected_attached_object,
@@ -388,7 +406,9 @@ class SkillGen(GenerationAlgorithm):
             step_size=getattr(planner, "step_size", None),
             enable_retiming=(hasattr(planner, "step_size") and planner.step_size is not None),
         )
+        eef_state.planning_time_s += time.perf_counter() - start_time
         if not planning_success:
+            eef_state.planning_failed = True
             return None
 
         mp_waypoints = self._convert_planned_trajectory_to_waypoints(planner, target_passthrough_action)

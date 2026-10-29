@@ -48,10 +48,18 @@ async def _optional_lock(lock: asyncio.Lock | None):
 
 @dataclass(frozen=True)
 class GenerationResult:
-    """Output of one :meth:`DataGenerator.generate` invocation."""
+    """Output of one :meth:`DataGenerator.generate` invocation.
+
+    Attributes:
+        initial_state: Scene state of every env right after this env's reset.
+        success: Whether the task succeeded at any step of the attempt.
+        extras: Algorithm-specific facts about the attempt, from
+            :meth:`~autodata_core.algorithms.GenerationAlgorithm.attempt_extras`.
+    """
 
     initial_state: dict
     success: bool
+    extras: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,6 +85,8 @@ class _EEFGenerationState:
     # subtask trajectory here so the follow-up call splices it in.
     pending_subtask_trajectory: WaypointTrajectory | None = None
     is_in_motion_plan: bool = False
+    planning_time_s: float = 0.0
+    planning_failed: bool = False
 
 
 class DataGenerator:
@@ -596,7 +606,11 @@ class DataGenerator:
                     )
                     if result is None:
                         # Planning failure (e.g. SkillGen motion planner). Abort with no success.
-                        return GenerationResult(initial_state=initial_state, success=False)
+                        return GenerationResult(
+                            initial_state=initial_state,
+                            success=False,
+                            extras=self.algorithm.attempt_extras(eef_states.values()),
+                        )
                     next_trajectory, _is_motion_plan = result
                     eef_state.current_trajectory = next_trajectory
                     eef_state.subtask_step_index = 0
@@ -647,6 +661,7 @@ class DataGenerator:
         return GenerationResult(
             initial_state=initial_state,
             success=buffers.success,
+            extras=self.algorithm.attempt_extras(eef_states.values()),
         )
 
     # ------------------------------------------------------------------

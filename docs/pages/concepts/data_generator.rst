@@ -121,9 +121,15 @@ report progress and decide when to stop:
 Results and Statistics
 ----------------------
 
-Three layers report what happened:
+Four layers report what happened:
 
-* **Per attempt** — ``GenerationResult``: ``success`` and ``initial_state``.
+* **Per step** — annotation records ``obs/datagen_info`` (object, end-effector and commanded
+  target poses) for the source pool. With ``--record_metric_inputs``, every exported episode also
+  records ``step_success``, whether the task's success term held after each step, and generation
+  records the end-effector pose and its commanded target.
+* **Per attempt** — ``GenerationResult``: ``success``, ``extras`` from the algorithm's
+  ``attempt_extras()``, and ``initial_state``. With ``--record_metric_inputs`` and ``--result_file``,
+  each completed attempt is also written as one line of ``<result_file stem>.<run_id>.attempts.jsonl``.
 * **Per run, in memory** — the ``stats`` counters: ``num_success``, ``num_failures``,
   ``num_attempts`` (``num_success + num_failures = num_attempts``).
 * **Per run, on disk** — with ``--result_file``, a JSON sidecar is written atomically at the
@@ -141,12 +147,33 @@ Three layers report what happened:
          "name": "franka_bin_stack",
          "path": "autodata_examples/env_profiles/franka_bin_stack.yaml",
          "planner": "franka_stack_cube_bin"
+       },
+       "run": {
+         "run_id": "3f2a9c...",
+         "seed": 1,
+         "revision": "a058fd8...",
+         "inputs": {
+           "source": {"path": "datasets/source.hdf5", "sha256": "9b1c..."},
+           "embodiment": {"path": "autodata_examples/embodiments/franka_ik_rel.yaml", "sha256": "4e07..."},
+           "task_descriptor": {"path": "autodata_examples/tasks/franka_cube_stack.yaml", "sha256": "c2d8..."},
+           "env_profile": null
+         },
+         "device": "cuda:0", "gpu": "...", "num_gpus": 1, "cpu": "...", "num_envs": 1,
+         "setup_time_s": 22.3, "generation_time_s": 228.5,
+         "attempts_file": "generation_result.3f2a9c.attempts.jsonl"
        }
      }
 
   ``env_profile`` appears only when an :doc:`environment profile <environment_profiles>` was
   applied — the generated dataset itself records only the base env id, so the sidecar is
   what documents that the scene was modified.
+
+The ``run`` block is written only with ``--record_metric_inputs``. With that option, every exported
+dataset, whether from generation, annotation or retargeting, also carries an ``autodata`` entry in
+its ``env_args`` attribute. The entry holds the ``run_id`` and the number of exported episodes, the
+embodiment's pose-action layout, the robot's joint names with their simulator limits, and the
+embodiment's optional datasheet ``hardware_limits``. For a dataset generated with ``--result_file``,
+the ``run_id`` ties it to that run's attempt log and, once the run completes, its result file.
 
 The GenerationAlgorithm Plug-In
 -------------------------------
@@ -175,6 +202,10 @@ follow. Five class attributes declare how the algorithm differs from a vanilla M
 
 The shipped algorithms — ``mimicgen``, ``dexmimicgen``, ``skillgen`` — are described in
 :doc:`algorithms`.
+
+An algorithm can also override ``attempt_extras()`` to report facts about each attempt in its
+attempt-log line. SkillGen reports its motion-planning time as ``planning_time_s`` and whether a
+motion plan failed as ``planning_failed``.
 
 The behavioral hook: ``plan_subtask_trajectory``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

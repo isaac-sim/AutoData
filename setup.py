@@ -26,6 +26,7 @@ setup(
         include=[
             "autodata_core*",
             "autodata_interfaces*",
+            "autodata_metrics*",
             "autodata_utils*",
             "autodata_examples*",
         ]

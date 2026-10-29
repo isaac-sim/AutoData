@@ -8,10 +8,12 @@ import pytest
 
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_valid_dataset
+from autodata_tests.utils.utils import assert_ok_metrics, assert_recorded_run, assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
+# Metrics a MimicGen run reported with its result file must compute.
+RUN_METRICS = {"generation_success_rate", "demos_per_gpu_hour", "time_to_dataset"}
 
 
 def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
@@ -19,6 +21,7 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
 
     with tempfile.TemporaryDirectory() as temp_dir:
         output_file = os.path.join(temp_dir, "generated.hdf5")
+        result_file = os.path.join(temp_dir, "generation_result.json")
 
         args = [
             TestPaths.python_path,
@@ -35,6 +38,9 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
             os.path.join(TestPaths.test_data_dir, "annotated_dataset_franka_stack_mimicgen.hdf5"),
             "--output_file",
             output_file,
+            "--result_file",
+            result_file,
+            "--record_metric_inputs",
             "--generation_num_trials",
             str(GENERATION_NUM_TRIALS),
             "--num_envs",
@@ -47,6 +53,8 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
         run_subprocess(args)
 
         assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
+        assert_recorded_run(output_file, result_file)
+        assert_ok_metrics(output_file, result_file, RUN_METRICS)
 
 
 @pytest.mark.with_subprocess

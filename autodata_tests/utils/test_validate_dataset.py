@@ -7,6 +7,8 @@ import h5py
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts import validate_dataset
 
 
@@ -45,3 +47,10 @@ def test_main_returns_nonzero_for_missing_file(tmp_path: Path) -> None:
     """An unreadable input path should produce a failing exit status."""
 
     assert validate_dataset.main([str(tmp_path / "missing.hdf5")]) == 1
+
+
+def test_report_options_without_report_are_an_error(tmp_path: Path) -> None:
+    """A gate given without --report would otherwise be silently ignored."""
+
+    with pytest.raises(SystemExit):
+        validate_dataset.main([str(tmp_path / "data.hdf5"), "--gate", str(tmp_path / "gate.yaml")])

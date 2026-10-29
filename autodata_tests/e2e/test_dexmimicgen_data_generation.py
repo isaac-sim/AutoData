@@ -8,7 +8,7 @@ import pytest
 
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_valid_dataset
+from autodata_tests.utils.utils import assert_no_metric_inputs, assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
@@ -47,6 +47,7 @@ def _run_gr1_pick_place_dexmimicgen(num_envs: int, device: str) -> None:
         run_subprocess(args)
 
         assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
+        assert_no_metric_inputs(output_file)
 
 
 def _run_g1_pick_place_dexmimicgen(num_envs: int, device: str) -> None:

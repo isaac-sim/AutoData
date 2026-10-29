@@ -9,17 +9,21 @@ Usage::
 
     python scripts/validate_dataset.py <file.hdf5> [<file2.hdf5> ...]
     python scripts/validate_dataset.py directory/*.hdf5
+    python scripts/validate_dataset.py <generated.hdf5> --report --result_file <result.json> [--gate <gate.yaml>]
 
-The command exits nonzero if any supplied file is invalid.
+The command exits nonzero if any supplied file is invalid or a gated metric violates its bound.
 """
 
 from __future__ import annotations
 
 import argparse
 import h5py
+import importlib
 import json
 import os
 import sys
+
+from autodata_metrics import build_report, format_report, gate_violations
 
 REQUIRED_DEMO_FIELDS = {
     "actions": h5py.Dataset,
@@ -163,7 +167,20 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="Validate AutoData demonstration HDF5 datasets.")
     parser.add_argument("files", nargs="+", help="HDF5 dataset file(s) to validate.")
+    parser.add_argument("--report", action="store_true", help="Also report the metrics of a single dataset.")
+    parser.add_argument("--result_file", help="Generation result (generate_dataset.py --result_file) of the dataset.")
+    parser.add_argument("--source", help="Source dataset the generation started from.")
+    parser.add_argument(
+        "--metrics", action="append", default=[], help="Module registering more metrics; may be repeated."
+    )
+    parser.add_argument("--gate", help="YAML of metric bounds; a violated bound makes the command fail.")
+    parser.add_argument("--report_file", help="Also write the report as JSON to this file.")
     args = parser.parse_args(argv)
+    if args.report and len(args.files) != 1:
+        parser.error("--report takes exactly one dataset")
+    given = [f"--{name}" for name in ("result_file", "source", "metrics", "gate", "report_file") if getattr(args, name)]
+    if given and not args.report:
+        parser.error(f"{', '.join(given)} only apply with --report")
 
     results = [validate_file(path) for path in args.files]
     print_results(results)
@@ -173,7 +190,28 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"All {total} file(s) valid." if num_invalid == 0 else f"{num_invalid} of {total} file(s) invalid.")
 
-    return 1 if num_invalid else 0
+    # A run whose every attempt failed leaves an empty dataset; its run metrics are still worth reporting.
+    violations = []
+    if args.report and results[0].num_episodes is not None:
+        for module in args.metrics:
+            importlib.import_module(module)
+        report = build_report(args.files[0], result_file=args.result_file, source=args.source)
+        print()
+        print(format_report(report))
+        if args.report_file:
+            with open(args.report_file, "w", encoding="utf-8") as report_handle:
+                json.dump(report, report_handle, indent=2, default=_json_value)
+                report_handle.write("\n")
+        if args.gate:
+            violations = gate_violations(report, args.gate)
+            print("\nGate passed." if not violations else "\nGate failed:\n  " + "\n  ".join(violations))
+
+    return 1 if num_invalid or violations else 0
+
+
+def _json_value(value: object) -> object:
+    """JSON form of the numpy scalars and arrays that metric values may hold."""
+    return value.tolist() if hasattr(value, "tolist") else str(value)
 
 
 if __name__ == "__main__":
