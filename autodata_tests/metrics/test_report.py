@@ -84,6 +84,13 @@ def test_interrupted_rerun_is_reported_from_its_own_attempt_log(tmp_path):
     assert "belongs to another run" in report["warnings"][0]
 
 
+def test_dataset_without_an_entry_is_flagged_only_with_a_run_record(tmp_path):
+    dataset = _dataset(tmp_path / "d.hdf5")
+
+    assert build_report(dataset, metrics={})["warnings"] == []
+    assert "episode count only" in build_report(dataset, result_file=_run(tmp_path, "run-a"), metrics={})["warnings"][0]
+
+
 def test_report_refuses_inputs_that_disagree_with_their_run(tmp_path):
     entry = {"run_id": "run-a", "exported_episodes": 1}
     with pytest.raises(ValueError, match="merged or edited"):

@@ -72,8 +72,10 @@ def check_same_run(evidence: Evidence) -> list[str]:
                 f" {result['num_attempts']} and {result['num_success']}."
             )
     entry = evidence.env_args.get("autodata")
-    if entry is None:
+    if entry is None and result is not None:
         return ["the dataset has no autodata entry, so it is matched to its run by episode count only"]
+    if entry is None:
+        return []
     if entry["exported_episodes"] != num_episodes:
         raise ValueError(
             f"The dataset holds {num_episodes} episodes but its run exported {entry['exported_episodes']};"
