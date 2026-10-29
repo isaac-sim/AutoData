@@ -7,11 +7,14 @@ from __future__ import annotations
 import argparse
 import gymnasium as gym
 from functools import partial
+from gymnasium.envs.registration import EnvSpec
 from typing import Any
 
 from isaaclab_arena.assets.registries import EnvironmentRegistry
 
 from .franka_rope import FRANKA_ROPE_ARENA_ENV_ID
+
+_callback_registered_envs: dict[str, EnvSpec] = {}
 
 
 def is_arena_environment(env_name: str) -> bool:
@@ -36,6 +39,13 @@ def _bind_gym_make_kwargs(env_name: str, env_kwargs: dict[str, Any]) -> None:
 
         entry_point = load_env_creator(entry_point)
     env_spec.entry_point = partial(entry_point, **env_kwargs)
+    _callback_registered_envs[env_name] = env_spec
+
+
+def is_environment_registered_from_callback(env_name: str) -> bool:
+    """Return whether the current Gym registration has callback-bound constructor arguments."""
+    env_spec = _callback_registered_envs.get(env_name)
+    return env_spec is not None and gym.registry.get(env_name) is env_spec
 
 
 def build_and_register_arena_environment(

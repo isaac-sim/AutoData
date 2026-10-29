@@ -106,7 +106,10 @@ class FrankaRopeObservationsCfg:
         joint_vel = ObsTerm(func=mdp_isaac_lab.joint_vel_rel)
         eef_pos = ObsTerm(func=mdp.ee_frame_pos)
         eef_quat = ObsTerm(func=mdp.ee_frame_quat)
-        gripper_pos = ObsTerm(func=mdp.gripper_pos)
+        gripper_pos = ObsTerm(
+            func=mdp.gripper_pos,
+            params={"robot_cfg": SceneEntityCfg("robot", joint_names=["panda_finger_joint.*"])},
+        )
         object_nodal_pos = ObsTerm(func=mdp.object_nodal_pos)
 
         def __post_init__(self) -> None:

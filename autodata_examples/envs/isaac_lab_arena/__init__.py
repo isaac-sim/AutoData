@@ -2,6 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from .registration import build_and_register_arena_environment, is_arena_environment, register_environment_from_cli
+from .registration import (
+    build_and_register_arena_environment,
+    is_arena_environment,
+    is_environment_registered_from_callback,
+    register_environment_from_cli,
+)
 
-__all__ = ["build_and_register_arena_environment", "is_arena_environment", "register_environment_from_cli"]
+__all__ = [
+    "build_and_register_arena_environment",
+    "is_arena_environment",
+    "is_environment_registered_from_callback",
+    "register_environment_from_cli",
+]

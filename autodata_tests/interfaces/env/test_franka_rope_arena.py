@@ -5,11 +5,13 @@
 
 import gymnasium as gym
 import sys
+import torch
 from functools import partial
 from types import SimpleNamespace
 
 import pytest
 from isaaclab.sim import SimulationCfg
+from isaaclab.utils.string import resolve_matching_names
 from isaaclab_arena.assets.registries import EnvironmentRegistry
 from isaaclab_arena.tasks.task_termination_cfg import TaskTerminationCfg
 from isaaclab_arena.utils.physics_backend import PhysicsBackend
@@ -18,7 +20,10 @@ import autodata_examples.envs as env_registration
 import autodata_examples.envs.isaac_lab_arena as arena_registration
 from autodata_examples.envs.isaac_lab_arena import registration
 from autodata_examples.envs.isaac_lab_arena.franka_rope import mdp
-from autodata_examples.envs.isaac_lab_arena.franka_rope.embodiment import FrankaRopeIKEmbodiment
+from autodata_examples.envs.isaac_lab_arena.franka_rope.embodiment import (
+    FrankaRopeIKEmbodiment,
+    FrankaRopeObservationsCfg,
+)
 from autodata_examples.envs.isaac_lab_arena.franka_rope.environment import (
     FRANKA_ROPE_ARENA_ENV_ID,
     FrankaRopeArenaEnvironment,
@@ -143,22 +148,31 @@ def test_external_callback_skips_arena_for_regular_lab_task(monkeypatch):
     assert callback_called is False
 
 
-def test_external_callback_binds_make_kwargs_without_gym_deepcopy():
-    test_env_name = "AutoData-Test-Arena-Callback-v0"
+def test_external_callback_binds_make_kwargs_without_gym_deepcopy(monkeypatch):
+    test_env_name = FRANKA_ROPE_ARENA_ENV_ID
     variation_recorder = object()
-    gym.register(id=test_env_name, entry_point=lambda **_kwargs: None)
-    try:
-        registration._bind_gym_make_kwargs(  # noqa: SLF001
-            test_env_name,
-            {"variation_recorder": variation_recorder},
-        )
+    env_spec = gym.envs.registration.EnvSpec(id=test_env_name, entry_point=lambda **kwargs: kwargs)
+    monkeypatch.setitem(gym.registry, test_env_name, env_spec)
+    registration._bind_gym_make_kwargs(  # noqa: SLF001
+        test_env_name,
+        {"variation_recorder": variation_recorder},
+    )
 
-        env_spec = gym.spec(test_env_name)
-        assert isinstance(env_spec.entry_point, partial)
-        assert env_spec.entry_point.keywords["variation_recorder"] is variation_recorder
-        assert "variation_recorder" not in env_spec.kwargs
-    finally:
-        del gym.registry[test_env_name]
+    assert isinstance(env_spec.entry_point, partial)
+    assert env_spec.entry_point.keywords["variation_recorder"] is variation_recorder
+    assert "variation_recorder" not in env_spec.kwargs
+
+    make_kwargs = env_registration.register_environment_for_run(
+        env_name=test_env_name,
+        enable_cameras=False,
+        num_envs=1,
+        device="cpu",
+        seed=1,
+        presets="physx",
+    )
+
+    assert make_kwargs == {}
+    assert env_spec.entry_point(**make_kwargs.get(test_env_name, {}))["variation_recorder"] is variation_recorder
 
 
 def test_rope_asset_uses_deformable_scene_key():
@@ -211,3 +225,23 @@ def test_rope_embodiment_preserves_arena_observation_names():
         camera = getattr(embodiment.camera_config, camera_name)
         assert camera.renderer_cfg.renderer_type == "isaac_rtx"
         assert camera.renderer_cfg.global_settings.antialiasing_mode == "DLSS"
+
+
+def test_gripper_observation_reads_finger_joints():
+    joint_names = [f"panda_joint{i}" for i in range(1, 8)] + ["panda_finger_joint1", "panda_finger_joint2"]
+    positions = torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 0.04, 0.03]])
+    robot = SimpleNamespace(
+        joint_names=joint_names,
+        num_joints=len(joint_names),
+        data=SimpleNamespace(joint_pos=SimpleNamespace(torch=positions)),
+        find_joints=lambda names, preserve_order=False: resolve_matching_names(
+            names, joint_names, preserve_order=preserve_order
+        ),
+    )
+    env = SimpleNamespace(scene={"robot": robot})
+    term = FrankaRopeObservationsCfg().policy.gripper_pos
+    term.params["robot_cfg"].resolve(env.scene)
+
+    observed = term.func(env, **term.params)
+
+    torch.testing.assert_close(observed, torch.tensor([[0.04, -0.03]]))
