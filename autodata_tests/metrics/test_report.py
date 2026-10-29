@@ -112,9 +112,10 @@ def test_gate_flags_violations_and_refuses_a_non_finite_bound(tmp_path):
     violations = gate_violations(report, str(gate))
 
     assert [violation.split(":")[0] for violation in violations] == ["low", "old", "absent", "gap"]
-    gate.write_text("absent: {min: .nan}\n")
-    with pytest.raises(ValueError, match="not a finite number"):
-        gate_violations(report, str(gate))
+    for bad_bound in (".nan", "false", "{p95: 1}"):
+        gate.write_text(f"absent: {{min: {bad_bound}}}\n")
+        with pytest.raises(ValueError, match="not a finite number"):
+            gate_violations(report, str(gate))
 
 
 def test_non_finite_numbers_never_reach_the_report(tmp_path):

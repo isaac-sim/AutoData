@@ -22,8 +22,8 @@ Each metric reports one of three things:
 The report reads the run named by the dataset's run id. A result file from another run, such as the
 earlier result of an interrupted rerun, is set aside with a warning, and the run is reported from its own
 attempt log. The report refuses a dataset, result file and attempt log whose episode, attempt or success
-counts disagree, as they do after datasets are merged, and a ``--source`` other than the dataset the run
-started from.
+counts disagree, as they do after datasets are merged. When the result file records the run's source, the
+report also refuses a different ``--source``; without that record, the source is not verified.
 
 Gating
 ------

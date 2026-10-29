@@ -230,7 +230,7 @@ def gate_violations(report: Mapping[str, Any], gate_file: str) -> list[str]:
     violations = []
     for name, bound in yaml.safe_load(Path(gate_file).read_text(encoding="utf-8")).items():
         limits = [bound[side] for side in ("min", "max") if side in bound]
-        if not all(_is_finite(limit) for limit in limits):
+        if not all(_is_bound(limit) for limit in limits):
             raise ValueError(f"Gate entry {name!r} has a bound that is not a finite number: {limits}.")
         row = report["metrics"].get(name)
         if row is None or row["status"] != "ok":
@@ -251,6 +251,11 @@ def gate_violations(report: Mapping[str, Any], gate_file: str) -> list[str]:
         if "max" in bound and value > bound["max"]:
             violations.append(f"{name}: {value:.4g} is above {bound['max']}")
     return violations
+
+
+def _is_bound(limit: Any) -> bool:
+    """Whether a gate bound is a finite number; YAML reads ``true`` and ``false`` as bools, which are not bounds."""
+    return isinstance(limit, int | float) and not isinstance(limit, bool) and math.isfinite(limit)
 
 
 def _format_value(value: Any) -> str:
