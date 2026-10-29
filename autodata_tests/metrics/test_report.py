@@ -36,14 +36,18 @@ def _spec(name: str, compute, requires: tuple[str, ...] = ()) -> MetricSpec:
 def _dataset(path: Path, num_episodes: int = 1, entry: dict | None = None) -> str:
     with h5py.File(path, "w") as h5_file:
         data = h5_file.create_group("data")
-        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0", **({"autodata": entry} if entry else {})})
+        autodata = {"autodata": {"version": 1, **entry}} if entry else {}
+        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0", **autodata})
         for index in range(num_episodes):
             data.create_group(f"demo_{index}").create_dataset("actions", data=[[0.0, 1.0]])
     return str(path)
 
 
 def _log(tmp_path: Path, run_id: str, successes: list[bool]) -> None:
-    lines = [json.dumps({"run_id": run_id, "success": success}) for success in successes]
+    lines = [
+        json.dumps({"run_id": run_id, "env_id": 0, "success": success, "start_time_s": step, "end_time_s": step + 1.0})
+        for step, success in enumerate(successes)
+    ]
     (tmp_path / f"result.{run_id}.attempts.jsonl").write_text("\n".join(lines) + "\n")
 
 
@@ -95,6 +99,20 @@ def test_dataset_without_an_entry_is_flagged_only_with_a_run_record(tmp_path):
     assert "episode count only" in build_report(dataset, result_file=_run(tmp_path, "run-a"), metrics={})["warnings"][0]
 
 
+def test_a_source_merged_after_annotation_has_its_annotation_set_aside(tmp_path):
+    annotation = {"input_episodes": 1, "processed_episodes": 1, "annotated_episodes": 1, "time_s": 2.0}
+    source = _dataset(
+        tmp_path / "source.hdf5",
+        num_episodes=3,
+        entry={"run_id": "a", "exported_episodes": 1, "annotation": annotation},
+    )
+
+    report = build_report(_dataset(tmp_path / "d.hdf5"), source=source)
+
+    assert "set aside" in report["warnings"][0]
+    assert report["metrics"]["annotation_pass_rate"]["status"] == "not_applicable"
+
+
 def test_report_refuses_inputs_that_disagree_with_their_run(tmp_path):
     entry = {"run_id": "run-a", "exported_episodes": 1}
     with pytest.raises(ValueError, match="merged or edited"):
@@ -110,7 +128,11 @@ def test_report_refuses_inputs_that_disagree_with_their_run(tmp_path):
     with pytest.raises(ValueError, match="not the one the run started from"):
         build_report(dataset, result_file=result_file, source=_dataset(tmp_path / "source.hdf5"), metrics={})
 
-    for corrupt, reason in (("{'run_id': 'run-a'}", "not a JSON object"), ('{"autodata": null}', "autodata entry")):
+    malformed_entry = json.dumps({"autodata": {"version": 1, "run_id": 5, "exported_episodes": 1}})
+    for corrupt, reason in (
+        ("{'run_id': 'run-a'}", "must be JSON"),
+        (malformed_entry, r"autodata\.run_id must be str"),
+    ):
         with h5py.File(dataset, "r+") as h5_file:
             h5_file["data"].attrs["env_args"] = corrupt
         with pytest.raises(ValueError, match=reason):

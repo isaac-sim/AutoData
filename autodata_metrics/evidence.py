@@ -12,6 +12,8 @@ from collections.abc import Mapping
 from functools import cached_property
 from typing import Any
 
+from autodata_metrics.records import InvalidRecord, parse_env_args
+
 
 def _has_path(record: Any, dotted_key: str) -> bool:
     """Whether ``record[a][b]`` exists for ``dotted_key`` ``"a.b"``."""
@@ -23,27 +25,18 @@ def _has_path(record: Any, dotted_key: str) -> bool:
 
 
 def read_env_args(h5_file: h5py.File) -> dict[str, Any]:
-    """The dataset's ``env_args``, or empty when it records none.
+    """The dataset's ``env_args``, with its ``autodata`` entry parsed; empty when it records none.
 
     Raises:
-        ValueError: If ``env_args`` is not a JSON object, or its ``autodata`` entry lacks the run id and exported
-            episode count; a run cannot be verified against corrupt metadata.
+        InvalidRecord: If ``env_args`` is not JSON, or it or its entry lacks the shape the metrics read.
     """
+    where = f"{h5_file.filename} env_args"
     raw_env_args = h5_file["data"].attrs.get("env_args", "{}")
     try:
         env_args = json.loads(raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args)
-    except (TypeError, ValueError):
-        env_args = None
-    if not isinstance(env_args, dict):
-        raise ValueError(f"{h5_file.filename}: env_args are not a JSON object.")
-    entry = env_args.get("autodata")
-    if "autodata" in env_args and not (
-        isinstance(entry, dict)
-        and isinstance(entry.get("run_id"), str)
-        and isinstance(entry.get("exported_episodes"), int)
-    ):
-        raise ValueError(f"{h5_file.filename}: the autodata entry lacks its run_id or exported_episodes.")
-    return env_args
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise InvalidRecord(f"{where} must be JSON: {exc}") from exc
+    return parse_env_args(env_args, where)
 
 
 class Episode:

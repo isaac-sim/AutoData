@@ -98,7 +98,7 @@ def pose_action_bounds(episode: Episode, ev: Evidence) -> str | None:
     actions = episode["actions"]
     bad = []
     for eef, layout in ev.env_args["autodata"]["pose_action"].items():
-        if layout["bound"] is None:
+        if layout.get("bound") is None:
             continue
         start, end = layout["action_slice"]
         peak = float(np.abs(actions[:, start:end]).max(initial=0.0))

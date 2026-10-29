@@ -9,7 +9,6 @@ import contextlib
 import h5py
 import json
 import math
-import numbers
 import re
 import textwrap
 import yaml
@@ -18,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from autodata_metrics.evidence import Evidence, read_env_args
+from autodata_metrics.records import ATTEMPT, RESULT, InvalidRecord, is_finite_number, parse
 from autodata_metrics.registry import (
     AREAS,
     REGISTERED_CHECKS,
@@ -41,10 +41,9 @@ def read_run(
     another run is set aside and the run is reported from its own attempt log.
     """
     result_path = Path(result_file)
-    result = _read_json(result_path) if result_path.exists() else None
-    if result is not None and not isinstance(result, dict):
-        raise ValueError(f"{result_file} is not a generation result.")
-    warnings = [] if result_path.exists() else [f"{result_file} does not exist"]
+    text = _read_text(result_path)
+    result = None if text is None else parse(_json(text, result_path), RESULT, result_file)
+    warnings = [] if text is not None else [f"{result_file} does not exist"]
     if result is not None and run_id is not None and result.get("run", {}).get("run_id") != run_id:
         warnings.append(f"{result_file} belongs to another run, so the run is reported from its attempt log")
         result = None
@@ -54,19 +53,32 @@ def read_run(
         attempts_path = Path(attempts_file_for(result_file, run_id))
     else:
         return result, None, warnings
+    text = _read_text(attempts_path)
     attempts = None
-    if attempts_path.exists():
-        lines = attempts_path.read_text(encoding="utf-8").splitlines()
-        attempts = [_read_json(attempts_path, line) for line in lines if line.strip()]
+    if text is not None:
+        attempts = [
+            parse(_json(line, attempts_path), ATTEMPT, f"{attempts_path} line {number}")
+            for number, line in enumerate(text.splitlines(), start=1)
+            if line.strip()
+        ]
     return result, attempts, warnings
 
 
-def _read_json(path: Path, text: str | None = None) -> Any:
-    """JSON from ``text``, or the whole file; a parse error names the file."""
+def _read_text(path: Path) -> str | None:
+    """The file's text, or None when there is no such file."""
     try:
-        return json.loads(path.read_text(encoding="utf-8") if text is None else text)
-    except ValueError as exc:
-        raise ValueError(f"{path} is not valid JSON: {exc}") from exc
+        return path.read_text(encoding="utf-8")
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise InvalidRecord(f"{path} cannot be read: {exc}") from exc
+
+
+def _json(text: str, path: Path) -> Any:
+    try:
+        return json.loads(text)
+    except (ValueError, RecursionError) as exc:
+        raise InvalidRecord(f"{path} must be JSON: {exc}") from exc
 
 
 def check_same_run(evidence: Evidence) -> list[str]:
@@ -160,9 +172,8 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         return {**row, "status": "not_applicable", "reason": str(exc)}
     except Exception as exc:  # A failing metric must not sink the report of every other metric.
         return {**row, "status": "error", "reason": f"{type(exc).__name__}: {exc}"}
-    problem = _unreportable(value)
-    if problem is not None:
-        return {**row, "status": "error", "reason": problem}
+    if not isinstance(value, Value):
+        return {**row, "status": "error", "reason": f"returned {type(value).__name__}, not a Value"}
     row = {
         **row,
         "status": "ok",
@@ -173,25 +184,6 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
     if spec.baseline and evidence.source is not None:
         row["baseline"] = evaluate(spec, evidence.source).get("value")
     return row
-
-
-def _unreportable(value: Any) -> str | None:
-    """Why a metric's return value cannot be reported, or None."""
-    if not isinstance(value, Value):
-        return f"returned {type(value).__name__}, not a Value"
-    if not _is_finite(value.value):
-        return f"value {value.value!r} is not a finite number or a mapping of finite numbers"
-    if not isinstance(value.n, numbers.Integral):
-        return f"sample count {value.n!r} is not an integer"
-    if not isinstance(value.details, Mapping):
-        return f"details {value.details!r} are not a mapping"
-    return None
-
-
-def _is_finite(value: Any) -> bool:
-    """Whether ``value`` is a finite number, or a mapping of finite numbers."""
-    items = value.values() if isinstance(value, Mapping) else [value]
-    return all(isinstance(item, numbers.Real) and math.isfinite(item) for item in items)
 
 
 def _finite_or_none(value: Any) -> Any:
@@ -228,6 +220,8 @@ def build_report(
         run_id = read_env_args(h5_file).get("autodata", {}).get("run_id")
         result, attempts, warnings = read_run(result_file, run_id) if result_file else (None, None, [])
         source_evidence = Evidence(stack.enter_context(h5py.File(source, "r"))) if source else None
+        if source_evidence is not None:
+            warnings += _set_aside_merged_annotation(source_evidence, source)
         evidence = Evidence(h5_file, result, attempts, source_evidence)
         warnings += check_same_run(evidence)
         source_record = input_record(source)
@@ -255,6 +249,18 @@ def build_report(
         "warnings": warnings,
         "metrics": rows,
     }
+
+
+def _set_aside_merged_annotation(source: Evidence, path: str) -> list[str]:
+    """Drop the annotation record of a source merged or edited after annotation, since it counts other episodes."""
+    entry = source.env_args.get("autodata")
+    if entry is None or "annotation" not in entry or entry["exported_episodes"] == len(source.all_episodes):
+        return []
+    source.env_args = {**source.env_args, "autodata": {key: item for key, item in entry.items() if key != "annotation"}}
+    return [
+        f"{path} holds {len(source.all_episodes)} episodes but was annotated with {entry['exported_episodes']}, so its"
+        " annotation record is set aside"
+    ]
 
 
 def _check_summary(evidence: Evidence) -> dict[str, Any]:
@@ -315,7 +321,7 @@ def _bound(name: str, limit: Any) -> float:
     if isinstance(limit, str):
         with contextlib.suppress(ValueError):
             number = float(limit)
-    if not isinstance(number, int | float) or isinstance(number, bool) or not math.isfinite(number):
+    if not is_finite_number(number):
         raise ValueError(f"Gate entry {name!r} has a bound that is not a finite number: {limit!r}.")
     return number
 

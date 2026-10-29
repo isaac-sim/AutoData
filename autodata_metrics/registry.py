@@ -10,9 +10,12 @@ without that evidence.
 
 from __future__ import annotations
 
+import numbers
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
+
+from autodata_metrics.records import is_finite_number
 
 if TYPE_CHECKING:
     from autodata_metrics.evidence import Episode, Evidence
@@ -37,6 +40,15 @@ class Value:
     value: float | dict[str, float]
     n: int
     details: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        values = self.value.values() if isinstance(self.value, Mapping) else [self.value]
+        if not all(is_finite_number(item) for item in values):
+            raise ValueError(f"value {self.value!r} is not a finite number or a mapping of finite numbers")
+        if not isinstance(self.n, numbers.Integral) or self.n < 0:
+            raise ValueError(f"sample count {self.n!r} is not a non-negative integer")
+        if not isinstance(self.details, Mapping):
+            raise ValueError(f"details {self.details!r} are not a mapping")
 
 
 @dataclass(frozen=True)

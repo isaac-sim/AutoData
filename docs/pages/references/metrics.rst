@@ -50,6 +50,16 @@ attempt log. The report refuses a dataset, result file and attempt log whose epi
 counts disagree, as they do after datasets are merged. When the result file records the run's source, the
 report also refuses a different ``--source``; without that record, the source is not verified.
 
+What the report trusts
+----------------------
+
+The report checks every record it reads against the shape it expects before computing anything: the
+dataset's ``env_args`` and ``autodata`` entry, the result file, each attempt-log line, and the gate. A
+record with a missing field, a wrong type or a negative count is refused with a message naming the file
+and the field, so no metric is computed from part of a malformed record. Fields the report does not read
+are not checked. A metric loaded with ``--metrics`` runs as trusted code, but its ``Value`` is checked when
+it is created: a malformed one makes that metric an error, and the other metrics are still computed.
+
 Gating
 ------
 

@@ -17,7 +17,7 @@ from autodata_metrics.validity import FROZEN_FRAMES
 def _write(path: Path, episodes: list[dict[str, np.ndarray]], entry: dict | None = None) -> str:
     with h5py.File(path, "w") as h5_file:
         data = h5_file.create_group("data")
-        env_args = {"env_name": "Test-v0", **({"autodata": entry} if entry else {})}
+        env_args = {"env_name": "Test-v0", **({"autodata": {"version": 1, **entry}} if entry else {})}
         data.attrs["env_args"] = json.dumps(env_args)
         for index, arrays in enumerate(episodes):
             group = data.create_group(f"demo_{index}")
