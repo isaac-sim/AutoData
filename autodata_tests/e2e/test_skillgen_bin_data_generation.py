@@ -17,10 +17,18 @@ import pytest
 
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_recorded_run, assert_valid_dataset
+from autodata_tests.utils.utils import assert_ok_metrics, assert_recorded_run, assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
+# Metrics a SkillGen run reported with its result file must compute; the planning metrics are SkillGen's own.
+RUN_METRICS = {
+    "generation_success_rate",
+    "demos_per_gpu_hour",
+    "time_to_dataset",
+    "planning_time",
+    "planning_failure_rate",
+}
 
 
 def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
@@ -66,6 +74,7 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
         attempts = assert_recorded_run(output_file, result_file)
         # Every SkillGen attempt plans at least one transit, and the algorithm reports how long it took.
         assert all(attempt["extras"]["planning_time_s"] > 0 for attempt in attempts)
+        assert_ok_metrics(output_file, result_file, RUN_METRICS)
 
         with open(result_file, encoding="utf-8") as result_handle:
             result = json.load(result_handle)

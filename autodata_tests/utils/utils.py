@@ -7,6 +7,9 @@ import h5py
 import json
 import os
 
+from autodata_tests.utils.constants import TestPaths
+from autodata_tests.utils.subprocess import run_subprocess
+
 
 def assert_valid_dataset(output_file: str, min_num_demos: int) -> None:
     """Assert the run wrote a dataset containing at least min_num_demos entries."""
@@ -85,6 +88,30 @@ def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
     run_ids = {entry["run_id"], result["run"]["run_id"], *(attempt["run_id"] for attempt in attempts)}
     assert len(run_ids) == 1, f"The dataset, result and attempt log carry different run ids: {run_ids}"
     return attempts
+
+
+def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]) -> None:
+    """Report a generation run's metrics with ``validate_dataset.py`` and assert exactly ``expected_ok`` computed a value.
+
+    A renamed recorded key or an adapter that stops recording a stream turns a metric not applicable, which
+    this catches.
+    """
+
+    report_file = os.path.join(os.path.dirname(dataset_file), "report.json")
+    run_subprocess([
+        TestPaths.python_path,
+        os.path.join(TestPaths.scripts_dir, "validate_dataset.py"),
+        dataset_file,
+        "--report",
+        "--result_file",
+        result_file,
+        "--report_file",
+        report_file,
+    ])
+    with open(report_file, encoding="utf-8") as report_handle:
+        rows = json.load(report_handle)["metrics"]
+    ok = {name for name, row in rows.items() if row["status"] == "ok"}
+    assert ok == expected_ok, f"Computed {sorted(ok)}, expected {sorted(expected_ok)}: {rows}"
 
 
 def assert_no_metric_inputs(dataset_file: str) -> None:
