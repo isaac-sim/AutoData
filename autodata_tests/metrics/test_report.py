@@ -82,10 +82,15 @@ def test_interrupted_rerun_is_reported_from_its_own_attempt_log(tmp_path):
     assert "belongs to another run" in report["warnings"][0]
 
 
-def test_report_refuses_merged_data(tmp_path):
+def test_report_refuses_records_whose_counts_disagree(tmp_path):
     entry = {"run_id": "run-a", "exported_episodes": 1}
-    with pytest.raises(AssertionError, match="merged or edited"):
+    with pytest.raises(ValueError, match="merged or edited"):
         build_report(_dataset(tmp_path / "merged.hdf5", num_episodes=2, entry=entry), metrics={})
+
+    result_file = _run(tmp_path, "run-a")
+    _log(tmp_path, "run-a", [True, True])
+    with pytest.raises(ValueError, match="attempt log holds 2 attempts"):
+        build_report(_dataset(tmp_path / "d.hdf5", entry=entry), result_file=result_file, metrics={})
 
 
 def test_gate_fails_on_bound_inapplicable_missing_and_outdated_metric(tmp_path):
@@ -102,13 +107,18 @@ def test_gate_fails_on_bound_inapplicable_missing_and_outdated_metric(tmp_path):
     assert [violation.split(":")[0] for violation in violations] == ["low", "old", "absent", "gap"]
 
 
-def test_non_finite_value_is_an_error_and_fails_the_gate(tmp_path):
-    report = build_report(_dataset(tmp_path / "d.hdf5"), metrics={"m": _spec("m", lambda ev: Value(float("nan"), n=1))})
+def test_non_finite_numbers_never_reach_the_report(tmp_path):
+    metrics = {
+        "m": _spec("m", lambda ev: Value(float("nan"), n=1)),
+        "d": _spec("d", lambda ev: Value(1.0, n=1, details={"interval_95": [0.5, float("inf")]})),
+    }
+    report = build_report(_dataset(tmp_path / "d.hdf5"), metrics=metrics)
     gate = tmp_path / "gate.yaml"
     gate.write_text("m: {min: 0}\n")
 
     assert report["metrics"]["m"]["status"] == "error"
     assert gate_violations(report, str(gate)) == ["m: error"]
+    assert report["metrics"]["d"]["details"] == {"interval_95": [0.5, None]}
 
 
 def test_metrics_import_without_torch_or_isaaclab():

@@ -19,8 +19,10 @@ Each metric reports one of three things:
 - ``not_applicable``, with the reason, such as a missing recorded input;
 - ``error``, when it fails. The other metrics are still computed.
 
-The report refuses a dataset and a result file from different runs, because their run ids and exported
-episode counts must match.
+The report reads the run named by the dataset's run id. A result file from another run, such as the
+earlier result of an interrupted rerun, is set aside with a warning, and the run is reported from its own
+attempt log. The report refuses a dataset, result file and attempt log whose episode, attempt or success
+counts disagree, as they do after datasets are merged.
 
 Gating
 ------
@@ -57,26 +59,22 @@ requires. Without that evidence, the report says which key is missing and does n
 
 .. code-block:: python
 
-   import numpy as np
-
    from autodata_metrics import Value, metric
 
 
    @metric(
-       "planning_time",
+       "slowest_plan",
        area="diagnostics",
        signal="generation performance",
        scope="run",
-       unit="s per attempt",
+       unit="s",
        better="lower",
-       primary="p95",
        requires=["attempts.extras.planning_time_s"],
    )
-   def planning_time(ev):
-       """p50 and p95 motion-planning time per attempt."""
-       times = np.array([attempt["extras"]["planning_time_s"] for attempt in ev.attempts])
-       p50, p95 = np.percentile(times, [50, 95])
-       return Value({"p50": float(p50), "p95": float(p95)}, n=len(times))
+   def slowest_plan(ev):
+       """Longest motion-planning time of any attempt."""
+       times = [attempt["extras"]["planning_time_s"] for attempt in ev.attempts]
+       return Value(max(times), n=len(times))
 
 An evidence key is one of:
 
@@ -92,7 +90,6 @@ When you add an algorithm or an embodiment:
 
 - An algorithm reports per-attempt facts by overriding ``attempt_extras()``. Metrics that require
   those facts then apply to its runs.
-- An embodiment's adapter describes its pose actions through ``metric_context()``. Add datasheet
-  ``hardware_limits`` to its YAML to enable the joint-limit metrics.
+- An embodiment's adapter describes its pose actions through ``metric_context()``.
 - List the workflow's expected metrics in its end-to-end test, so a metric that stops applying fails
   the test.

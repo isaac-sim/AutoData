@@ -61,18 +61,7 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
 
         assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
         assert_recorded_run(output_file, result_file)
-        report_file = os.path.join(temp_dir, "report.json")
-        run_subprocess([
-            TestPaths.python_path,
-            os.path.join(TestPaths.scripts_dir, "validate_dataset.py"),
-            output_file,
-            "--report",
-            "--result_file",
-            result_file,
-            "--report_file",
-            report_file,
-        ])
-        assert_ok_metrics(report_file, METRICS)
+        assert_ok_metrics(output_file, result_file, METRICS)
 
 
 @pytest.mark.with_subprocess

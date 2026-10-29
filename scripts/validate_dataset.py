@@ -178,14 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.report and len(args.files) != 1:
         parser.error("--report takes exactly one dataset")
-    report_options = {
-        "--result_file": args.result_file,
-        "--source": args.source,
-        "--metrics": args.metrics,
-        "--gate": args.gate,
-        "--report_file": args.report_file,
-    }
-    given = [option for option, value in report_options.items() if value]
+    given = [f"--{name}" for name in ("result_file", "source", "metrics", "gate", "report_file") if getattr(args, name)]
     if given and not args.report:
         parser.error(f"{', '.join(given)} only apply with --report")
 
