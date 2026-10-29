@@ -91,7 +91,8 @@ def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
 
 
 def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]) -> None:
-    """Report a generation run's metrics with ``validate_dataset.py`` and assert exactly ``expected_ok`` computed a value.
+    """Report a generation run's metrics with ``validate_dataset.py``; assert every episode passes the checks and
+    exactly ``expected_ok`` computed a value.
 
     A renamed recorded key or an adapter that stops recording a stream turns a metric not applicable, which
     this catches.
@@ -109,7 +110,11 @@ def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]
         report_file,
     ])
     with open(report_file, encoding="utf-8") as report_handle:
-        rows = json.load(report_handle)["metrics"]
+        report = json.load(report_handle)
+    assert (
+        report["num_valid_episodes"] == report["num_episodes"]
+    ), f"{report['num_episodes'] - report['num_valid_episodes']} episodes failed checks: {report['check_failures']}"
+    rows = report["metrics"]
     ok = {name for name, row in rows.items() if row["status"] == "ok"}
     assert ok == expected_ok, f"Computed {sorted(ok)}, expected {sorted(expected_ok)}: {rows}"
 
