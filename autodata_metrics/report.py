@@ -142,6 +142,9 @@ def build_report(
         result_file: Generation result (``generate_dataset.py --result_file``); its attempt log is read beside it.
         source: Source dataset the run started from.
         metrics: Metrics to compute; defaults to every registered metric.
+
+    Raises:
+        ValueError: If the dataset, result, attempt log and source do not all come from one run.
     """
     with contextlib.ExitStack() as stack:
         h5_file = stack.enter_context(h5py.File(dataset, "r"))
@@ -150,6 +153,10 @@ def build_report(
         source_evidence = Evidence(stack.enter_context(h5py.File(source, "r"))) if source else None
         evidence = Evidence(h5_file, result, attempts, source_evidence)
         warnings += check_same_run(evidence)
+        source_record = input_record(source)
+        recorded_source = evidence.run.get("inputs", {}).get("source")
+        if source_record and recorded_source and source_record["sha256"] != recorded_source["sha256"]:
+            raise ValueError(f"The source {source} is not the one the run started from, {recorded_source['path']}.")
         metrics = REGISTERED_METRICS if metrics is None else metrics
         rows = {name: evaluate(spec, evidence) for name, spec in metrics.items()}
         num_episodes = len(evidence.episodes)
@@ -158,7 +165,7 @@ def build_report(
         "inputs": {
             "dataset": input_record(dataset),
             "result_file": result_file,
-            "source": input_record(source),
+            "source": source_record,
             "run_id": run_id,
             "revision": code_revision(),
         },
@@ -176,10 +183,14 @@ def gate_violations(report: Mapping[str, Any], gate_file: str) -> list[str]:
     at another version is a violation.
 
     Raises:
-        ValueError: If a gate entry bounds a dict value without a ``key`` and the metric has no primary entry.
+        ValueError: If a gate entry has a bound that is not a finite number, or bounds a dict value without a
+            ``key`` and the metric has no primary entry.
     """
     violations = []
     for name, bound in yaml.safe_load(Path(gate_file).read_text(encoding="utf-8")).items():
+        limits = [bound[side] for side in ("min", "max") if side in bound]
+        if not all(_is_finite(limit) for limit in limits):
+            raise ValueError(f"Gate entry {name!r} has a bound that is not a finite number: {limits}.")
         row = report["metrics"].get(name)
         if row is None or row["status"] != "ok":
             violations.append(f"{name}: {'not reported' if row is None else row['status']}")

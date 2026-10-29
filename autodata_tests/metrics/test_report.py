@@ -43,10 +43,12 @@ def _log(tmp_path: Path, run_id: str, successes: list[bool]) -> None:
     (tmp_path / f"result.{run_id}.attempts.jsonl").write_text("\n".join(lines) + "\n")
 
 
-def _run(tmp_path: Path, run_id: str) -> str:
+def _run(tmp_path: Path, run_id: str, source_sha256: str | None = None) -> str:
     """A completed run: its result file and attempt log."""
     result_file = tmp_path / "result.json"
     run = {"run_id": run_id, "attempts_file": f"result.{run_id}.attempts.jsonl"}
+    if source_sha256 is not None:
+        run["inputs"] = {"source": {"path": "source.hdf5", "sha256": source_sha256}}
     result_file.write_text(json.dumps({"num_success": 1, "num_attempts": 1, "run": run}))
     _log(tmp_path, run_id, [True])
     return str(result_file)
@@ -82,18 +84,23 @@ def test_interrupted_rerun_is_reported_from_its_own_attempt_log(tmp_path):
     assert "belongs to another run" in report["warnings"][0]
 
 
-def test_report_refuses_records_whose_counts_disagree(tmp_path):
+def test_report_refuses_inputs_that_disagree_with_their_run(tmp_path):
     entry = {"run_id": "run-a", "exported_episodes": 1}
     with pytest.raises(ValueError, match="merged or edited"):
         build_report(_dataset(tmp_path / "merged.hdf5", num_episodes=2, entry=entry), metrics={})
 
+    dataset = _dataset(tmp_path / "d.hdf5", entry=entry)
     result_file = _run(tmp_path, "run-a")
     _log(tmp_path, "run-a", [True, True])
     with pytest.raises(ValueError, match="attempt log holds 2 attempts"):
-        build_report(_dataset(tmp_path / "d.hdf5", entry=entry), result_file=result_file, metrics={})
+        build_report(dataset, result_file=result_file, metrics={})
+
+    result_file = _run(tmp_path, "run-a", source_sha256="0" * 64)
+    with pytest.raises(ValueError, match="not the one the run started from"):
+        build_report(dataset, result_file=result_file, source=_dataset(tmp_path / "source.hdf5"), metrics={})
 
 
-def test_gate_fails_on_bound_inapplicable_missing_and_outdated_metric(tmp_path):
+def test_gate_flags_violations_and_refuses_a_non_finite_bound(tmp_path):
     row = {"status": "ok", "value": 0.4, "primary": None, "version": 2}
     missing = {"status": "ok", "value": {"p50": 1.0}, "primary": "p95", "version": 1}
     report = {"metrics": {"low": row, "old": row, "fine": row, "absent": {"status": "not_applicable"}, "gap": missing}}
@@ -105,6 +112,9 @@ def test_gate_fails_on_bound_inapplicable_missing_and_outdated_metric(tmp_path):
     violations = gate_violations(report, str(gate))
 
     assert [violation.split(":")[0] for violation in violations] == ["low", "old", "absent", "gap"]
+    gate.write_text("absent: {min: .nan}\n")
+    with pytest.raises(ValueError, match="not a finite number"):
+        gate_violations(report, str(gate))
 
 
 def test_non_finite_numbers_never_reach_the_report(tmp_path):

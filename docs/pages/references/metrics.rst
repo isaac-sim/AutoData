@@ -22,7 +22,8 @@ Each metric reports one of three things:
 The report reads the run named by the dataset's run id. A result file from another run, such as the
 earlier result of an interrupted rerun, is set aside with a warning, and the run is reported from its own
 attempt log. The report refuses a dataset, result file and attempt log whose episode, attempt or success
-counts disagree, as they do after datasets are merged.
+counts disagree, as they do after datasets are merged, and a ``--source`` other than the dataset the run
+started from.
 
 Gating
 ------
@@ -35,7 +36,7 @@ Gating
    planning_time: {max: 5.0, key: p95}
 
 A gated metric also violates the gate if it is not applicable, fails, or reports a different
-``version``.
+``version``. A bound that is not a finite number is an error.
 
 Built-in metrics
 ----------------
