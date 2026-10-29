@@ -29,7 +29,6 @@ For a dataset generated with ``--record_metric_inputs`` and ``--result_file``, r
        --result_file ./datasets/generated_dataset_mimicgen_franka.json \
        --source ./datasets/annotated_datasets/dataset_franka_annotated.hdf5
 
-The summary lists each metric's value, the metrics that do not apply and what would make them apply.
 See :doc:`../../references/metrics` for what each metric means and how to gate on it.
 
 

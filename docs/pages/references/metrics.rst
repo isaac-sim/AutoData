@@ -35,13 +35,13 @@ The command prints a summary; ``--report_file`` writes the full report, with eve
      not reported by this algorithm: planning_failure_rate, planning_time
      needs a --source recorded with --record_metric_inputs: annotation_pass_rate
 
-- The second line is the verdict: valid episodes, how many metrics were computed, and the gate.
+- The second line is the verdict: valid episodes, how many metrics were computed, and, with ``--gate``,
+  the gate, whose metrics are marked ✓ or ✗.
 - **Value** is the metric's value; a metric with percentiles shows the one a gate checks by default.
   **Source** is the same metric on the ``--source`` dataset. **Based on** is the sample count, with a
   rate's 95% interval and, when some checks did not apply, how many checks a pass rate rests on.
-- With ``--gate``, ✓ and ✗ mark the gated metrics.
-- **Not computed** groups the metrics that do not apply by what would make them apply.
-- A metric that fails is listed under **Errors**; the other metrics are still computed.
+- **Not computed** groups the metrics that do not apply by what would make them apply. A metric that
+  fails is listed under **Errors**; the other metrics are still computed.
 
 The report reads the run named by the dataset's run id. A result file from another run, such as the
 earlier result of an interrupted rerun, is set aside with a warning, and the run is reported from its own

@@ -96,8 +96,8 @@ def check_same_run(evidence: Evidence) -> list[str]:
 def run_checks(evidence: Evidence, checks: Mapping[str, CheckSpec]) -> None:
     """Run the episode checks and keep only the episodes that pass all of them in ``evidence.episodes``."""
     for spec in checks.values():
+        evidence.check_groups[spec.name] = spec.group
         if any(not evidence.has(key) for key in spec.requires):
-            evidence.skipped_checks[spec.name] = spec.group
             continue
         failed: dict[str, str] = {}
         applied = False
@@ -113,9 +113,6 @@ def run_checks(evidence: Evidence, checks: Mapping[str, CheckSpec]) -> None:
                 failed[episode.name] = reason
         if applied:
             evidence.failures[spec.name] = failed
-            evidence.check_groups[spec.name] = spec.group
-        else:
-            evidence.skipped_checks[spec.name] = spec.group
     failing = {name for failed in evidence.failures.values() for name in failed}
     evidence.episodes = [episode for episode in evidence.all_episodes if episode.name not in failing]
 
@@ -302,9 +299,8 @@ def format_report(report: Mapping[str, Any], gate: Mapping[str, str | None] | No
     lines = [" · ".join(title), " · ".join(verdict)]
     for name, entry in report["check_failures"].items():
         if entry["failed"]:
-            more = ", …" if entry["failed"] > len(entry["examples"]) else ""
             lines.append(
-                f"  ✗ {name} failed {_count(entry['failed'], 'episodes')}: {', '.join(entry['examples'])}{more}"
+                f"  ✗ {name} failed {_count(entry['failed'], 'episodes')}, e.g. {', '.join(entry['examples'])}"
             )
 
     rows = []

@@ -61,9 +61,8 @@ class Evidence:
     Attributes:
         all_episodes: The dataset's episodes.
         episodes: The episodes that passed every episode check; dataset metrics read these.
-        failures: Per episode check that ran, the failing episodes' names and reasons.
-        check_groups: Per episode check that ran, its group.
-        skipped_checks: Per episode check that did not apply to any episode, its group.
+        failures: Per episode check that applied to some episode, the failing episodes' names and reasons.
+        check_groups: Per episode check considered, its group; a check absent from ``failures`` did not apply.
         env_args: The dataset's ``env_args``; its ``autodata`` entry was written by the producer.
         result: Generation result, or None for a dataset without a run record or an interrupted run.
         run: The result's ``run`` block, or empty.
@@ -83,7 +82,6 @@ class Evidence:
         self.episodes = list(self.all_episodes)
         self.failures: dict[str, dict[str, str]] = {}
         self.check_groups: dict[str, str] = {}
-        self.skipped_checks: dict[str, str] = {}
         self.result = result
         self.run: Mapping[str, Any] = (result or {}).get("run", {})
         self.attempts = attempts

@@ -106,17 +106,12 @@ def demos_per_gpu_hour(ev: Evidence) -> Value:
 def time_to_dataset(ev: Evidence) -> Value:
     """Wall time of the automated steps, each process timed from its start: annotating the source and generating."""
     annotation = ev.source.env_args.get("autodata", {}).get("annotation", {}) if ev.source else {}
-    automated = {"setup_s": ev.run["setup_time_s"], "generation_s": ev.run["generation_time_s"]}
-    manual = {}
+    manual = annotation.get("mode") == "manual"
+    parts = {"setup_s": ev.run["setup_time_s"], "generation_s": ev.run["generation_time_s"]}
     if annotation:
-        # An entry written before the mode was recorded counts as automatic, as in version 1.
-        if annotation.get("mode", "auto") == "auto":
-            automated["annotation_s"] = annotation.get("setup_time_s", 0.0) + annotation["time_s"]
-        else:
-            automated["annotation_s"] = annotation["setup_time_s"]
-            manual["manual_annotation_s"] = annotation["time_s"]
-    details = {**automated, **manual, "note": "manual recording and manual annotation are not in the total"}
-    return Value(sum(automated.values()), n=1, details=details)
+        parts["annotation_s"] = annotation.get("setup_time_s", 0.0) + (0.0 if manual else annotation["time_s"])
+    details = {**parts, "manual_annotation_s": annotation["time_s"] if manual else None}
+    return Value(sum(parts.values()), n=1, details=details)
 
 
 @metric(
