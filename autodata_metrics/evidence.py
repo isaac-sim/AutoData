@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import copy
 import h5py
 import json
 import numpy as np
@@ -117,6 +118,18 @@ class Evidence:
         if head == "run":
             return _has_path(self.run, rest)
         return bool(self.episodes) and all(key in episode for episode in self.episodes)
+
+    @property
+    def entry(self) -> Mapping[str, Any]:
+        """The ``autodata`` entry of ``env_args``, or empty."""
+        return self.env_args.get("autodata", {})
+
+    def as_baseline_for(self, run: Evidence) -> Evidence:
+        """This source dataset, with the run's ``autodata`` fields where its own entry lacks them, so a baseline
+        reads the robot layout and limits."""
+        baseline = copy.copy(self)
+        baseline.env_args = {**self.env_args, "autodata": {**run.entry, **self.entry}}
+        return baseline
 
     @cached_property
     def camera_paths(self) -> frozenset[str]:

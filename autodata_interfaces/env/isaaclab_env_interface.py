@@ -46,8 +46,8 @@ if TYPE_CHECKING:
 def collect_autodata_entry(env: Any, embodiment_adapter: EmbodimentAdapter, run_id: str) -> dict[str, Any]:
     """The ``autodata`` entry of the datasets this env exports, read while the env is alive.
 
-    It holds the run id, the embodiment's metric context, and the robot's joint names with env 0's simulator
-    position limits [rad or m] and velocity limits [rad/s or m/s]. Unbounded limits are stored as None.
+    It holds the run id, the embodiment's metric context, and the robot's asset name and joint names with env 0's
+    simulator position limits [rad or m] and velocity limits [rad/s or m/s]. Unbounded limits are stored as None.
     :func:`~autodata_utils.dataset_metadata.merge_autodata_entry` writes it once the env has closed the file.
 
     Args:
@@ -59,6 +59,7 @@ def collect_autodata_entry(env: Any, embodiment_adapter: EmbodimentAdapter, run_
     robot = env.scene.articulations.get(embodiment_adapter.robot_asset_name)
     if robot is not None:
         entry["joints"] = {
+            "asset": embodiment_adapter.robot_asset_name,
             "names": list(robot.joint_names),
             "position_limits": _finite_or_none(as_torch(robot.data.joint_pos_limits)[0].cpu()),
             "velocity_limits": _finite_or_none(as_torch(robot.data.joint_vel_limits)[0].cpu()),

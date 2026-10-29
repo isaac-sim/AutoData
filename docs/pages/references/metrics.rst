@@ -128,6 +128,7 @@ When you add an algorithm or an embodiment:
 
 - An algorithm reports per-attempt facts by overriding ``attempt_extras()``. Metrics that require
   those facts then apply to its runs.
-- An embodiment's adapter describes its pose actions through ``metric_context()``.
+- An embodiment's adapter describes its pose actions through ``metric_context()``. Add datasheet
+  ``hardware_limits`` to its YAML to compute ``joint_limit_ratio``.
 - List the workflow's expected metrics in its end-to-end test, so a metric that stops applying fails
   the test.
