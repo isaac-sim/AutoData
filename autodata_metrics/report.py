@@ -18,7 +18,15 @@ from pathlib import Path
 from typing import Any
 
 from autodata_metrics.evidence import Evidence, read_env_args
-from autodata_metrics.registry import AREAS, REGISTERED_CHECKS, REGISTERED_METRICS, CheckSpec, MetricSpec, NotApplicable
+from autodata_metrics.registry import (
+    AREAS,
+    REGISTERED_CHECKS,
+    REGISTERED_METRICS,
+    CheckSpec,
+    MetricSpec,
+    NotApplicable,
+    Value,
+)
 from autodata_utils.generation_result import attempts_file_for, code_revision, input_record
 
 SCHEMA_VERSION = 1
@@ -34,7 +42,7 @@ def read_run(
     """
     result_path = Path(result_file)
     result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else None
-    warnings = []
+    warnings = [] if result_path.exists() else [f"{result_file} does not exist"]
     if result is not None and run_id is not None and result.get("run", {}).get("run_id") != run_id:
         warnings.append(f"{result_file} belongs to another run, so the run is reported from its attempt log")
         result = None
@@ -133,6 +141,8 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         return {**row, "status": "not_applicable", "reason": "no valid episodes"}
     missing = next((key for key in spec.requires if not evidence.has(key)), None)
     if missing is not None:
+        head = missing.partition(".")[0]
+        missing = head if head in ("attempts", "source") and not evidence.has(head) else missing
         return {**row, "status": "not_applicable", "reason": f"missing {missing}", "missing": missing}
     try:
         value = spec.compute(evidence)
@@ -140,28 +150,45 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         return {**row, "status": "not_applicable", "reason": str(exc)}
     except Exception as exc:  # A failing metric must not sink the report of every other metric.
         return {**row, "status": "error", "reason": f"{type(exc).__name__}: {exc}"}
-    if not _is_finite(value.value):
-        return {**row, "status": "error", "reason": f"non-finite value {value.value}"}
-    if not isinstance(value.n, numbers.Integral):
-        return {**row, "status": "error", "reason": f"sample count {value.n!r} is not an integer"}
-    row = {**row, "status": "ok", "value": value.value, "n": value.n, "details": _finite_or_none(value.details)}
+    problem = _unreportable(value)
+    if problem is not None:
+        return {**row, "status": "error", "reason": problem}
+    row = {
+        **row,
+        "status": "ok",
+        "value": _finite_or_none(value.value),
+        "n": int(value.n),
+        "details": _finite_or_none(value.details),
+    }
     if spec.baseline and evidence.source is not None:
         row["baseline"] = evaluate(spec, evidence.source).get("value")
     return row
 
 
+def _unreportable(value: Any) -> str | None:
+    """Why a metric's return value cannot be reported, or None."""
+    if not isinstance(value, Value):
+        return f"returned {type(value).__name__}, not a Value"
+    if not _is_finite(value.value):
+        return f"value {value.value!r} is not a finite number or a mapping of finite numbers"
+    if not isinstance(value.n, numbers.Integral):
+        return f"sample count {value.n!r} is not an integer"
+    if not isinstance(value.details, Mapping):
+        return f"details {value.details!r} are not a mapping"
+    return None
+
+
 def _is_finite(value: Any) -> bool:
     """Whether ``value`` is a finite number, or a mapping of finite numbers."""
-    if isinstance(value, Mapping):
-        return all(_is_finite(item) for item in value.values())
-    return isinstance(value, numbers.Real) and math.isfinite(value)
+    items = value.values() if isinstance(value, Mapping) else [value]
+    return all(isinstance(item, numbers.Real) and math.isfinite(item) for item in items)
 
 
 def _finite_or_none(value: Any) -> Any:
     """``value`` with every non-finite number replaced by None, so the report stays valid JSON."""
     value = value.tolist() if hasattr(value, "tolist") else value
     if isinstance(value, Mapping):
-        return {key: _finite_or_none(item) for key, item in value.items()}
+        return {str(key): _finite_or_none(item) for key, item in value.items()}
     if isinstance(value, list | tuple):
         return [_finite_or_none(item) for item in value]
     return None if isinstance(value, float) and not math.isfinite(value) else value
@@ -202,12 +229,8 @@ def build_report(
                 run_checks(checked, REGISTERED_CHECKS if checks is None else checks)
         metrics = REGISTERED_METRICS if metrics is None else metrics
         rows = {name: evaluate(spec, evidence) for name, spec in metrics.items()}
-        num_episodes = len(evidence.all_episodes)
-        num_valid = len(evidence.episodes)
-        failures = {
-            name: {"failed": len(failed), "examples": dict(list(failed.items())[:3])}
-            for name, failed in evidence.failures.items()
-        }
+        checked = _check_summary(evidence)
+        source_checked = _check_summary(source_evidence) if source_evidence is not None else None
     return {
         "schema_version": SCHEMA_VERSION,
         "inputs": {
@@ -217,55 +240,84 @@ def build_report(
             "run_id": run_id,
             "revision": code_revision(),
         },
-        "num_episodes": num_episodes,
-        "num_valid_episodes": num_valid,
-        "check_failures": failures,
+        **checked,
+        "source_checks": source_checked,
         "warnings": warnings,
         "metrics": rows,
     }
 
 
-def gate_results(report: Mapping[str, Any], gate_file: str) -> dict[str, str | None]:
-    """Per metric in ``gate_file``, None when the report meets its bounds, else why it does not.
+def _check_summary(evidence: Evidence) -> dict[str, Any]:
+    return {
+        "num_episodes": len(evidence.all_episodes),
+        "num_valid_episodes": len(evidence.episodes),
+        "check_failures": {
+            name: {"failed": len(failed), "examples": dict(list(failed.items())[:3])}
+            for name, failed in evidence.failures.items()
+        },
+    }
 
-    The gate maps metric names to ``min``/``max`` bounds, an optional ``key`` into a dict value (default: the
-    metric's primary entry) and an optional ``version``. A gated metric that is missing, not applicable, errored or
-    at another version fails.
+
+def load_gate(gate_file: str) -> dict[str, dict[str, Any]]:
+    """The gate in ``gate_file``: per metric, optional ``min``/``max`` bounds, a ``key`` into a dict value (default: the
+    metric's primary entry) and a ``version``.
 
     Raises:
-        ValueError: If a gate entry has a bound that is not a finite number, or bounds a dict value without a
-            ``key`` and the metric has no primary entry.
+        ValueError: If the file does not map metric names to bounds, or a bound is not a finite number.
     """
-    results = {}
-    for name, bound in yaml.safe_load(Path(gate_file).read_text(encoding="utf-8")).items():
-        limits = [bound[side] for side in ("min", "max") if side in bound]
-        if not all(_is_bound(limit) for limit in limits):
-            raise ValueError(f"Gate entry {name!r} has a bound that is not a finite number: {limits}.")
-        results[name] = _gate_failure(name, report["metrics"].get(name), bound)
-    return results
+    gate = yaml.safe_load(Path(gate_file).read_text(encoding="utf-8"))
+    if not isinstance(gate, Mapping):
+        raise ValueError(f"{gate_file} must map metric names to bounds, such as 'name: {{min: 0.5}}'.")
+    entries = {}
+    for name, bound in gate.items():
+        bound = {} if bound is None else bound
+        if not isinstance(bound, Mapping):
+            raise ValueError(f"Gate entry {name!r} must map bounds, such as {{min: 0.5}}, not {bound!r}.")
+        entries[name] = {**bound, **{side: _bound(name, bound[side]) for side in ("min", "max") if side in bound}}
+    return entries
 
 
-def _gate_failure(name: str, row: Mapping[str, Any] | None, bound: Mapping[str, Any]) -> str | None:
+def _bound(name: str, limit: Any) -> float:
+    """A gate bound as a number: YAML reads ``1e-3`` as a string, and ``true`` as a bool, which is not a bound."""
+    number = limit
+    if isinstance(limit, str):
+        with contextlib.suppress(ValueError):
+            number = float(limit)
+    if not isinstance(number, int | float) or isinstance(number, bool) or not math.isfinite(number):
+        raise ValueError(f"Gate entry {name!r} has a bound that is not a finite number: {limit!r}.")
+    return number
+
+
+def gate_results(report: Mapping[str, Any], gate: Mapping[str, Mapping[str, Any]]) -> dict[str, str | None]:
+    """Per gated metric, None when the report meets its bounds, else why it does not.
+
+    A gated metric that is missing, not applicable, errored or at another version fails.
+
+    Args:
+        report: A report from :func:`build_report`.
+        gate: A gate from :func:`load_gate`.
+    """
+    return {name: _gate_failure(report["metrics"].get(name), bound) for name, bound in gate.items()}
+
+
+def _gate_failure(row: Mapping[str, Any] | None, bound: Mapping[str, Any]) -> str | None:
     if row is None or row["status"] != "ok":
         return "not reported" if row is None else row["status"]
     if "version" in bound and bound["version"] != row["version"]:
         return f"version {row['version']}, gate written for version {bound['version']}"
-    key = bound.get("key", row["primary"])
-    value = row["value"].get(key) if key else row["value"]
+    value = row["value"]
     if isinstance(value, Mapping):
-        raise ValueError(f"Gate entry {name!r} needs a key into {sorted(value)}.")
-    if not _is_finite(value):
-        return f"{value!r} is not a finite number"
+        key = bound.get("key", row["primary"])
+        if key not in value:
+            return f"needs a key into {sorted(value)}"
+        value = value[key]
+    elif "key" in bound:
+        return f"key {bound['key']!r} given for a value without entries"
     if "min" in bound and value < bound["min"]:
         return f"{value:.4g} is below {bound['min']}"
     if "max" in bound and value > bound["max"]:
         return f"{value:.4g} is above {bound['max']}"
     return None
-
-
-def _is_bound(limit: Any) -> bool:
-    """Whether a gate bound is a finite number; YAML reads ``true`` and ``false`` as bools, which are not bounds."""
-    return isinstance(limit, int | float) and not isinstance(limit, bool) and math.isfinite(limit)
 
 
 CONSOLE_WIDTH = 100
@@ -289,7 +341,11 @@ def format_report(report: Mapping[str, Any], gate: Mapping[str, str | None] | No
 
     title = [f"AutoData metrics · {Path(inputs['dataset']['path']).name}"]
     title += [f"run {inputs['run_id'][:8]}"] if inputs["run_id"] else []
-    title += [f"source {Path(inputs['source']['path']).name}"] if inputs["source"] else []
+    if inputs["source"]:
+        valid, total = report["source_checks"]["num_valid_episodes"], report["source_checks"]["num_episodes"]
+        title.append(
+            f"source {Path(inputs['source']['path']).name}" + (f" ({valid}/{total} valid)" if valid < total else "")
+        )
     verdict = [f"{report['num_valid_episodes']}/{report['num_episodes']} episodes valid", f"{len(computed)} computed"]
     verdict += [f"{len(skipped)} not computed"] if skipped else []
     verdict += [_count(len(errors), "errors")] if errors else []
@@ -351,14 +407,12 @@ def _count(count: int, noun: str) -> str:
 def _based_on(row: Mapping[str, Any]) -> str:
     """The sample count, with a rate's 95% interval and a pass rate's check coverage."""
     parts = [_count(row["n"], row["sample"])]
-    interval = row["details"].get("interval_95") or []
-    if len(interval) == 2 and all(isinstance(bound, int | float) for bound in interval):
+    interval, run, skipped = (row["details"].get(key) for key in ("interval_95", "checks_run", "checks_skipped"))
+    if isinstance(interval, list) and len(interval) == 2 and all(isinstance(bound, int | float) for bound in interval):
         low, high = (_console_number(bound, row["unit"]) for bound in interval)
         parts.append(f"95% CI {low.removesuffix('%')}–{high}")
-    skipped = len(row["details"].get("checks_skipped") or [])
-    if skipped:
-        run = len(row["details"].get("checks_run") or [])
-        parts.append(f"{run} of {run + skipped} checks")
+    if isinstance(run, list) and isinstance(skipped, list) and skipped:
+        parts.append(f"{len(run)} of {len(run) + len(skipped)} checks")
     return " · ".join(parts)
 
 
@@ -374,7 +428,8 @@ def _console_number(value: float, unit: str) -> str:
     """Fractions as percentages, seconds as durations; other units follow the number unless they hold a space, which
     marks a description of the quantity rather than a unit."""
     if unit.startswith("fraction"):
-        return f"{100 * value:.3g}%"
+        percent = f"{100 * value:.3g}%"
+        return ">99.9%" if percent == "100%" and value < 1 else percent
     if unit == "s" or unit.startswith("s "):
         return _duration(value)
     text = f"{value:,.0f}" if abs(value) >= 100 else re.sub(r"e\+?(-?)0*(\d)", r"e\1\2", f"{value:.3g}")
@@ -399,12 +454,14 @@ def _not_computed_because(row: Mapping[str, Any], inputs: Mapping[str, Any]) -> 
     missing = row.get("missing")
     if missing is None:
         return row["reason"]
-    if missing.startswith("attempts.extras."):
-        return "not reported by this algorithm"
-    if missing.partition(".")[0] == "source":
-        return "needs --source" if inputs["source"] is None else "needs a --source recorded with --record_metric_inputs"
+    if missing == "source":
+        return "needs --source"
+    if missing.startswith("source."):
+        return "needs a --source recorded with --record_metric_inputs"
     if missing == "attempts" or missing.startswith("run."):
         return "needs --result_file" if inputs["result_file"] is None else "needs --record_metric_inputs"
+    if missing.startswith("attempts.extras."):
+        return "not reported by this algorithm"
     if missing.startswith(_METRIC_INPUT_KEYS):
         return "needs --record_metric_inputs"
     return row["reason"]

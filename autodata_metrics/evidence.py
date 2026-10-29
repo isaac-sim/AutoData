@@ -25,7 +25,10 @@ def _has_path(record: Any, dotted_key: str) -> bool:
 def read_env_args(h5_file: h5py.File) -> dict[str, Any]:
     """The dataset's ``env_args``, or empty when they are not a JSON object."""
     raw_env_args = h5_file["data"].attrs.get("env_args", "{}")
-    env_args = json.loads(raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args)
+    try:
+        env_args = json.loads(raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args)
+    except ValueError:
+        return {}
     return env_args if isinstance(env_args, dict) else {}
 
 

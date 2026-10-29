@@ -145,12 +145,12 @@ def no_frozen_frames(episode: Episode, ev: Evidence) -> str | None:
 
 
 def _pass_rate(ev: Evidence, group: str, none_apply: str) -> Value:
+    if not ev.all_episodes:
+        raise NotApplicable("the dataset has no episodes")
     considered = [name for name, check_group in ev.check_groups.items() if check_group == group]
     names = [name for name in considered if name in ev.failures]
     if not names:
         raise NotApplicable(none_apply)
-    if not ev.all_episodes:
-        raise NotApplicable("the dataset has no episodes")
     failing = {episode for name in names for episode in ev.failures[name]}
     details = {"checks_run": names, "checks_skipped": [name for name in considered if name not in ev.failures]}
     return Value(1 - len(failing) / len(ev.all_episodes), n=len(ev.all_episodes), details=details)

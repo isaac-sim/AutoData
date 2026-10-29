@@ -100,13 +100,14 @@ def test_image_checks_flag_black_frozen_and_missing_frames(tmp_path):
 
 def test_final_success_rate_reports_the_source_baseline(tmp_path):
     ending = [{"actions": np.zeros((2, 7)), "step_success": np.array([True, held])} for held in (True, False)]
-    source = _write(tmp_path / "source.hdf5", ending[:1])
+    broken = {"actions": np.full((2, 7), np.nan), "step_success": np.array([True, False])}
+    source = _write(tmp_path / "source.hdf5", [ending[0], broken])
 
-    row = build_report(_write(tmp_path / "d.hdf5", ending), source=source, metrics=_metrics("final_success_rate"))[
-        "metrics"
-    ]["final_success_rate"]
+    report = build_report(_write(tmp_path / "d.hdf5", ending), source=source, metrics=_metrics("final_success_rate"))
 
+    row = report["metrics"]["final_success_rate"]
     assert (row["value"], row["baseline"]) == (0.5, 1.0)
+    assert (report["source_checks"]["num_valid_episodes"], report["source_checks"]["num_episodes"]) == (1, 2)
 
 
 def test_action_rotation_error_measures_commanded_rotations(tmp_path):

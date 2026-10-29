@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from autodata_metrics import REGISTERED_METRICS, MetricSpec, Value, build_report, format_report, gate_results
+from autodata_metrics import REGISTERED_METRICS, MetricSpec, Value, build_report, format_report, gate_results, load_gate
 
 
 def _spec(name: str, compute, requires: tuple[str, ...] = ()) -> MetricSpec:
@@ -111,23 +111,38 @@ def test_report_refuses_inputs_that_disagree_with_their_run(tmp_path):
         build_report(dataset, result_file=result_file, source=_dataset(tmp_path / "source.hdf5"), metrics={})
 
 
-def test_gate_flags_violations_and_refuses_a_non_finite_bound(tmp_path):
+def test_gate_flags_violations_and_refuses_a_malformed_gate(tmp_path):
     row = {"status": "ok", "value": 0.4, "primary": None, "version": 2}
     missing = {"status": "ok", "value": {"p50": 1.0}, "primary": "p95", "version": 1}
-    report = {"metrics": {"low": row, "old": row, "fine": row, "absent": {"status": "not_applicable"}, "gap": missing}}
+    metrics = {
+        "low": row,
+        "old": row,
+        "fine": row,
+        "keyed": row,
+        "absent": {"status": "not_applicable"},
+        "gap": missing,
+    }
     gate = tmp_path / "gate.yaml"
     gate.write_text(
-        "low: {min: 0.5}\nold: {version: 1}\nfine: {min: 0.3, max: 0.5, version: 2}\nabsent: {min: 0}\ngap: {max: 2}\n"
+        "low: {min: 0.5}\nold: {version: 1}\nfine: {min: 0.3, max: 5e-1, version: 2}\nkeyed: {key: p95}\n"
+        "absent: {min: 0}\ngap: {max: 2}\n"
     )
 
-    results = gate_results(report, str(gate))
+    results = gate_results({"metrics": metrics}, load_gate(str(gate)))
 
-    assert [name for name, reason in results.items() if reason is not None] == ["low", "old", "absent", "gap"]
+    assert [name for name, reason in results.items() if reason is not None] == ["low", "old", "keyed", "absent", "gap"]
     assert results["fine"] is None
-    for bad_bound in (".nan", "false", "{p95: 1}"):
-        gate.write_text(f"absent: {{min: {bad_bound}}}\n")
-        with pytest.raises(ValueError, match="not a finite number"):
-            gate_results(report, str(gate))
+    for malformed in (
+        "absent: {min: .nan}",
+        "absent: {min: false}",
+        "absent: {min: {p95: 1}}",
+        "absent: 0.5",
+        "[low]",
+        "",
+    ):
+        gate.write_text(malformed + "\n")
+        with pytest.raises(ValueError):
+            load_gate(str(gate))
 
 
 def test_non_finite_numbers_never_reach_the_report(tmp_path):
@@ -140,7 +155,7 @@ def test_non_finite_numbers_never_reach_the_report(tmp_path):
     gate.write_text("m: {min: 0}\n")
 
     assert report["metrics"]["m"]["status"] == "error"
-    assert gate_results(report, str(gate)) == {"m": "error"}
+    assert gate_results(report, load_gate(str(gate))) == {"m": "error"}
     assert report["metrics"]["d"]["details"] == {"interval_95": [0.5, None]}
 
 
@@ -154,19 +169,19 @@ def test_console_summary_marks_the_gate_and_says_how_to_compute_the_rest(tmp_pat
     gate = tmp_path / "gate.yaml"
     gate.write_text("rate: {min: 0.5}\n")
 
-    summary = format_report(report, gate_results(report, str(gate)))
+    summary = format_report(report, gate_results(report, load_gate(str(gate))))
 
     assert "gate failed on 1 of 1" in summary
     assert re.search(r"✗ rate +25% +4 samples", summary)
     assert "needs --record_metric_inputs: held" in summary
-    assert "not reported by this algorithm: planned" in summary
+    assert "needs --result_file: planned" in summary
 
 
 def test_degenerate_inputs_are_reported_without_breaking_the_summary_or_json(tmp_path):
     path = tmp_path / "d.hdf5"
     with h5py.File(path, "w") as h5_file:
         data = h5_file.create_group("data")
-        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0"})
+        data.attrs["env_args"] = "{'env_name': 'not JSON'}"
         odd = data.create_group("demo_0")
         odd.create_dataset("actions", data=np.zeros((2, 7)))
         odd.create_dataset("obs/robot/root_pose", data=1.0)
@@ -176,17 +191,28 @@ def test_degenerate_inputs_are_reported_without_breaking_the_summary_or_json(tmp
         "action_rotation_error": REGISTERED_METRICS["action_rotation_error"],
         "open": _spec("open", lambda ev: Value(0.5, n=2, details={"interval_95": [0.1, float("inf")]})),
         "partial": replace(_spec("partial", lambda ev: Value({"p50": 1.0}, n=1)), primary="p95"),
+        "almost": _spec("almost", lambda ev: Value(0.9995, n=2000, details={np.int64(3): 1})),
         "uncounted": _spec("uncounted", lambda ev: Value(1.0, n=None)),
+        "bare": _spec("bare", lambda ev: 0.5),
+        "nested": _spec("nested", lambda ev: Value({"left": {"p95": 0.1}}, n=1)),
+        "loose": _spec("loose", lambda ev: Value(0.5, n=1, details=None)),
     }
 
-    report = build_report(str(path), metrics=metrics)
+    report = build_report(str(path), result_file=str(tmp_path / "typo.json"), metrics=metrics)
 
     summary = format_report(report)
     json.dumps(report, allow_nan=False)
     assert report["num_valid_episodes"] == 1 and "aligned_lengths" in report["check_failures"]
     assert report["metrics"]["action_rotation_error"]["status"] == "not_applicable"
     assert re.search(r"open +50% +2 samples$", summary, re.M) and re.search(r"partial +p50 100%", summary)
-    assert report["metrics"]["uncounted"]["status"] == "error"
+    assert re.search(r"almost +>99.9%", summary)
+    assert {name for name, row in report["metrics"].items() if row["status"] == "error"} == {
+        "uncounted",
+        "bare",
+        "nested",
+        "loose",
+    }
+    assert "typo.json does not exist" in report["warnings"][0]
 
 
 def test_metrics_import_without_torch_or_isaaclab():

@@ -20,4 +20,4 @@ from autodata_metrics.registry import (
     check,
     metric,
 )
-from autodata_metrics.report import build_report, format_report, gate_results
+from autodata_metrics.report import build_report, format_report, gate_results, load_gate

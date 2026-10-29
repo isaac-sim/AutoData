@@ -38,8 +38,9 @@ The command prints a summary; ``--report_file`` writes the full report, with eve
 - The second line is the verdict: valid episodes, how many metrics were computed, and, with ``--gate``,
   the gate, whose metrics are marked ✓ or ✗.
 - **Value** is the metric's value; a metric with percentiles shows the one a gate checks by default.
-  **Source** is the same metric on the ``--source`` dataset. **Based on** is the sample count, with a
-  rate's 95% interval and, when some checks did not apply, how many checks a pass rate rests on.
+  **Source** is the same metric on the ``--source`` dataset's valid episodes. **Based on** is the sample
+  count, with a rate's 95% interval and, when some checks did not apply, how many checks a pass rate rests
+  on.
 - **Not computed** groups the metrics that do not apply by what would make them apply. A metric that
   fails is listed under **Errors**; the other metrics are still computed.
 
