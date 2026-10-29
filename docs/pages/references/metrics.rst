@@ -33,7 +33,7 @@ The command prints a summary; ``--report_file`` writes the full report, with eve
 
    NOT COMPUTED
      not reported by this algorithm: planning_failure_rate, planning_time
-     needs a --source recorded with --record_metric_inputs: annotation_pass_rate
+     needs a --source annotated with --record_metric_inputs: annotation_pass_rate
 
 - The second line is the verdict: valid episodes, how many metrics were computed, and, with ``--gate``,
   the gate, whose metrics are marked ✓ or ✗.
@@ -61,7 +61,8 @@ Gating
    planning_time: {max: 5.0, key: p95}
 
 A gated metric also violates the gate if it is not applicable, fails, or reports a different
-``version``. A bound that is not a finite number is an error.
+``version``. A gate entry may set ``min``, ``max``, ``key`` and ``version``; any other field, or a bound
+that is not a finite number, is an error.
 
 Episode checks
 --------------

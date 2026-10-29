@@ -13,7 +13,7 @@ import numbers
 import re
 import textwrap
 import yaml
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +41,9 @@ def read_run(
     another run is set aside and the run is reported from its own attempt log.
     """
     result_path = Path(result_file)
-    result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else None
+    result = _read_json(result_path) if result_path.exists() else None
+    if result is not None and not isinstance(result, dict):
+        raise ValueError(f"{result_file} is not a generation result.")
     warnings = [] if result_path.exists() else [f"{result_file} does not exist"]
     if result is not None and run_id is not None and result.get("run", {}).get("run_id") != run_id:
         warnings.append(f"{result_file} belongs to another run, so the run is reported from its attempt log")
@@ -55,8 +57,16 @@ def read_run(
     attempts = None
     if attempts_path.exists():
         lines = attempts_path.read_text(encoding="utf-8").splitlines()
-        attempts = [json.loads(line) for line in lines if line.strip()]
+        attempts = [_read_json(attempts_path, line) for line in lines if line.strip()]
     return result, attempts, warnings
+
+
+def _read_json(path: Path, text: str | None = None) -> Any:
+    """JSON from ``text``, or the whole file; a parse error names the file."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8") if text is None else text)
+    except ValueError as exc:
+        raise ValueError(f"{path} is not valid JSON: {exc}") from exc
 
 
 def check_same_run(evidence: Evidence) -> list[str]:
@@ -258,21 +268,43 @@ def _check_summary(evidence: Evidence) -> dict[str, Any]:
     }
 
 
+_GATE_FIELDS = {"min", "max", "key", "version"}
+
+
+class _GateLoader(yaml.SafeLoader):
+    """Safe YAML loading that refuses a repeated key, which plain YAML silently resolves to its last value."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+        keys = [self.construct_object(key_node, deep=deep) for key_node, _ in node.value]
+        repeated = sorted({repr(key) for key in keys if isinstance(key, Hashable) and keys.count(key) > 1})
+        if repeated:
+            raise yaml.constructor.ConstructorError(None, None, f"repeated keys {', '.join(repeated)}", node.start_mark)
+        return super().construct_mapping(node, deep=deep)
+
+
 def load_gate(gate_file: str) -> dict[str, dict[str, Any]]:
     """The gate in ``gate_file``: per metric, optional ``min``/``max`` bounds, a ``key`` into a dict value (default: the
     metric's primary entry) and a ``version``.
 
     Raises:
-        ValueError: If the file does not map metric names to bounds, or a bound is not a finite number.
+        ValueError: If the file does not map metric names to these fields, a bound is not a finite number, the key is
+            not a name or the version not an integer.
     """
-    gate = yaml.safe_load(Path(gate_file).read_text(encoding="utf-8"))
+    try:
+        gate = yaml.load(Path(gate_file).read_text(encoding="utf-8"), Loader=_GateLoader)
+    except (OSError, yaml.YAMLError) as exc:
+        raise ValueError(f"{gate_file} is not a readable YAML gate: {exc}") from exc
     if not isinstance(gate, Mapping):
         raise ValueError(f"{gate_file} must map metric names to bounds, such as 'name: {{min: 0.5}}'.")
     entries = {}
     for name, bound in gate.items():
         bound = {} if bound is None else bound
-        if not isinstance(bound, Mapping):
-            raise ValueError(f"Gate entry {name!r} must map bounds, such as {{min: 0.5}}, not {bound!r}.")
+        if not isinstance(bound, Mapping) or not set(bound) <= _GATE_FIELDS:
+            raise ValueError(f"Gate entry {name!r} must map some of {sorted(_GATE_FIELDS)}, not {bound!r}.")
+        if not isinstance(bound.get("key", ""), str):
+            raise ValueError(f"Gate entry {name!r} has a key that is not an entry name such as p95: {bound['key']!r}.")
+        if isinstance(bound.get("version", 1), bool) or not isinstance(bound.get("version", 1), int):
+            raise ValueError(f"Gate entry {name!r} has a version that is not an integer: {bound['version']!r}.")
         entries[name] = {**bound, **{side: _bound(name, bound[side]) for side in ("min", "max") if side in bound}}
     return entries
 
@@ -457,7 +489,7 @@ def _not_computed_because(row: Mapping[str, Any], inputs: Mapping[str, Any]) -> 
     if missing == "source":
         return "needs --source"
     if missing.startswith("source."):
-        return "needs a --source recorded with --record_metric_inputs"
+        return "needs a --source annotated with --record_metric_inputs"
     if missing == "attempts" or missing.startswith("run."):
         return "needs --result_file" if inputs["result_file"] is None else "needs --record_metric_inputs"
     if missing.startswith("attempts.extras."):

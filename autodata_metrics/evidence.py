@@ -23,13 +23,27 @@ def _has_path(record: Any, dotted_key: str) -> bool:
 
 
 def read_env_args(h5_file: h5py.File) -> dict[str, Any]:
-    """The dataset's ``env_args``, or empty when they are not a JSON object."""
+    """The dataset's ``env_args``, or empty when it records none.
+
+    Raises:
+        ValueError: If ``env_args`` is not a JSON object, or its ``autodata`` entry lacks the run id and exported
+            episode count; a run cannot be verified against corrupt metadata.
+    """
     raw_env_args = h5_file["data"].attrs.get("env_args", "{}")
     try:
         env_args = json.loads(raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args)
-    except ValueError:
-        return {}
-    return env_args if isinstance(env_args, dict) else {}
+    except (TypeError, ValueError):
+        env_args = None
+    if not isinstance(env_args, dict):
+        raise ValueError(f"{h5_file.filename}: env_args are not a JSON object.")
+    entry = env_args.get("autodata")
+    if "autodata" in env_args and not (
+        isinstance(entry, dict)
+        and isinstance(entry.get("run_id"), str)
+        and isinstance(entry.get("exported_episodes"), int)
+    ):
+        raise ValueError(f"{h5_file.filename}: the autodata entry lacks its run_id or exported_episodes.")
+    return env_args
 
 
 class Episode:

@@ -110,6 +110,12 @@ def test_report_refuses_inputs_that_disagree_with_their_run(tmp_path):
     with pytest.raises(ValueError, match="not the one the run started from"):
         build_report(dataset, result_file=result_file, source=_dataset(tmp_path / "source.hdf5"), metrics={})
 
+    for corrupt, reason in (("{'run_id': 'run-a'}", "not a JSON object"), ('{"autodata": null}', "autodata entry")):
+        with h5py.File(dataset, "r+") as h5_file:
+            h5_file["data"].attrs["env_args"] = corrupt
+        with pytest.raises(ValueError, match=reason):
+            build_report(dataset, result_file=_run(tmp_path, "run-a"), metrics={})
+
 
 def test_gate_flags_violations_and_refuses_a_malformed_gate(tmp_path):
     row = {"status": "ok", "value": 0.4, "primary": None, "version": 2}
@@ -136,6 +142,11 @@ def test_gate_flags_violations_and_refuses_a_malformed_gate(tmp_path):
         "absent: {min: .nan}",
         "absent: {min: false}",
         "absent: {min: {p95: 1}}",
+        "absent: {mn: 0.5}",
+        "gap: {key: [p95]}",
+        "old: {version: '1'}",
+        "low: {min: 0.5}\nlow: {max: 1.0}",
+        "low: {min: 0.5",
         "absent: 0.5",
         "[low]",
         "",
@@ -181,7 +192,7 @@ def test_degenerate_inputs_are_reported_without_breaking_the_summary_or_json(tmp
     path = tmp_path / "d.hdf5"
     with h5py.File(path, "w") as h5_file:
         data = h5_file.create_group("data")
-        data.attrs["env_args"] = "{'env_name': 'not JSON'}"
+        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0"})
         odd = data.create_group("demo_0")
         odd.create_dataset("actions", data=np.zeros((2, 7)))
         odd.create_dataset("obs/robot/root_pose", data=1.0)

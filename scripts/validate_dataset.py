@@ -199,7 +199,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.report and results[0].num_episodes is not None:
         for module in args.metrics:
             importlib.import_module(module)
-        report = build_report(args.files[0], result_file=args.result_file, source=args.source)
+        source = validate_file(args.source) if args.source else None
+        if source is not None and source.num_episodes is None:
+            print(f"\nReport refused: {args.source}: {'; '.join(source.issues)}")
+            return 1
+        try:
+            report = build_report(args.files[0], result_file=args.result_file, source=args.source)
+        except ValueError as exc:
+            print(f"\nReport refused: {exc}")
+            return 1
         results = gate_results(report, gate) if gate is not None else None
         print()
         print(format_report(report, results))
