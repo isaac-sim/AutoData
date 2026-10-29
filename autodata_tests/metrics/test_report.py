@@ -5,14 +5,16 @@
 
 import h5py
 import json
+import numpy as np
 import re
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from autodata_metrics import MetricSpec, Value, build_report, format_report, gate_results
+from autodata_metrics import REGISTERED_METRICS, MetricSpec, Value, build_report, format_report, gate_results
 
 
 def _spec(name: str, compute, requires: tuple[str, ...] = ()) -> MetricSpec:
@@ -158,6 +160,33 @@ def test_console_summary_marks_the_gate_and_says_how_to_compute_the_rest(tmp_pat
     assert re.search(r"✗ rate +25% +4 samples", summary)
     assert "needs --record_metric_inputs: held" in summary
     assert "not reported by this algorithm: planned" in summary
+
+
+def test_degenerate_inputs_are_reported_without_breaking_the_summary_or_json(tmp_path):
+    path = tmp_path / "d.hdf5"
+    with h5py.File(path, "w") as h5_file:
+        data = h5_file.create_group("data")
+        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0"})
+        odd = data.create_group("demo_0")
+        odd.create_dataset("actions", data=np.zeros((2, 7)))
+        odd.create_dataset("obs/robot/root_pose", data=1.0)
+        odd.create_group("obs/datagen_info/target_eef_pose")
+        data.create_group("demo_1").create_dataset("actions", data=np.zeros((0, 7)))
+    metrics = {
+        "action_rotation_error": REGISTERED_METRICS["action_rotation_error"],
+        "open": _spec("open", lambda ev: Value(0.5, n=2, details={"interval_95": [0.1, float("inf")]})),
+        "partial": replace(_spec("partial", lambda ev: Value({"p50": 1.0}, n=1)), primary="p95"),
+        "uncounted": _spec("uncounted", lambda ev: Value(1.0, n=None)),
+    }
+
+    report = build_report(str(path), metrics=metrics)
+
+    summary = format_report(report)
+    json.dumps(report, allow_nan=False)
+    assert report["num_valid_episodes"] == 1 and "aligned_lengths" in report["check_failures"]
+    assert report["metrics"]["action_rotation_error"]["status"] == "not_applicable"
+    assert re.search(r"open +50% +2 samples$", summary, re.M) and re.search(r"partial +p50 100%", summary)
+    assert report["metrics"]["uncounted"]["status"] == "error"
 
 
 def test_metrics_import_without_torch_or_isaaclab():

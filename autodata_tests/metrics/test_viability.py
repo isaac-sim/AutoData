@@ -30,7 +30,7 @@ def test_attempts_before_stop_keeps_attempts_started_before_the_first_env_finish
     assert attempts_before_stop(short_failures, num_envs=2) is None
 
 
-def test_time_to_dataset_counts_automated_steps_and_keeps_manual_annotation_apart():
+def test_time_to_dataset_counts_only_annotation_recorded_as_automatic():
     run = {"setup_time_s": 20.0, "generation_time_s": 80.0}
 
     def measured(annotation: dict):
@@ -40,6 +40,8 @@ def test_time_to_dataset_counts_automated_steps_and_keeps_manual_annotation_apar
 
     automatic = measured({"mode": "auto", "setup_time_s": 15.0, "time_s": 60.0})
     manual = measured({"mode": "manual", "setup_time_s": 15.0, "time_s": 600.0})
+    unknown = measured({"time_s": 60.0})
 
     assert automatic.value == 175.0
-    assert (manual.value, manual.details["manual_annotation_s"]) == (115.0, 600.0)
+    assert (manual.value, manual.details["uncounted_annotation_s"]) == (115.0, 600.0)
+    assert (unknown.value, unknown.details["uncounted_annotation_s"]) == (100.0, 60.0)

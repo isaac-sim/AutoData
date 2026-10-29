@@ -104,13 +104,18 @@ def demos_per_gpu_hour(ev: Evidence) -> Value:
     version=2,
 )
 def time_to_dataset(ev: Evidence) -> Value:
-    """Wall time of the automated steps, each process timed from its start: annotating the source and generating."""
+    """Wall time of the automated steps, each process timed from its start: annotating the source and generating.
+
+    Annotation that was manual, or recorded without its mode, is reported in ``uncounted_annotation_s`` instead.
+    """
     annotation = ev.source.env_args.get("autodata", {}).get("annotation", {}) if ev.source else {}
-    manual = annotation.get("mode") == "manual"
     parts = {"setup_s": ev.run["setup_time_s"], "generation_s": ev.run["generation_time_s"]}
+    uncounted = None
     if annotation:
-        parts["annotation_s"] = annotation.get("setup_time_s", 0.0) + (0.0 if manual else annotation["time_s"])
-    details = {**parts, "manual_annotation_s": annotation["time_s"] if manual else None}
+        automatic = annotation.get("mode") == "auto"
+        parts["annotation_s"] = annotation.get("setup_time_s", 0.0) + (annotation["time_s"] if automatic else 0.0)
+        uncounted = None if automatic else annotation["time_s"]
+    details = {**parts, "annotation_mode": annotation.get("mode"), "uncounted_annotation_s": uncounted}
     return Value(sum(parts.values()), n=1, details=details)
 
 

@@ -142,6 +142,8 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         return {**row, "status": "error", "reason": f"{type(exc).__name__}: {exc}"}
     if not _is_finite(value.value):
         return {**row, "status": "error", "reason": f"non-finite value {value.value}"}
+    if not isinstance(value.n, numbers.Integral):
+        return {**row, "status": "error", "reason": f"sample count {value.n!r} is not an integer"}
     row = {**row, "status": "ok", "value": value.value, "n": value.n, "details": _finite_or_none(value.details)}
     if spec.baseline and evidence.source is not None:
         row["baseline"] = evaluate(spec, evidence.source).get("value")
@@ -349,12 +351,13 @@ def _count(count: int, noun: str) -> str:
 def _based_on(row: Mapping[str, Any]) -> str:
     """The sample count, with a rate's 95% interval and a pass rate's check coverage."""
     parts = [_count(row["n"], row["sample"])]
-    interval = row["details"].get("interval_95")
-    if interval:
+    interval = row["details"].get("interval_95") or []
+    if len(interval) == 2 and all(isinstance(bound, int | float) for bound in interval):
         low, high = (_console_number(bound, row["unit"]) for bound in interval)
         parts.append(f"95% CI {low.removesuffix('%')}–{high}")
-    if row["details"].get("checks_skipped"):
-        run, skipped = len(row["details"]["checks_run"]), len(row["details"]["checks_skipped"])
+    skipped = len(row["details"].get("checks_skipped") or [])
+    if skipped:
+        run = len(row["details"].get("checks_run") or [])
         parts.append(f"{run} of {run + skipped} checks")
     return " · ".join(parts)
 
@@ -363,7 +366,7 @@ def _console_value(value: Any, row: Mapping[str, Any], labelled: bool = True) ->
     """A value, or a dict value's primary entry (every entry without one), as the console shows it."""
     if not isinstance(value, Mapping):
         return _console_number(value, row["unit"])
-    keys = [row["primary"]] if row["primary"] else list(value)
+    keys = [row["primary"]] if row["primary"] in value else list(value)
     return ", ".join((f"{key} " if labelled else "") + _console_number(value[key], row["unit"]) for key in keys)
 
 

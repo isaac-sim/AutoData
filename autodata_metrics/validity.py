@@ -54,7 +54,10 @@ def aligned_lengths(episode: Episode, ev: Evidence) -> str | None:
     bad = [
         path
         for path, dataset in episode.datasets()
-        if not path.startswith(PER_EPISODE_PATHS) and path not in ev.camera_paths and len(dataset) != num_steps
+        if dataset.ndim > 0
+        and not path.startswith(PER_EPISODE_PATHS)
+        and path not in ev.camera_paths
+        and len(dataset) != num_steps
     ]
     return f"{', '.join(bad)} do not hold {num_steps} steps" if bad else None
 
@@ -77,7 +80,7 @@ def valid_rotations(episode: Episode, ev: Evidence) -> str | None:
     for path, dataset in episode.datasets():
         if path.startswith(OBSERVED_POSE_PATHS) and dataset.shape[-2:] == (4, 4):
             error = _rotation_errors(dataset[()]).max(initial=0.0)
-        elif path.endswith("root_pose") and dataset.shape[-1] == 7:
+        elif path.endswith("root_pose") and dataset.shape[-1:] == (7,):
             error = np.abs(np.linalg.norm(dataset[()][..., 3:7], axis=-1) - 1.0).max(initial=0.0)
         else:
             continue
@@ -218,7 +221,7 @@ def action_rotation_error(ev: Evidence) -> Value:
             targets = episode[f"obs/datagen_info/target_eef_pose/{eef}"]
             # A channel that commands no pose records all-zero targets, which are not rotations.
             errors.append(_rotation_errors(targets[np.abs(targets).reshape(len(targets), -1).max(axis=1) > 0]))
-    errors = np.concatenate(errors)
+    errors = np.concatenate(errors) if errors else np.empty(0)
     if not len(errors):
         raise NotApplicable("no end effector commands a pose")
     p50, p95 = np.percentile(errors, [50, 95])
