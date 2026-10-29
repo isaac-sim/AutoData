@@ -11,27 +11,21 @@ import numpy as np
 from collections.abc import Mapping
 from typing import Any
 
-_MISSING = object()
 
-
-def lookup(record: Any, dotted_key: str) -> Any:
-    """``record[a][b]`` for ``dotted_key`` ``"a.b"``, or a sentinel that :func:`is_present` rejects."""
+def _has_path(record: Any, dotted_key: str) -> bool:
+    """Whether ``record[a][b]`` exists for ``dotted_key`` ``"a.b"``."""
     for part in dotted_key.split("."):
         if not isinstance(record, Mapping) or part not in record:
-            return _MISSING
+            return False
         record = record[part]
-    return record
+    return True
 
 
 def read_env_args(h5_file: h5py.File) -> dict[str, Any]:
-    """The dataset's ``env_args``; its ``autodata`` entry was written by the producer."""
+    """The dataset's ``env_args``, or empty when they are not a JSON object."""
     raw_env_args = h5_file["data"].attrs.get("env_args", "{}")
-    return json.loads(raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args)
-
-
-def is_present(value: Any) -> bool:
-    """Whether a :func:`lookup` found its key."""
-    return value is not _MISSING
+    env_args = json.loads(raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args)
+    return env_args if isinstance(env_args, dict) else {}
 
 
 class Episode:
@@ -88,9 +82,9 @@ class Evidence:
         if head == "source":
             return self.source is not None and (not rest or self.source.has(rest))
         if head == "attempts":
-            return bool(self.attempts) and (not rest or all(is_present(lookup(line, rest)) for line in self.attempts))
+            return bool(self.attempts) and (not rest or all(_has_path(line, rest) for line in self.attempts))
         if head == "env_args":
-            return is_present(lookup(self.env_args, rest))
+            return _has_path(self.env_args, rest)
         if head == "run":
-            return is_present(lookup(self.run, rest))
+            return _has_path(self.run, rest)
         return bool(self.episodes) and all(key in episode for episode in self.episodes)

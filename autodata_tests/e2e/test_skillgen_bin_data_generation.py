@@ -74,18 +74,7 @@ def _run_franka_bin_stack_skillgen(num_envs: int, device: str) -> None:
         attempts = assert_recorded_run(output_file, result_file)
         # Every SkillGen attempt plans at least one transit, and the algorithm reports how long it took.
         assert all(attempt["extras"]["planning_time_s"] > 0 for attempt in attempts)
-        report_file = os.path.join(temp_dir, "report.json")
-        run_subprocess([
-            TestPaths.python_path,
-            os.path.join(TestPaths.scripts_dir, "validate_dataset.py"),
-            output_file,
-            "--report",
-            "--result_file",
-            result_file,
-            "--report_file",
-            report_file,
-        ])
-        assert_ok_metrics(report_file, RUN_METRICS)
+        assert_ok_metrics(output_file, result_file, RUN_METRICS)
 
         with open(result_file, encoding="utf-8") as result_handle:
             result = json.load(result_handle)

@@ -54,23 +54,36 @@ def check_same_run(evidence: Evidence) -> list[str]:
 
     Run ids alone are not enough: merging datasets keeps the first file's ``env_args``, so the exported episode
     count must match too.
+
+    Raises:
+        ValueError: If the dataset, result and attempt log disagree on their run or their counts.
     """
     num_episodes = len(evidence.episodes)
-    if evidence.result is not None:
-        assert (
-            num_episodes == evidence.result["num_success"]
-        ), f"The dataset holds {num_episodes} episodes but the run counts {evidence.result['num_success']} successes."
+    result = evidence.result
+    if result is not None and num_episodes != result["num_success"]:
+        raise ValueError(
+            f"The dataset holds {num_episodes} episodes but the run counts {result['num_success']} successes."
+        )
+    if result is not None and evidence.attempts is not None:
+        logged = len(evidence.attempts), sum(line["success"] for line in evidence.attempts)
+        if logged != (result["num_attempts"], result["num_success"]):
+            raise ValueError(
+                f"The attempt log holds {logged[0]} attempts and {logged[1]} successes but the result counts"
+                f" {result['num_attempts']} and {result['num_success']}."
+            )
     entry = evidence.env_args.get("autodata")
     if entry is None:
         return ["the dataset has no autodata entry, so it is matched to its run by episode count only"]
-    assert entry["exported_episodes"] == num_episodes, (
-        f"The dataset holds {num_episodes} episodes but its run exported {entry['exported_episodes']};"
-        " it was merged or edited after export."
-    )
+    if entry["exported_episodes"] != num_episodes:
+        raise ValueError(
+            f"The dataset holds {num_episodes} episodes but its run exported {entry['exported_episodes']};"
+            " it was merged or edited after export."
+        )
     run_ids = {entry["run_id"]} | {line["run_id"] for line in evidence.attempts or []}
     if "run_id" in evidence.run:
         run_ids.add(evidence.run["run_id"])
-    assert len(run_ids) == 1, f"The dataset, result and attempt log come from different runs: {sorted(run_ids)}"
+    if len(run_ids) != 1:
+        raise ValueError(f"The dataset, result and attempt log come from different runs: {sorted(run_ids)}")
     return []
 
 
@@ -96,7 +109,7 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         return {**row, "status": "error", "reason": f"{type(exc).__name__}: {exc}"}
     if not _is_finite(value.value):
         return {**row, "status": "error", "reason": f"non-finite value {value.value}"}
-    return {**row, "status": "ok", "value": value.value, "n": value.n, "details": dict(value.details)}
+    return {**row, "status": "ok", "value": value.value, "n": value.n, "details": _finite_or_none(value.details)}
 
 
 def _is_finite(value: Any) -> bool:
@@ -104,6 +117,16 @@ def _is_finite(value: Any) -> bool:
     if isinstance(value, Mapping):
         return all(_is_finite(item) for item in value.values())
     return isinstance(value, numbers.Real) and math.isfinite(value)
+
+
+def _finite_or_none(value: Any) -> Any:
+    """``value`` with every non-finite number replaced by None, so the report stays valid JSON."""
+    value = value.tolist() if hasattr(value, "tolist") else value
+    if isinstance(value, Mapping):
+        return {key: _finite_or_none(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_finite_or_none(item) for item in value]
+    return None if isinstance(value, float) and not math.isfinite(value) else value
 
 
 def build_report(
@@ -127,7 +150,8 @@ def build_report(
         source_evidence = Evidence(stack.enter_context(h5py.File(source, "r"))) if source else None
         evidence = Evidence(h5_file, result, attempts, source_evidence)
         warnings += check_same_run(evidence)
-        rows = {name: evaluate(spec, evidence) for name, spec in (metrics or REGISTERED_METRICS).items()}
+        metrics = REGISTERED_METRICS if metrics is None else metrics
+        rows = {name: evaluate(spec, evidence) for name, spec in metrics.items()}
         num_episodes = len(evidence.episodes)
     return {
         "schema_version": SCHEMA_VERSION,
@@ -150,6 +174,9 @@ def gate_violations(report: Mapping[str, Any], gate_file: str) -> list[str]:
     The gate maps metric names to ``min``/``max`` bounds, an optional ``key`` into a dict value (default: the
     metric's primary entry) and an optional ``version``. A gated metric that is missing, not applicable, errored or
     at another version is a violation.
+
+    Raises:
+        ValueError: If a gate entry bounds a dict value without a ``key`` and the metric has no primary entry.
     """
     violations = []
     for name, bound in yaml.safe_load(Path(gate_file).read_text(encoding="utf-8")).items():
@@ -162,7 +189,8 @@ def gate_violations(report: Mapping[str, Any], gate_file: str) -> list[str]:
             continue
         key = bound.get("key", row["primary"])
         value = row["value"].get(key) if key else row["value"]
-        assert not isinstance(value, Mapping), f"Gate entry {name!r} needs a key into {sorted(value)}."
+        if isinstance(value, Mapping):
+            raise ValueError(f"Gate entry {name!r} needs a key into {sorted(value)}.")
         if not _is_finite(value):
             violations.append(f"{name}: {value!r} is not a finite number")
             continue
