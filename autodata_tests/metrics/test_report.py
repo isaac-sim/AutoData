@@ -1,17 +1,20 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests of how the report runs metrics, refuses mismatched runs and gates values."""
+"""Tests of how the report runs metrics, refuses mismatched runs, gates values and summarizes them."""
 
 import h5py
 import json
+import numpy as np
+import re
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from autodata_metrics import MetricSpec, Value, build_report, gate_violations
+from autodata_metrics import REGISTERED_METRICS, MetricSpec, Value, build_report, format_report, gate_results, load_gate
 
 
 def _spec(name: str, compute, requires: tuple[str, ...] = ()) -> MetricSpec:
@@ -22,6 +25,7 @@ def _spec(name: str, compute, requires: tuple[str, ...] = ()) -> MetricSpec:
         signal="test",
         scope="run",
         unit="fraction",
+        sample="samples",
         better="higher",
         requires=requires,
         primary=None,
@@ -32,14 +36,18 @@ def _spec(name: str, compute, requires: tuple[str, ...] = ()) -> MetricSpec:
 def _dataset(path: Path, num_episodes: int = 1, entry: dict | None = None) -> str:
     with h5py.File(path, "w") as h5_file:
         data = h5_file.create_group("data")
-        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0", **({"autodata": entry} if entry else {})})
+        autodata = {"autodata": {"version": 1, **entry}} if entry else {}
+        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0", **autodata})
         for index in range(num_episodes):
             data.create_group(f"demo_{index}").create_dataset("actions", data=[[0.0, 1.0]])
     return str(path)
 
 
 def _log(tmp_path: Path, run_id: str, successes: list[bool]) -> None:
-    lines = [json.dumps({"run_id": run_id, "success": success}) for success in successes]
+    lines = [
+        json.dumps({"run_id": run_id, "env_id": 0, "success": success, "start_time_s": step, "end_time_s": step + 1.0})
+        for step, success in enumerate(successes)
+    ]
     (tmp_path / f"result.{run_id}.attempts.jsonl").write_text("\n".join(lines) + "\n")
 
 
@@ -84,6 +92,27 @@ def test_interrupted_rerun_is_reported_from_its_own_attempt_log(tmp_path):
     assert "belongs to another run" in report["warnings"][0]
 
 
+def test_dataset_without_an_entry_is_flagged_only_with_a_run_record(tmp_path):
+    dataset = _dataset(tmp_path / "d.hdf5")
+
+    assert build_report(dataset, metrics={})["warnings"] == []
+    assert "episode count only" in build_report(dataset, result_file=_run(tmp_path, "run-a"), metrics={})["warnings"][0]
+
+
+def test_a_source_merged_after_annotation_has_its_annotation_set_aside(tmp_path):
+    annotation = {"input_episodes": 1, "processed_episodes": 1, "annotated_episodes": 1, "time_s": 2.0}
+    source = _dataset(
+        tmp_path / "source.hdf5",
+        num_episodes=3,
+        entry={"run_id": "a", "exported_episodes": 1, "annotation": annotation},
+    )
+
+    report = build_report(_dataset(tmp_path / "d.hdf5"), source=source)
+
+    assert "set aside" in report["warnings"][0]
+    assert report["metrics"]["annotation_pass_rate"]["status"] == "not_applicable"
+
+
 def test_report_refuses_inputs_that_disagree_with_their_run(tmp_path):
     entry = {"run_id": "run-a", "exported_episodes": 1}
     with pytest.raises(ValueError, match="merged or edited"):
@@ -99,23 +128,54 @@ def test_report_refuses_inputs_that_disagree_with_their_run(tmp_path):
     with pytest.raises(ValueError, match="not the one the run started from"):
         build_report(dataset, result_file=result_file, source=_dataset(tmp_path / "source.hdf5"), metrics={})
 
+    malformed_entry = json.dumps({"autodata": {"version": 1, "run_id": 5, "exported_episodes": 1}})
+    for corrupt, reason in (
+        ("{'run_id': 'run-a'}", "must be JSON"),
+        (malformed_entry, r"autodata\.run_id must be str"),
+    ):
+        with h5py.File(dataset, "r+") as h5_file:
+            h5_file["data"].attrs["env_args"] = corrupt
+        with pytest.raises(ValueError, match=reason):
+            build_report(dataset, result_file=_run(tmp_path, "run-a"), metrics={})
 
-def test_gate_flags_violations_and_refuses_a_non_finite_bound(tmp_path):
+
+def test_gate_flags_violations_and_refuses_a_malformed_gate(tmp_path):
     row = {"status": "ok", "value": 0.4, "primary": None, "version": 2}
     missing = {"status": "ok", "value": {"p50": 1.0}, "primary": "p95", "version": 1}
-    report = {"metrics": {"low": row, "old": row, "fine": row, "absent": {"status": "not_applicable"}, "gap": missing}}
+    metrics = {
+        "low": row,
+        "old": row,
+        "fine": row,
+        "keyed": row,
+        "absent": {"status": "not_applicable"},
+        "gap": missing,
+    }
     gate = tmp_path / "gate.yaml"
     gate.write_text(
-        "low: {min: 0.5}\nold: {version: 1}\nfine: {min: 0.3, max: 0.5, version: 2}\nabsent: {min: 0}\ngap: {max: 2}\n"
+        "low: {min: 0.5}\nold: {version: 1}\nfine: {min: 0.3, max: 5e-1, version: 2}\nkeyed: {key: p95}\n"
+        "absent: {min: 0}\ngap: {max: 2}\n"
     )
 
-    violations = gate_violations(report, str(gate))
+    results = gate_results({"metrics": metrics}, load_gate(str(gate)))
 
-    assert [violation.split(":")[0] for violation in violations] == ["low", "old", "absent", "gap"]
-    for bad_bound in (".nan", "false", "{p95: 1}"):
-        gate.write_text(f"absent: {{min: {bad_bound}}}\n")
-        with pytest.raises(ValueError, match="not a finite number"):
-            gate_violations(report, str(gate))
+    assert [name for name, reason in results.items() if reason is not None] == ["low", "old", "keyed", "absent", "gap"]
+    assert results["fine"] is None
+    for malformed in (
+        "absent: {min: .nan}",
+        "absent: {min: false}",
+        "absent: {min: {p95: 1}}",
+        "absent: {mn: 0.5}",
+        "gap: {key: [p95]}",
+        "old: {version: '1'}",
+        "low: {min: 0.5}\nlow: {max: 1.0}",
+        "low: {min: 0.5",
+        "absent: 0.5",
+        "[low]",
+        "",
+    ):
+        gate.write_text(malformed + "\n")
+        with pytest.raises(ValueError):
+            load_gate(str(gate))
 
 
 def test_non_finite_numbers_never_reach_the_report(tmp_path):
@@ -128,8 +188,66 @@ def test_non_finite_numbers_never_reach_the_report(tmp_path):
     gate.write_text("m: {min: 0}\n")
 
     assert report["metrics"]["m"]["status"] == "error"
-    assert gate_violations(report, str(gate)) == ["m: error"]
+    assert gate_results(report, load_gate(str(gate))) == {"m": "error"}
     assert report["metrics"]["d"]["details"] == {"interval_95": [0.5, None]}
+
+
+def test_console_summary_marks_the_gate_and_says_how_to_compute_the_rest(tmp_path):
+    metrics = {
+        "rate": _spec("rate", lambda ev: Value(0.25, n=4)),
+        "held": _spec("held", lambda ev: Value(1.0, n=1), ("step_success",)),
+        "planned": _spec("planned", lambda ev: Value(1.0, n=1), ("attempts.extras.planning_time_s",)),
+    }
+    report = build_report(_dataset(tmp_path / "d.hdf5"), metrics=metrics)
+    gate = tmp_path / "gate.yaml"
+    gate.write_text("rate: {min: 0.5}\n")
+
+    summary = format_report(report, gate_results(report, load_gate(str(gate))))
+
+    assert "gate failed on 1 of 1" in summary
+    assert re.search(r"✗ rate +25% +4 samples", summary)
+    assert "needs --record_metric_inputs: held" in summary
+    assert "needs --result_file: planned" in summary
+
+
+def test_degenerate_inputs_are_reported_without_breaking_the_summary_or_json(tmp_path):
+    path = tmp_path / "d.hdf5"
+    with h5py.File(path, "w") as h5_file:
+        data = h5_file.create_group("data")
+        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0"})
+        odd = data.create_group("demo_0")
+        odd.create_dataset("actions", data=np.zeros((2, 7)))
+        odd.create_dataset("obs/robot/root_pose", data=1.0)
+        odd.create_group("obs/datagen_info/target_eef_pose")
+        data.create_group("demo_1").create_dataset("actions", data=np.zeros((0, 7)))
+        data.create_group("demo_2").create_dataset("actions", data=np.zeros((2, 7)))
+    metrics = {
+        "action_rotation_error": REGISTERED_METRICS["action_rotation_error"],
+        "open": _spec("open", lambda ev: Value(0.5, n=2, details={"interval_95": [0.1, float("inf")]})),
+        "partial": replace(_spec("partial", lambda ev: Value({"p50": 1.0}, n=1)), primary="p95"),
+        "almost": _spec("almost", lambda ev: Value(0.9995, n=2000, details={np.int64(3): 1})),
+        "uncounted": _spec("uncounted", lambda ev: Value(1.0, n=None)),
+        "bare": _spec("bare", lambda ev: 0.5),
+        "nested": _spec("nested", lambda ev: Value({"left": {"p95": 0.1}}, n=1)),
+        "loose": _spec("loose", lambda ev: Value(0.5, n=1, details=None)),
+    }
+
+    report = build_report(str(path), result_file=str(tmp_path / "typo.json"), metrics=metrics)
+
+    summary = format_report(report)
+    json.dumps(report, allow_nan=False)
+    failures = {name: entry["failed"] for name, entry in report["check_failures"].items() if entry["failed"]}
+    assert report["num_valid_episodes"] == 1 and failures == {"aligned_lengths": 1, "valid_rotations": 1}
+    assert report["metrics"]["action_rotation_error"]["status"] == "not_applicable"
+    assert re.search(r"open +50% +2 samples$", summary, re.M) and re.search(r"partial +p50 100%", summary)
+    assert re.search(r"almost +>99.9%", summary)
+    assert {name for name, row in report["metrics"].items() if row["status"] == "error"} == {
+        "uncounted",
+        "bare",
+        "nested",
+        "loose",
+    }
+    assert "typo.json does not exist" in report["warnings"][0]
 
 
 def test_metrics_import_without_torch_or_isaaclab():

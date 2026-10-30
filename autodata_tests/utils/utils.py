@@ -7,6 +7,7 @@ import h5py
 import json
 import os
 
+from autodata_metrics.records import ATTEMPT, RESULT, parse, parse_env_args
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
 
@@ -49,8 +50,8 @@ def read_generation_result(result_file: str) -> tuple[int, int]:
 def assert_recorded_episodes(dataset_file: str) -> dict:
     """Assert the per-step recording and the ``autodata`` entry agree with the dataset's episodes.
 
-    Every episode has one ``step_success`` value per action, its success attribute equals whether
-    ``step_success`` ever held, and the entry counts every exported episode.
+    The entry has the shape the metrics read, every episode has one ``step_success`` value per action, its success
+    attribute equals whether ``step_success`` ever held, and the entry counts every exported episode.
 
     Returns:
         The dataset's ``autodata`` entry.
@@ -58,7 +59,7 @@ def assert_recorded_episodes(dataset_file: str) -> dict:
 
     with h5py.File(dataset_file, "r") as h5_file:
         data = h5_file["data"]
-        entry = json.loads(data.attrs["env_args"])["autodata"]
+        entry = parse_env_args(json.loads(data.attrs["env_args"]), dataset_file)["autodata"]
         assert entry["exported_episodes"] == len(data), f"The entry counts {entry['exported_episodes']} episodes."
         for name, episode in data.items():
             step_success = episode["step_success"][:]
@@ -68,7 +69,8 @@ def assert_recorded_episodes(dataset_file: str) -> dict:
 
 
 def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
-    """Assert a generation run's dataset, result JSON and attempt log describe the same run.
+    """Assert a generation run's dataset, result JSON and attempt log have the shapes the metrics read and describe
+    the same run.
 
     Returns:
         The attempt-log lines.
@@ -76,10 +78,10 @@ def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
 
     entry = assert_recorded_episodes(dataset_file)
     with open(result_file, encoding="utf-8") as result_handle:
-        result = json.load(result_handle)
+        result = parse(json.load(result_handle), RESULT, result_file)
     attempts_file = os.path.join(os.path.dirname(result_file), result["run"]["attempts_file"])
     with open(attempts_file, encoding="utf-8") as attempts_handle:
-        attempts = [json.loads(line) for line in attempts_handle if line.strip()]
+        attempts = [parse(json.loads(line), ATTEMPT, attempts_file) for line in attempts_handle if line.strip()]
     assert entry["exported_episodes"] == result["num_success"], "The dataset and result count different successes."
     assert len(attempts) == result["num_attempts"], "The attempt log and result count different attempts."
     assert (
@@ -91,7 +93,8 @@ def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
 
 
 def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]) -> None:
-    """Report a generation run's metrics with ``validate_dataset.py`` and assert exactly ``expected_ok`` computed a value.
+    """Report a generation run's metrics with ``validate_dataset.py``; assert every episode passes the checks and
+    exactly ``expected_ok`` computed a value.
 
     A renamed recorded key or an adapter that stops recording a stream turns a metric not applicable, which
     this catches.
@@ -109,7 +112,11 @@ def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]
         report_file,
     ])
     with open(report_file, encoding="utf-8") as report_handle:
-        rows = json.load(report_handle)["metrics"]
+        report = json.load(report_handle)
+    assert (
+        report["num_valid_episodes"] == report["num_episodes"]
+    ), f"{report['num_episodes'] - report['num_valid_episodes']} episodes failed checks: {report['check_failures']}"
+    rows = report["metrics"]
     ok = {name for name, row in rows.items() if row["status"] == "ok"}
     assert ok == expected_ok, f"Computed {sorted(ok)}, expected {sorted(expected_ok)}: {rows}"
 
