@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, Any
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.envs.mdp.actions.pink_task_space_actions import PinkInverseKinematicsAction
-from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
 from isaaclab.managers import DatasetExportMode, EventTermCfg, SceneEntityCfg
 from isaaclab.managers.recorder_manager import RecorderManagerBaseCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
@@ -35,6 +34,7 @@ from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 from autodata_interfaces.env.datagen_info_recorder import add_step_success_recorder
 from autodata_interfaces.env.env_profile import EnvironmentProfile, convert_event_params
 from autodata_interfaces.env.pink_ik_action import PinkInverseKinematicsActionSharedUrdf
+from autodata_interfaces.env.recorders import make_action_state_recorder_manager_cfg
 from autodata_interfaces.env.reset_request import EnvResetRequest
 from autodata_interfaces.env.scene_state import get_scene_state
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
@@ -267,7 +267,7 @@ def setup_env_config(
 
     # Setup recorders
     if recorder_cfg is None:
-        env_cfg.recorders = ActionStateRecorderManagerCfg()
+        env_cfg.recorders = make_action_state_recorder_manager_cfg(record_images=enable_cameras)
     else:
         env_cfg.recorders = recorder_cfg
     if record_step_success:
