@@ -88,6 +88,37 @@ Built-in metrics
 
 :autodata_metrics_table:
 
+Diversity metrics
+-----------------
+
+The diversity metrics describe how differently the demonstrations behave: the space the hands move
+through, how they approach what they lift, and where objects start. The four spread metrics each average,
+over pairs of episodes or lifts, how much the two differ. That estimates how different two
+demonstrations from the same generator are, so it does not grow with the number of demonstrations and is
+defined from two of them on; fewer only make it noisier. The source column holds the same average over
+the seeds. With many episodes, the averages use 2,000 pairs drawn with a fixed seed.
+
+They follow each hand's grasp point. An object is lifted at the step before it first rises 1 cm above its
+start, by the hand in whose frame it moves least while it rises; the hand's grasp point is where the
+objects it carries sit in its frame at that step, the median over the dataset. Recorded hand frames
+differ, from a fingertip point to a flange or a wrist, so the point is learned from each dataset; a hand
+that carries nothing keeps its own frame. An object's approach is the grasp point's path from the last
+time it was 15 cm from the object until lift-off, in the object's frame there.
+
+- ``workspace_coverage``: the share of the 5 cm voxels two episodes' grasp points visit that only one of
+  them visits, ``1 - |A ∩ B| / |A ∪ B|``. Two episodes that sweep the same region in another order count
+  as alike.
+- ``approach_spread``: the angle between the directions two lifts of an object come from, for the object
+  with the lowest average.
+- ``behavior_diversity``: the root-mean-square distance between two lifts' approach paths, each resampled
+  to 16 points along its length, for the object with the lowest average. Its novelty detail is the median,
+  over the lifts, of each path's distance to the nearest seed path.
+- ``start_spread``: the root-mean-square distance between two episodes' start positions, over the objects
+  that start in more than one place. Its details list each object, with the seeds' spread beside it, so an
+  object the seeds move but the dataset pins shows.
+
+``exact_duplicates`` counts episodes whose actions repeat an earlier episode's bit for bit.
+
 Adding a metric
 ---------------
 

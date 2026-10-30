@@ -92,9 +92,15 @@ def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
     return attempts
 
 
-def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]) -> None:
+PAIR_METRICS = frozenset({"workspace_coverage", "start_spread", "approach_spread", "behavior_diversity"})
+"""Diversity metrics averaged over pairs of episodes; they apply once a run exports two episodes."""
+
+
+def assert_ok_metrics(
+    dataset_file: str, result_file: str, expected_ok: set[str], pair_metrics: frozenset[str] = frozenset()
+) -> None:
     """Report a generation run's metrics with ``validate_dataset.py``; assert every episode passes the checks and
-    exactly ``expected_ok`` computed a value.
+    exactly ``expected_ok`` computed a value, with ``pair_metrics`` too when the run exported two episodes or more.
 
     A renamed recorded key or an adapter that stops recording a stream turns a metric not applicable, which
     this catches.
@@ -118,7 +124,8 @@ def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]
     ), f"{report['num_episodes'] - report['num_valid_episodes']} episodes failed checks: {report['check_failures']}"
     rows = report["metrics"]
     ok = {name for name, row in rows.items() if row["status"] == "ok"}
-    assert ok == expected_ok, f"Computed {sorted(ok)}, expected {sorted(expected_ok)}: {rows}"
+    expected = expected_ok | (pair_metrics if report["num_valid_episodes"] >= 2 else set())
+    assert ok == expected, f"Computed {sorted(ok)}, expected {sorted(expected)}: {rows}"
 
 
 def assert_no_metric_inputs(dataset_file: str) -> None:

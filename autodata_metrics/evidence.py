@@ -8,8 +8,10 @@ from __future__ import annotations
 import copy
 import h5py
 import json
+import numbers
 import numpy as np
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from functools import cached_property
 from typing import Any
 
@@ -46,6 +48,7 @@ class Episode:
     def __init__(self, group: h5py.Group) -> None:
         self.name = group.name.rsplit("/", 1)[-1]
         self._group = group
+        self._listing: list[tuple[str, h5py.Dataset]] | None = None
 
     def __contains__(self, key: str) -> bool:
         return key in self._group
@@ -57,8 +60,19 @@ class Episode:
         """Names under the group ``key``, such as the end effectors under ``obs/datagen_info/eef_pose``."""
         return list(self._group[key])
 
+    @contextmanager
+    def listed(self) -> Iterator[None]:
+        """Within the block, :meth:`datasets` walks the episode once, so several checks share one listing."""
+        self._listing = self.datasets()
+        try:
+            yield
+        finally:
+            self._listing = None
+
     def datasets(self) -> list[tuple[str, h5py.Dataset]]:
         """Every dataset of the episode with its path, unread until accessed."""
+        if self._listing is not None:
+            return self._listing
         found: list[tuple[str, h5py.Dataset]] = []
         self._group.visititems(
             lambda path, item: found.append((path, item)) if isinstance(item, h5py.Dataset) else None
@@ -79,6 +93,8 @@ class Evidence:
         run: The result's ``run`` block, or empty.
         attempts: Attempt-log lines, or None.
         source: Evidence of the source dataset the run started from, or None.
+        quaternions_xyzw: Whether the file stores quaternions as ``(x, y, z, w)``, as Isaac Lab does from format
+            version 1; older files store ``(w, x, y, z)``.
     """
 
     def __init__(
@@ -89,6 +105,10 @@ class Evidence:
         source: Evidence | None = None,
     ) -> None:
         self.env_args = read_env_args(h5_file)
+        version = h5_file.attrs.get("format_version", 0)
+        if not isinstance(version, numbers.Integral) or isinstance(version, bool):
+            raise InvalidRecord(f"{h5_file.filename} format_version must be an integer, not {version!r}.")
+        self.quaternions_xyzw = version >= 1
         self.all_episodes = [Episode(group) for group in h5_file["data"].values()]
         self.episodes = list(self.all_episodes)
         self.failures: dict[str, dict[str, str]] = {}

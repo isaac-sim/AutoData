@@ -8,7 +8,7 @@ import pytest
 
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_ok_metrics, assert_recorded_run, assert_valid_dataset
+from autodata_tests.utils.utils import PAIR_METRICS, assert_ok_metrics, assert_recorded_run, assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 1
@@ -23,6 +23,7 @@ METRICS = {
     "action_saturation",
     "motion_smoothness",
     "joint_limit_ratio",
+    "exact_duplicates",
 }
 
 
@@ -64,7 +65,7 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
 
         assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
         assert_recorded_run(output_file, result_file)
-        assert_ok_metrics(output_file, result_file, METRICS)
+        assert_ok_metrics(output_file, result_file, METRICS, PAIR_METRICS)
 
 
 @pytest.mark.with_subprocess

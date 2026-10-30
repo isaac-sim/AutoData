@@ -142,7 +142,7 @@ def test_every_malformed_record_field_is_refused_or_reported(tmp_path):
     samples = _samples(tmp_path)
     report = _report_or_refusal(tmp_path, samples)
     assert report is not None and report["metrics"]["time_to_dataset"]["status"] == "ok"
-    unread = {**samples["attempt"], "initial_object_positions": {"cube": [float("nan"), 0.0]}}
+    unread = {**samples["attempt"], "note": float("nan")}
     assert _report_or_refusal(tmp_path, {**samples, "attempt": unread}) is not None
     negative = {**samples["attempt"], "extras": {"planning_time_s": -5.0, "planning_failed": False}}
     assert _report_or_refusal(tmp_path, {**samples, "attempt": negative}) is None

@@ -124,25 +124,28 @@ def check_same_run(evidence: Evidence) -> list[str]:
 
 
 def run_checks(evidence: Evidence, checks: Mapping[str, CheckSpec]) -> None:
-    """Run the episode checks and keep only the episodes that pass all of them in ``evidence.episodes``."""
+    """Run the episode checks and keep only the episodes that pass all of them in ``evidence.episodes``.
+
+    Episodes are checked one at a time, each listed once for all its checks and released after them.
+    """
     for spec in checks.values():
         evidence.check_groups[spec.name] = spec.group
-        if any(not evidence.has(key) for key in spec.requires):
-            continue
-        failed: dict[str, str] = {}
-        applied = False
-        for episode in evidence.all_episodes:
-            try:
-                reason = spec.check(episode, evidence)
-            except NotApplicable:
-                continue
-            except Exception as exc:  # A broken check fails its episodes visibly instead of sinking the report.
-                reason = f"{type(exc).__name__}: {exc}"
-            applied = True
-            if reason is not None:
-                failed[episode.name] = reason
-        if applied:
-            evidence.failures[spec.name] = failed
+    applicable = {spec.name: spec for spec in checks.values() if all(evidence.has(key) for key in spec.requires)}
+    failed: dict[str, dict[str, str]] = {name: {} for name in applicable}
+    applied: set[str] = set()
+    for episode in evidence.all_episodes:
+        with episode.listed():
+            for name, spec in applicable.items():
+                try:
+                    reason = spec.check(episode, evidence)
+                except NotApplicable:
+                    continue
+                except Exception as exc:  # A broken check fails its episodes visibly instead of sinking the report.
+                    reason = f"{type(exc).__name__}: {exc}"
+                applied.add(name)
+                if reason is not None:
+                    failed[name][episode.name] = reason
+    evidence.failures.update({name: failed[name] for name in applicable if name in applied})
     failing = {name for failed in evidence.failures.values() for name in failed}
     evidence.episodes = [episode for episode in evidence.all_episodes if episode.name not in failing]
 
