@@ -8,10 +8,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from isaaclab.devices import DevicesCfg, Se3KeyboardCfg, Se3SpaceMouseCfg
+from isaaclab.managers import TerminationTermCfg
 from isaaclab_arena.assets.register import register_environment
 from isaaclab_arena.environments.arena_environment_factory import ArenaEnvironmentCfg, ArenaEnvironmentFactory
 from isaaclab_arena.utils.pose import Pose
 
+from . import mdp
 from .rope_asset import FrankaRopeAsset
 from .task import FrankaRopeTask
 
@@ -50,6 +52,8 @@ def _configure_franka_rope_env(env_cfg: Any) -> Any:
             ),
         },
     )
+    # Lab's recorder counts consecutive successes, so expose the live condition.
+    env_cfg.terminations.success = TerminationTermCfg(func=mdp.rope_success_current)
     return env_cfg
 
 

@@ -282,7 +282,12 @@ def main() -> int:
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
     env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY
 
+    env_cfg.seed = generation_policy.seed
     env = gym.make(env_name, cfg=env_cfg, **env_make_kwargs.get(env_name, {})).unwrapped
+    # Environment initialization can reseed or consume the global RNGs.
+    random.seed(generation_policy.seed)
+    np.random.seed(generation_policy.seed)
+    torch.manual_seed(generation_policy.seed)
     autodata_entry = None
     try:
         # Create the Datastream

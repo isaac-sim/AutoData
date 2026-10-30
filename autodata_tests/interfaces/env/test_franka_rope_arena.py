@@ -10,10 +10,13 @@ from functools import partial
 from types import SimpleNamespace
 
 import pytest
+from isaaclab.managers import TerminationTermCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils.string import resolve_matching_names
 from isaaclab_arena.assets.registries import EnvironmentRegistry
+from isaaclab_arena.progress_tracking.progress_tracker import ProgressTracker
 from isaaclab_arena.tasks.task_termination_cfg import TaskTerminationCfg
+from isaaclab_arena.tasks.terminations import task_success_from_progress
 from isaaclab_arena.utils.physics_backend import PhysicsBackend
 
 import autodata_examples.envs as env_registration
@@ -203,7 +206,11 @@ def test_rope_task_exposes_annotation_and_success_terms():
 
 
 def test_rope_environment_configures_lab_timing():
-    env_cfg = SimpleNamespace(sim=SimulationCfg(), scene=SimpleNamespace(replicate_physics=True))
+    env_cfg = SimpleNamespace(
+        sim=SimulationCfg(),
+        scene=SimpleNamespace(replicate_physics=True),
+        terminations=SimpleNamespace(success=None),
+    )
 
     assert _configure_franka_rope_env(env_cfg) is env_cfg
     assert env_cfg.decimation * env_cfg.sim.dt == 0.05
@@ -211,6 +218,7 @@ def test_rope_environment_configures_lab_timing():
     assert env_cfg.num_rerenders_on_reset == 1
     assert env_cfg.scene.replicate_physics is False
     assert set(env_cfg.teleop_devices.devices) == {"keyboard", "spacemouse"}
+    assert env_cfg.terminations.success.func is mdp.rope_success_current
 
 
 def test_rope_embodiment_preserves_arena_observation_names():
@@ -245,3 +253,28 @@ def test_gripper_observation_reads_finger_joints():
     observed = term.func(env, **term.params)
 
     torch.testing.assert_close(observed, torch.tensor([[0.04, -0.03]]))
+
+
+def test_recording_success_rechecks_rope_condition_without_losing_progress():
+    nodes = torch.zeros(1, 6, 3)
+    rope = SimpleNamespace(data=SimpleNamespace(nodal_pos_w=SimpleNamespace(torch=nodes)))
+    env = SimpleNamespace(scene={"object": rope}, device="cpu", num_envs=1, _rope_end_indices={0: (0, 5)})
+    tracker = ProgressTracker(FrankaRopeTask().get_termination_cfg().success, 1, "cpu", env=env)
+    env.progress_tracker = tracker
+    env.update_task_progress = lambda: tracker.step(env)
+    env_cfg = SimpleNamespace(
+        sim=SimulationCfg(),
+        scene=SimpleNamespace(replicate_physics=True),
+        terminations=SimpleNamespace(success=TerminationTermCfg(func=task_success_from_progress)),
+    )
+    _configure_franka_rope_env(env_cfg)
+    success_term = env_cfg.terminations.success
+    current_success, completed_progress = [], []
+
+    for end_x in (0.06, 1.0, 1.0):
+        nodes[0, :, 0] = torch.tensor([0.0, 0.001, 0.002, end_x, end_x + 0.001, end_x + 0.002])
+        current_success.append(bool(success_term.func(env, **success_term.params)[0]))
+        completed_progress.append(bool(tracker.is_complete()[0]))
+
+    assert current_success == [True, False, False]
+    assert completed_progress == [True, True, True]

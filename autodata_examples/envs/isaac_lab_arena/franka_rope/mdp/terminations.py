@@ -12,6 +12,7 @@ from isaaclab.managers import SceneEntityCfg
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+    from isaaclab_arena.environments.isaaclab_arena_manager_based_env import IsaacLabArenaManagerBasedRLEnv
 
 
 def rope_below_minimum(
@@ -76,3 +77,16 @@ def rope_ends_close_tracked(
         result[env_id] = distance_threshold_min < minimum_end_distance < distance_threshold
 
     return result
+
+
+def rope_success_current(env: IsaacLabArenaManagerBasedRLEnv) -> torch.Tensor:
+    """Return current rope success while keeping Arena task progress up to date.
+
+    Args:
+        env: Arena environment containing the rope and its progress tracker.
+
+    Returns:
+        Boolean success for each environment at the current step.
+    """
+    env.update_task_progress()
+    return rope_ends_close_tracked(env)
