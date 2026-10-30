@@ -9,6 +9,7 @@ Simulation integration is covered by the e2e suite.
 
 import asyncio
 import dataclasses
+import numpy as np
 import torch
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -17,6 +18,7 @@ import pytest
 
 from autodata_core.algorithms import DexMimicGen, MimicGen, SkillGen
 from autodata_core.data_generator import DataGenerator, GenerationResult, _EEFGenerationState
+from autodata_core.datagen_info import DatagenInfo
 from autodata_core.waypoint import MultiWaypoint, Waypoint
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from autodata_interfaces.tasks.subtask_spec import MimicGenSubtaskAlgoParams, Subtask
@@ -223,3 +225,36 @@ def test_unresponsive_navigation_fails_and_finalizes_the_attempt(monkeypatch):
     assert execute.await_count == 3
     assert recorder.set_success_to_episodes.call_args.args[1].item() is False
     recorder.export_episodes.assert_called_once()
+
+
+@pytest.mark.parametrize("object_poses", [None, {"other": torch.eye(4).unsqueeze(0)}])
+def test_rigid_reference_requires_source_object_pose_at_setup(object_poses):
+    subtask = _subtask("")
+    subtask.object_ref = "cube"
+    datastream = _MockDatastream({"franka": [subtask]})
+    datastream.source_pool.datagen_infos = [DatagenInfo(object_poses=object_poses)]
+
+    with pytest.raises(AssertionError, match="Source demo 0 lacks object_pose for 'cube'"):
+        DataGenerator(datastream, MimicGen())
+
+
+def test_source_selection_preserves_positional_arguments():
+    subtask = _subtask("")
+    subtask.object_ref = "cube"
+    datastream = _MockDatastream({"franka": [subtask]})
+    poses = torch.eye(4).repeat(2, 1, 1)
+    datastream.source_pool.datagen_infos = [
+        DatagenInfo(
+            eef_pose={"franka": poses},
+            object_poses={"cube": poses},
+            target_eef_pose={"franka": poses},
+            passthrough_action={"franka": torch.zeros(2, 1)},
+        )
+    ]
+    generator = DataGenerator(datastream, MimicGen())
+
+    selected = generator.select_source_demo(
+        "franka", torch.eye(4), torch.eye(4), np.array([[0, 2]]), "cube", "nearest_neighbor_object", {"nn_k": 1}
+    )
+
+    assert selected == 0

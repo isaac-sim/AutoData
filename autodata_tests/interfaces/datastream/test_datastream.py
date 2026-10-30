@@ -57,9 +57,15 @@ def _env(env_origins: torch.Tensor | None = None) -> MockEnv:
             root_quat_w=torch.tensor(_IDENTITY_QUAT_XYZW),
         )
     )
+    rope = MockAsset(
+        MockArticulationData(
+            nodal_pos_w=torch.tensor([[[1.0, 1.0, 0.05], [1.2, 1.0, 0.05]]]),
+        )
+    )
     scene = MockScene(
         assets={"robot": robot},
         rigid_objects={"cube_1": cube},
+        deformable_objects={"rope": rope},
         env_origins=torch.tensor([[0.0, 0.0, 0.0]]) if env_origins is None else env_origins,
         state=_SCENE_STATE_SENTINEL,
     )
@@ -230,6 +236,59 @@ def test_get_object_poses_subtracts_env_origin():
     pose = datastream.get_object_poses()["cube_1"]
     # world [1, 1, 0.05] - origin [1, 1, 0] = [0, 0, 0.05]
     assert torch.allclose(pose[0, :3, 3], torch.tensor([0.0, 0.0, 0.05]))
+
+
+def test_get_object_nodal_positions_is_env_relative():
+    task = TaskDescriptor.from_dict(_task_dict())
+    embodiment_adapter = _embodiment_adapter()
+    env = _env(env_origins=torch.tensor([[1.0, 1.0, 0.0]]))
+    pool = DataGenInfoPool(
+        task_descriptor=task,
+        embodiment_adapter=embodiment_adapter,
+        device=env.device,
+        uses_start_signals=False,
+    )
+    datastream = Datastream(env=env, task_descriptor=task, embodiment_adapter=embodiment_adapter, source_pool=pool)
+    nodes = datastream.get_object_nodal_positions()["rope"]
+    assert nodes.shape == (1, 2, 3)
+    assert torch.allclose(nodes[0, 0], torch.tensor([0.0, 0.0, 0.05]))
+    assert torch.allclose(nodes[0, 1], torch.tensor([0.2, 0.0, 0.05]))
+
+
+@pytest.mark.parametrize("env_ids", [None, [1], [1, 0]], ids=["all", "subset", "reordered"])
+def test_get_object_nodal_positions_uses_controller_frame(env_ids):
+    datastream, _, adapter, env = _datastream()
+    env.scene.env_origins = torch.tensor([[10.0, 20.0, 1.0], [-5.0, 7.0, 2.0]])
+    world_nodes = torch.tensor([
+        [[12.0, 21.0, 3.0], [14.0, 23.0, 4.0]],
+        [[-4.0, 7.0, 5.0], [-1.0, 8.0, 9.0]],
+    ])
+    env.scene.deformable_objects["rope"].data.nodal_pos_w = world_nodes.clone()
+    reference = torch.tensor([
+        [
+            [0.0, -1.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 2.0],
+            [0.0, 0.0, 1.0, 0.5],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        [
+            [1.0, 0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0, 0.5],
+            [0.0, 1.0, 0.0, 2.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    ])
+    adapter.get_reference_frame_pose = lambda env_ids: reference[slice(None) if env_ids is None else env_ids]
+    expected = torch.tensor([
+        [[-1.0, -1.0, 1.5], [1.0, -3.0, 2.5]],
+        [[2.0, 1.0, 0.5], [5.0, 5.0, -0.5]],
+    ])
+
+    nodes = datastream.get_object_nodal_positions(env_ids=env_ids)["rope"]
+
+    index = slice(None) if env_ids is None else env_ids
+    torch.testing.assert_close(nodes, expected[index])
+    torch.testing.assert_close(env.scene.deformable_objects["rope"].data.nodal_pos_w, world_nodes)
 
 
 def test_articulated_object_poses_use_controller_frame():
