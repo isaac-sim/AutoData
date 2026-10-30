@@ -5,13 +5,14 @@
 
 import h5py
 import json
+import math
 import numpy as np
 from pathlib import Path
 
 import pytest
 
 from autodata_metrics import REGISTERED_METRICS, build_report
-from autodata_metrics.validity import FROZEN_FRAMES
+from autodata_metrics.validity import FROZEN_SECONDS
 
 
 def _write(path: Path, episodes: list[dict[str, np.ndarray]], entry: dict | None = None) -> str:
@@ -55,6 +56,16 @@ def test_failing_episodes_are_counted_and_left_out_of_dataset_metrics(tmp_path):
     }
 
 
+def test_aligned_lengths_counts_subtask_signal_entries_in_either_layout(tmp_path):
+    signal = "obs/datagen_info/subtask_term_signals/grasp"
+    column, row, short = np.array([False, True, True]), np.array([[False, True, True]]), np.array([False, True])
+    episodes = [{"actions": np.zeros((3, 7)), signal: flags} for flags in (column, row, short)]
+
+    report = build_report(_write(tmp_path / "d.hdf5", episodes), metrics={})
+
+    assert sorted(report["check_failures"]["aligned_lengths"]["examples"]) == ["demo_2"]
+
+
 def test_rotation_and_bound_checks_flag_their_defects(tmp_path):
     pose = np.tile(np.eye(4), (3, 1, 1))
     entry = {"run_id": "r", "exported_episodes": 3, "pose_action": {"arm": {"action_slice": [0, 6], "bound": 1.0}}}
@@ -63,17 +74,19 @@ def test_rotation_and_bound_checks_flag_their_defects(tmp_path):
     skewed = {"actions": np.zeros((3, 7)), "obs/datagen_info/eef_pose/arm": pose * [[1.1], [1.0], [1.0], [1.0]]}
     zero = {"actions": np.zeros((3, 7)), "obs/datagen_info/eef_pose/arm": np.zeros((3, 4, 4))}
     reflected = {"actions": np.zeros((3, 7)), "obs/datagen_info/eef_pose/arm": pose * [[-1.0], [1.0], [1.0], [1.0]]}
-    episodes = [clipped, beyond_bound, skewed, zero, reflected]
+    flat = {"actions": np.zeros((3, 7)), "obs/datagen_info/eef_pose/arm": pose.reshape(3, 16)}
+    episodes = [clipped, beyond_bound, skewed, zero, reflected, flat]
     entry["exported_episodes"] = len(episodes)
 
     report = build_report(_write(tmp_path / "d.hdf5", episodes, entry), metrics={})
 
-    failures = {name: sorted(entry["examples"]) for name, entry in report["check_failures"].items() if entry["failed"]}
-    assert failures == {"pose_action_bounds": ["demo_1"], "valid_rotations": ["demo_2", "demo_3", "demo_4"]}
+    failures = {name: entry["failed"] for name, entry in report["check_failures"].items() if entry["failed"]}
+    assert failures == {"pose_action_bounds": 1, "valid_rotations": 4}
 
 
 def test_image_checks_flag_black_frozen_and_missing_frames(tmp_path):
-    steps = FROZEN_FRAMES + 2
+    frozen_frames = math.ceil(FROZEN_SECONDS / (0.01 * 5))  # the control step _write records
+    steps = frozen_frames + 2
     rng = np.random.default_rng(0)
 
     def frames(count: int) -> np.ndarray:
@@ -82,9 +95,11 @@ def test_image_checks_flag_black_frozen_and_missing_frames(tmp_path):
     black = frames(steps)
     black[1] = 0
     frozen = np.repeat(frames(1), steps, axis=0)
+    paused = frames(steps)
+    paused[1 : frozen_frames - 1] = paused[0]  # Still for just under FROZEN_SECONDS, which is not frozen.
     episodes = [
         {"actions": np.zeros((steps, 7)), "obs/camera": camera}
-        for camera in (frames(steps), black, frozen, frames(steps - 1))
+        for camera in (frames(steps), black, frozen, frames(steps - 1), paused)
     ]
     episodes.append({"actions": np.zeros((steps, 7))})
 
@@ -94,9 +109,9 @@ def test_image_checks_flag_black_frozen_and_missing_frames(tmp_path):
     assert failures == {
         "no_black_frames": ["demo_1"],
         "no_frozen_frames": ["demo_2"],
-        "one_frame_per_step": ["demo_3", "demo_4"],
+        "one_frame_per_step": ["demo_3", "demo_5"],
     }
-    assert report["metrics"]["image_stream_pass_rate"]["value"] == pytest.approx(1 / 5)
+    assert report["metrics"]["image_stream_pass_rate"]["value"] == pytest.approx(2 / 6)
 
 
 def test_final_success_rate_reports_the_source_baseline(tmp_path):
