@@ -54,3 +54,14 @@ def test_report_options_without_report_are_an_error(tmp_path: Path) -> None:
 
     with pytest.raises(SystemExit):
         validate_dataset.main([str(tmp_path / "data.hdf5"), "--gate", str(tmp_path / "gate.yaml")])
+
+
+def test_report_refused_for_an_unreadable_source(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A source the validator cannot read is refused in one line instead of a traceback."""
+
+    dataset = tmp_path / "data.hdf5"
+    with h5py.File(dataset, "w") as h5_file:
+        h5_file.create_group("data/demo_0").create_dataset("actions", data=[[0.0]])
+
+    assert validate_dataset.main([str(dataset), "--report", "--source", str(tmp_path / "missing.hdf5")]) == 1
+    assert "Report refused" in capsys.readouterr().out

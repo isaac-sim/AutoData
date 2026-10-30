@@ -30,10 +30,13 @@ terms (default ``subtask_terms``). SkillGen start signals still require manual m
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import time
 
 from isaaclab.app import AppLauncher
 
 from autodata_utils.cli import callable_path
+
+PROCESS_START = time.monotonic()
 
 parser = argparse.ArgumentParser(
     description="Manually annotate AutoData source demonstrations with subtask signals.",
@@ -120,7 +123,6 @@ import numpy as np  # noqa: E402
 import os  # noqa: E402
 import random  # noqa: E402
 import sys  # noqa: E402
-import time  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
 import uuid  # noqa: E402
@@ -378,9 +380,11 @@ def main() -> int:
         )
         if autodata_entry is not None:
             autodata_entry["annotation"] = {
+                "mode": "auto" if args_cli.auto else "manual",
                 "input_episodes": len(episode_names),
                 "processed_episodes": processed_episode_count,
                 "annotated_episodes": exported_episode_count,
+                "setup_time_s": annotation_start - PROCESS_START,
                 "time_s": time.monotonic() - annotation_start,
             }
         print("Exiting the app.")

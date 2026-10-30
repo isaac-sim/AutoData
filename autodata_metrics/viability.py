@@ -58,6 +58,7 @@ def _counted_attempts(ev: Evidence) -> tuple[list[dict[str, Any]], bool]:
     signal="generation performance",
     scope="run",
     unit="fraction",
+    sample="attempts",
     better="higher",
     requires=["attempts"],
 )
@@ -77,6 +78,7 @@ def generation_success_rate(ev: Evidence) -> Value:
     signal="generation performance",
     scope="run",
     unit="demos/GPU-h",
+    sample="demos",
     better="higher",
     requires=["run.generation_time_s", "run.num_gpus", "env_args.autodata.exported_episodes"],
 )
@@ -96,19 +98,25 @@ def demos_per_gpu_hour(ev: Evidence) -> Value:
     signal="time to dataset",
     scope="run",
     unit="s",
+    sample="runs",
     better="lower",
     requires=["run.setup_time_s", "run.generation_time_s"],
+    version=2,
 )
 def time_to_dataset(ev: Evidence) -> Value:
-    """Wall time of the automated steps: annotation of the source, setup and generation."""
+    """Wall time of the automated steps, each process timed from its start: annotating the source and generating.
+
+    Annotation that was manual, or recorded without its mode, is reported in ``uncounted_annotation_s`` instead.
+    """
     annotation = ev.source.env_args.get("autodata", {}).get("annotation", {}) if ev.source else {}
-    parts = {
-        "annotation_s": annotation.get("time_s"),
-        "setup_s": ev.run["setup_time_s"],
-        "generation_s": ev.run["generation_time_s"],
-    }
-    details = {**parts, "note": "automated steps only; manual recording and annotation time is not measured"}
-    return Value(sum(seconds for seconds in parts.values() if seconds is not None), n=1, details=details)
+    parts = {"setup_s": ev.run["setup_time_s"], "generation_s": ev.run["generation_time_s"]}
+    uncounted = None
+    if annotation:
+        automatic = annotation.get("mode") == "auto"
+        parts["annotation_s"] = annotation.get("setup_time_s", 0.0) + (annotation["time_s"] if automatic else 0.0)
+        uncounted = None if automatic else annotation["time_s"]
+    details = {**parts, "annotation_mode": annotation.get("mode"), "uncounted_annotation_s": uncounted}
+    return Value(sum(parts.values()), n=1, details=details)
 
 
 @metric(
@@ -117,6 +125,7 @@ def time_to_dataset(ev: Evidence) -> Value:
     signal="time to dataset",
     scope="run",
     unit="fraction",
+    sample="recordings",
     better="higher",
     requires=["source.env_args.autodata.annotation"],
 )
@@ -135,6 +144,7 @@ def annotation_pass_rate(ev: Evidence) -> Value:
     signal="failure causes",
     scope="run",
     unit="fraction of attempts",
+    sample="attempts",
     better="lower",
     requires=["attempts.extras.planning_failed"],
 )
@@ -151,6 +161,7 @@ def planning_failure_rate(ev: Evidence) -> Value:
     signal="generation performance",
     scope="run",
     unit="s per attempt",
+    sample="attempts",
     better="lower",
     primary="p95",
     requires=["attempts.extras.planning_time_s"],
