@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import h5py
+import math
 import numpy as np
 
 from autodata_metrics.evidence import Episode, Evidence
@@ -15,12 +16,14 @@ ROTATION_TOLERANCE = 1e-3
 """Largest deviation from a proper rotation, or from a unit quaternion, a recorded pose may show."""
 BLACK_FRAME_MEAN = 2.0
 """Mean pixel value, out of 255, below which a camera frame counts as black."""
-FROZEN_FRAMES = 10
-"""Identical consecutive camera frames that count as a frozen stream."""
+FROZEN_SECONDS = 1.0
+"""Recorded time over which a camera that repeats one frame counts as frozen."""
 FRAME_CHUNK = 64
 """Steps read at a time, so checks of camera frames and other large arrays stream instead of loading whole episodes."""
-PER_EPISODE_PATHS = ("initial_state", "obs/datagen_info/subtask_term_signals", "obs/datagen_info/subtask_start_signals")
-"""Paths whose arrays are not one entry per step: the initial state, and annotation's subtask signals."""
+PER_EPISODE_PATHS = ("initial_state",)
+"""Paths whose arrays are not one entry per step."""
+SUBTASK_SIGNAL_PATHS = ("obs/datagen_info/subtask_term_signals/", "obs/datagen_info/subtask_start_signals/")
+"""Annotation's per-step subtask signals, stored as a ``(steps,)`` column or a ``(1, steps)`` row."""
 OBSERVED_POSE_PATHS = ("obs/datagen_info/eef_pose/", "obs/datagen_info/object_pose/")
 """Recorded poses that are observations; commanded targets are measured by ``action_rotation_error`` instead."""
 
@@ -54,12 +57,18 @@ def aligned_lengths(episode: Episode, ev: Evidence) -> str | None:
     bad = [
         path
         for path, dataset in episode.datasets()
-        if dataset.ndim > 0
-        and not path.startswith(PER_EPISODE_PATHS)
+        if not path.startswith(PER_EPISODE_PATHS)
         and path not in ev.camera_paths
-        and len(dataset) != num_steps
+        and _steps_held(path, dataset) not in (None, num_steps)
     ]
     return f"{', '.join(bad)} do not hold {num_steps} steps" if bad else None
+
+
+def _steps_held(path: str, dataset: h5py.Dataset) -> int | None:
+    """Steps ``dataset`` holds: a subtask signal counts its entries in either layout; a scalar holds none."""
+    if path.startswith(SUBTASK_SIGNAL_PATHS):
+        return dataset.size
+    return len(dataset) if dataset.ndim else None
 
 
 def _rotation_errors(poses: np.ndarray) -> np.ndarray:
@@ -72,20 +81,26 @@ def _rotation_errors(poses: np.ndarray) -> np.ndarray:
 
 @check("valid_rotations")
 def valid_rotations(episode: Episode, ev: Evidence) -> str | None:
-    """Fails an episode with an observed pose rotation that is not a proper rotation or a root quaternion that is not unit.
+    """Fails an episode with an observed pose rotation that is not a proper rotation, a root quaternion that is not
+    unit, or a pose array not shaped ``(steps, 4, 4)`` or ``(steps, 7)``.
 
     Both tests hold for either quaternion order, so the check needs no convention.
     """
     bad, checked = [], False
     for path, dataset in episode.datasets():
-        if path.startswith(OBSERVED_POSE_PATHS) and dataset.shape[-2:] == (4, 4):
-            error = _rotation_errors(dataset[()]).max(initial=0.0)
-        elif path.endswith("root_pose") and dataset.shape[-1:] == (7,):
-            error = np.abs(np.linalg.norm(dataset[()][..., 3:7], axis=-1) - 1.0).max(initial=0.0)
+        if path.startswith(OBSERVED_POSE_PATHS):
+            shape = (4, 4)
+        elif path.endswith("/root_pose"):
+            shape = (7,)
         else:
             continue
         checked = True
-        if error > ROTATION_TOLERANCE:
+        if dataset.shape[1:] != shape:
+            bad.append(f"{path} of shape {dataset.shape}")
+            continue
+        poses = dataset[()]
+        error = _rotation_errors(poses) if shape == (4, 4) else np.abs(np.linalg.norm(poses[:, 3:7], axis=-1) - 1.0)
+        if error.max(initial=0.0) > ROTATION_TOLERANCE:
             bad.append(path)
     if not checked:
         raise NotApplicable("no recorded rotations")
@@ -130,16 +145,19 @@ def no_black_frames(episode: Episode, ev: Evidence) -> str | None:
     return None
 
 
-@check("no_frozen_frames", group="image")
+@check("no_frozen_frames", group="image", requires=["env_args.sim_args.dt", "env_args.sim_args.decimation"])
 def no_frozen_frames(episode: Episode, ev: Evidence) -> str | None:
-    """Fails an episode whose camera repeats one frame :data:`FROZEN_FRAMES` times in a row."""
-    for path, dataset in _image_streams(episode, ev).items():
+    """Fails an episode whose camera repeats one frame for :data:`FROZEN_SECONDS`; needs the recorded control step."""
+    streams = _image_streams(episode, ev)
+    step = ev.env_args["sim_args"]["dt"] * ev.env_args["sim_args"]["decimation"]
+    frozen_frames = max(2, math.ceil(FROZEN_SECONDS / step))
+    for path, dataset in streams.items():
         previous, repeats = None, 1
         for start in range(0, len(dataset), FRAME_CHUNK):
             for offset, frame in enumerate(dataset[start : start + FRAME_CHUNK]):
                 repeats = repeats + 1 if previous is not None and np.array_equal(frame, previous) else 1
-                if repeats >= FROZEN_FRAMES:
-                    return f"{path} repeats one frame {FROZEN_FRAMES} times up to step {start + offset}"
+                if repeats >= frozen_frames:
+                    return f"{path} repeats one frame for {FROZEN_SECONDS:g} s up to step {start + offset}"
                 previous = frame
     return None
 
@@ -180,7 +198,7 @@ def correctness_pass_rate(ev: Evidence) -> Value:
     better="higher",
 )
 def image_stream_pass_rate(ev: Evidence) -> Value:
-    """Share of episodes whose camera streams hold one frame per step, no black frame and no frozen run."""
+    """Share of episodes that pass every image check that applies: one frame per step, no black or frozen frames."""
     return _pass_rate(ev, "image", "no camera streams")
 
 

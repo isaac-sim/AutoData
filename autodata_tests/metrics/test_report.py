@@ -220,6 +220,7 @@ def test_degenerate_inputs_are_reported_without_breaking_the_summary_or_json(tmp
         odd.create_dataset("obs/robot/root_pose", data=1.0)
         odd.create_group("obs/datagen_info/target_eef_pose")
         data.create_group("demo_1").create_dataset("actions", data=np.zeros((0, 7)))
+        data.create_group("demo_2").create_dataset("actions", data=np.zeros((2, 7)))
     metrics = {
         "action_rotation_error": REGISTERED_METRICS["action_rotation_error"],
         "open": _spec("open", lambda ev: Value(0.5, n=2, details={"interval_95": [0.1, float("inf")]})),
@@ -235,7 +236,8 @@ def test_degenerate_inputs_are_reported_without_breaking_the_summary_or_json(tmp
 
     summary = format_report(report)
     json.dumps(report, allow_nan=False)
-    assert report["num_valid_episodes"] == 1 and "aligned_lengths" in report["check_failures"]
+    failures = {name: entry["failed"] for name, entry in report["check_failures"].items() if entry["failed"]}
+    assert report["num_valid_episodes"] == 1 and failures == {"aligned_lengths": 1, "valid_rotations": 1}
     assert report["metrics"]["action_rotation_error"]["status"] == "not_applicable"
     assert re.search(r"open +50% +2 samples$", summary, re.M) and re.search(r"partial +p50 100%", summary)
     assert re.search(r"almost +>99.9%", summary)

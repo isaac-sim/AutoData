@@ -47,6 +47,7 @@ class MapOf:
 NUMBER = "a finite number"
 COUNT = "a non-negative integer"
 DURATION = "a non-negative finite number"
+POSITIVE = "a positive finite number"
 
 INPUT = {"path": str, "sha256": str}
 RUN = {
@@ -87,14 +88,14 @@ ENTRY = {
     "pose_action": Maybe(MapOf({"action_slice": ListOf(int, 2), "bound": Maybe(NUMBER)})),
     "annotation": Maybe(ANNOTATION),
 }
-ENV_ARGS = {"autodata": Maybe(ENTRY)}
+ENV_ARGS = {"autodata": Maybe(ENTRY), "sim_args": Maybe({"dt": Maybe(POSITIVE), "decimation": Maybe(POSITIVE)})}
 
 
 def parse(value: Any, shape: Any, where: str) -> Any:
     """``value`` checked against ``shape``, with its absent or null optional fields left out.
 
-    A shape is a type, a tuple of allowed values, :data:`NUMBER`, :data:`COUNT`, :data:`DURATION`, a
-    :class:`Maybe`, :class:`ListOf` or :class:`MapOf`, or a dict of field shapes; a dict's fields are required
+    A shape is a type, a tuple of allowed values, :data:`NUMBER`, :data:`COUNT`, :data:`DURATION`, :data:`POSITIVE`,
+    a :class:`Maybe`, :class:`ListOf` or :class:`MapOf`, or a dict of field shapes; a dict's fields are required
     unless their shape is a :class:`Maybe`.
 
     Raises:
@@ -122,8 +123,9 @@ def parse(value: Any, shape: Any, where: str) -> Any:
         return {key: item for key, item in parsed.items() if item is not None}
     if isinstance(shape, tuple):
         _require(value in shape, value, f"one of {list(shape)}", where)
-    elif shape in (NUMBER, DURATION):
-        _require(is_finite_number(value) and (shape is NUMBER or value >= 0), value, shape, where)
+    elif shape in (NUMBER, DURATION, POSITIVE):
+        in_range = is_finite_number(value) and (shape is NUMBER or value > 0 or (shape is DURATION and value == 0))
+        _require(in_range, value, shape, where)
     elif shape is COUNT:
         _require(isinstance(value, int) and not isinstance(value, bool) and value >= 0, value, shape, where)
     else:
