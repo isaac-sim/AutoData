@@ -23,7 +23,7 @@ import json
 import os
 import sys
 
-from autodata_metrics import build_report, format_report, gate_violations
+from autodata_metrics import build_report, format_report, gate_results, load_gate
 
 REQUIRED_DEMO_FIELDS = {
     "actions": h5py.Dataset,
@@ -181,6 +181,10 @@ def main(argv: list[str] | None = None) -> int:
     given = [f"--{name}" for name in ("result_file", "source", "metrics", "gate", "report_file") if getattr(args, name)]
     if given and not args.report:
         parser.error(f"{', '.join(given)} only apply with --report")
+    try:
+        gate = load_gate(args.gate) if args.gate else None
+    except ValueError as exc:
+        parser.error(str(exc))
 
     results = [validate_file(path) for path in args.files]
     print_results(results)
@@ -195,15 +199,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.report and results[0].num_episodes is not None:
         for module in args.metrics:
             importlib.import_module(module)
-        report = build_report(args.files[0], result_file=args.result_file, source=args.source)
+        source = validate_file(args.source) if args.source else None
+        if source is not None and source.num_episodes is None:
+            print(f"\nReport refused: {args.source}: {'; '.join(source.issues)}")
+            return 1
+        try:
+            report = build_report(args.files[0], result_file=args.result_file, source=args.source)
+        except ValueError as exc:
+            print(f"\nReport refused: {exc}")
+            return 1
+        results = gate_results(report, gate) if gate is not None else None
         print()
-        print(format_report(report))
+        print(format_report(report, results))
         if args.report_file:
             with open(args.report_file, "w", encoding="utf-8") as report_handle:
                 json.dump(report, report_handle, indent=2, default=_json_value)
                 report_handle.write("\n")
-        if args.gate:
-            violations = gate_violations(report, args.gate)
+        if results is not None:
+            violations = [f"{name}: {reason}" for name, reason in results.items() if reason is not None]
             print("\nGate passed." if not violations else "\nGate failed:\n  " + "\n  ".join(violations))
 
     return 1 if num_invalid or violations else 0

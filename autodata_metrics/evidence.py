@@ -9,7 +9,10 @@ import h5py
 import json
 import numpy as np
 from collections.abc import Mapping
+from functools import cached_property
 from typing import Any
+
+from autodata_metrics.records import InvalidRecord, parse_env_args
 
 
 def _has_path(record: Any, dotted_key: str) -> bool:
@@ -22,10 +25,18 @@ def _has_path(record: Any, dotted_key: str) -> bool:
 
 
 def read_env_args(h5_file: h5py.File) -> dict[str, Any]:
-    """The dataset's ``env_args``, or empty when they are not a JSON object."""
+    """The dataset's ``env_args``, with its ``autodata`` entry parsed; empty when it records none.
+
+    Raises:
+        InvalidRecord: If ``env_args`` is not JSON, or it or its entry lacks the shape the metrics read.
+    """
+    where = f"{h5_file.filename} env_args"
     raw_env_args = h5_file["data"].attrs.get("env_args", "{}")
-    env_args = json.loads(raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args)
-    return env_args if isinstance(env_args, dict) else {}
+    try:
+        env_args = json.loads(raw_env_args.decode() if isinstance(raw_env_args, bytes) else raw_env_args)
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise InvalidRecord(f"{where} must be JSON: {exc}") from exc
+    return parse_env_args(env_args, where)
 
 
 class Episode:
@@ -41,12 +52,27 @@ class Episode:
     def __getitem__(self, key: str) -> np.ndarray:
         return self._group[key][()]
 
+    def children(self, key: str) -> list[str]:
+        """Names under the group ``key``, such as the end effectors under ``obs/datagen_info/eef_pose``."""
+        return list(self._group[key])
+
+    def datasets(self) -> list[tuple[str, h5py.Dataset]]:
+        """Every dataset of the episode with its path, unread until accessed."""
+        found: list[tuple[str, h5py.Dataset]] = []
+        self._group.visititems(
+            lambda path, item: found.append((path, item)) if isinstance(item, h5py.Dataset) else None
+        )
+        return found
+
 
 class Evidence:
     """A dataset, and optionally the generation run that produced it, as metrics read them.
 
     Attributes:
-        episodes: The dataset's episodes.
+        all_episodes: The dataset's episodes.
+        episodes: The episodes that passed every episode check; dataset metrics read these.
+        failures: Per episode check that applied to some episode, the failing episodes' names and reasons.
+        check_groups: Per episode check considered, its group; a check absent from ``failures`` did not apply.
         env_args: The dataset's ``env_args``; its ``autodata`` entry was written by the producer.
         result: Generation result, or None for a dataset without a run record or an interrupted run.
         run: The result's ``run`` block, or empty.
@@ -62,7 +88,10 @@ class Evidence:
         source: Evidence | None = None,
     ) -> None:
         self.env_args = read_env_args(h5_file)
-        self.episodes = [Episode(group) for group in h5_file["data"].values()]
+        self.all_episodes = [Episode(group) for group in h5_file["data"].values()]
+        self.episodes = list(self.all_episodes)
+        self.failures: dict[str, dict[str, str]] = {}
+        self.check_groups: dict[str, str] = {}
         self.result = result
         self.run: Mapping[str, Any] = (result or {}).get("run", {})
         self.attempts = attempts
@@ -88,3 +117,13 @@ class Evidence:
         if head == "run":
             return _has_path(self.run, rest)
         return bool(self.episodes) and all(key in episode for episode in self.episodes)
+
+    @cached_property
+    def camera_paths(self) -> frozenset[str]:
+        """Paths of the camera streams, 4-D ``uint8`` arrays, that any episode records."""
+        return frozenset(
+            path
+            for episode in self.all_episodes
+            for path, dataset in episode.datasets()
+            if dataset.dtype == np.uint8 and dataset.ndim == 4
+        )
