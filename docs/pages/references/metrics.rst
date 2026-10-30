@@ -102,12 +102,12 @@ drawn with a fixed seed.
 They follow each hand's grasp point, from the hand and object poses that ``obs/datagen_info`` records in
 one frame before each step; generation records the object poses with ``--record_metric_inputs``. An
 object is lifted when ``states`` first shows it 1 cm above its start, and lift-off is the last
-observation before that; the hand that carries it is the one in whose frame it moves least while it
-rises. The hand's grasp point is where the objects it carries sit in its frame at lift-off, the median
-over the dataset. Recorded hand frames differ, from a fingertip point to a flange or a wrist, so the
-point is learned from each dataset; a hand that carries nothing keeps its own frame. An object's approach
-is the grasp point's path in the object's frame from the last time it was 15 cm from the object until
-lift-off.
+observation before that. The hand that carries it is, among the hands at most 15 cm farther from it than
+the nearest, the one in whose frame it moves least while it rises. The hand's grasp point is where the
+objects it carries sit in its frame at lift-off, the median over the dataset. Recorded hand frames
+differ, from a fingertip point to a flange or a wrist, so the point is learned from each dataset; a hand
+that carries nothing keeps its own frame. An object's approach is the grasp point's path in the object's
+frame from the last time it was 15 cm from the object until lift-off.
 
 - ``workspace_coverage``: the share of the 5 cm voxels two episodes' grasp points visit that only one of
   them visits, ``1 - |A ∩ B| / |A ∪ B|``. Two episodes that sweep the same region in another order count

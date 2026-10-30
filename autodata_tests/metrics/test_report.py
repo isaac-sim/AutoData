@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from autodata_metrics import REGISTERED_METRICS, MetricSpec, Value, build_report, format_report, gate_results, load_gate
+from autodata_metrics.records import InvalidRecord
 
 
 def _spec(name: str, compute, requires: tuple[str, ...] = ()) -> MetricSpec:
@@ -250,22 +251,32 @@ def test_degenerate_inputs_are_reported_without_breaking_the_summary_or_json(tmp
     assert "typo.json does not exist" in report["warnings"][0]
 
 
-def test_an_episode_that_cannot_be_read_fails_its_checks_and_the_report_goes_on(tmp_path):
-    path = tmp_path / "d.hdf5"
+def _damaged(path: Path, target: str) -> str:
+    """Three episodes, with the object header of ``target``, a path under ``data``, damaged."""
     with h5py.File(path, "w") as h5_file:
         data = h5_file.create_group("data")
         data.attrs["env_args"] = json.dumps({"env_name": "Test-v0"})
         for index in range(3):
             data.create_dataset(f"demo_{index}/actions", data=np.zeros((4, 7)))
             data.create_dataset(f"demo_{index}/obs/extra", data=np.zeros((4, 2)))
-        header = h5py.h5g.get_objinfo(data["demo_1/obs"].id, b"extra").objno[0]
-    with open(path, "r+b") as raw:  # A damaged object header: walking demo_1 fails.
+        parent, _, name = target.rpartition("/")
+        header = h5py.h5g.get_objinfo((data[parent] if parent else data).id, name.encode()).objno[0]
+    with open(path, "r+b") as raw:
         raw.seek(header)
         raw.write(b"\xff")
+    return str(path)
 
-    report = build_report(str(path), metrics={})
 
+def test_an_episode_that_cannot_be_read_fails_its_checks_alone(tmp_path):
+    report = build_report(_damaged(tmp_path / "d.hdf5", "demo_1/obs/extra"), metrics={})
+
+    assert report["num_valid_episodes"] == 2
     assert any("demo_1" in entry["examples"] for entry in report["check_failures"].values())
+
+
+def test_an_episode_group_that_cannot_be_opened_is_refused_by_name(tmp_path):
+    with pytest.raises(InvalidRecord, match="episode demo_1 cannot be read"):
+        build_report(_damaged(tmp_path / "d.hdf5", "demo_1"), metrics={})
 
 
 def test_metrics_import_without_torch_or_isaaclab():

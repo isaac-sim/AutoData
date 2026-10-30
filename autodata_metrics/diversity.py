@@ -9,12 +9,13 @@ are, so it does not grow with their number and is defined from two episodes on; 
 The source column holds the same average over the seeds.
 
 Hand and object poses come from ``obs/datagen_info``, which records both in one frame before each step. An object is
-lifted when ``states/``, recorded after each step in the world frame, first shows it :data:`LIFT_M` above its start;
-lift-off is the last observation before that. The object is carried by the hand in whose frame it moves least while
-it rises. The hand's grasp point is where the objects it carries sit in its frame at lift-off, the median over the
-dataset, because recorded hand frames differ (a fingertip point, a flange, a wrist); a hand that carries nothing keeps
-its frame. An object's approach is the grasp point's path in the object's frame from the last time it was
-:data:`APPROACH_M` from the object until lift-off.
+lifted when ``states/``, recorded after each step in the env frame, first shows it :data:`LIFT_M` above its start;
+lift-off is the last observation before that. The object is carried by the hand, among those at most
+:data:`CARRY_REACH_M` farther from it than the nearest hand, in whose frame it moves least while it rises. The hand's
+grasp point is where the objects it carries sit in its frame at lift-off, the median over the dataset, because
+recorded hand frames differ (a fingertip point, a flange, a wrist); a hand that carries nothing keeps its frame. An
+object's approach is the grasp point's path in the object's frame from the last time it was :data:`APPROACH_M` from
+the object until lift-off.
 """
 
 from __future__ import annotations
@@ -37,6 +38,8 @@ LIFT_M = 0.01
 """Rise above its start height at which an object counts as lifted; lift-off is the last observation before [m]."""
 CARRY_STEPS = 5
 """Steps after lift-off over which the carrying hand is the one in whose frame the object moves least."""
+CARRY_REACH_M = 0.15
+"""How much farther from the object than the nearest hand, at lift-off, a hand may be and still carry it [m]."""
 APPROACH_M = 0.15
 """Distance from the object at which an approach starts: the grasp point's path from the last time it was this far
 from the object until lift-off [m]."""
@@ -68,7 +71,7 @@ _DEMOS: weakref.WeakKeyDictionary[Evidence, _Demos] = weakref.WeakKeyDictionary(
     unit="fraction not shared",
     sample="episodes",
     better="higher",
-    requires=["obs/datagen_info/eef_pose"],
+    requires=["obs/datagen_info/eef_pose", "obs/datagen_info/object_pose", "states"],
     baseline=True,
 )
 def workspace_coverage(ev: Evidence) -> Value:
@@ -265,9 +268,11 @@ def _demos(ev: Evidence) -> _Demos:
             # States record each step's outcome, so observation raised[0] is the last before the rise.
             step = raised[0]
             later = min(step + CARRY_STEPS, len(poses) - 1)
+            reach = {hand: np.linalg.norm(poses[step, :3, 3] - frames[step, :3, 3]) for hand, frames in hands.items()}
             shifts = {
                 hand: np.linalg.norm(_in_hand(frames, poses, later) - _in_hand(frames, poses, step))
                 for hand, frames in hands.items()
+                if reach[hand] <= min(reach.values()) + CARRY_REACH_M
             }
             hand = min(shifts, key=shifts.get)
             raw.append((name, hand, hands[hand][: step + 1], poses[: step + 1]))

@@ -82,6 +82,18 @@ class Episode:
         return found
 
 
+def _episode(data: h5py.Group, name: str) -> Episode:
+    """The episode ``name`` of the ``data`` group.
+
+    Raises:
+        InvalidRecord: If the episode's group cannot be opened.
+    """
+    try:
+        return Episode(data[name])
+    except (KeyError, OSError, RuntimeError) as exc:
+        raise InvalidRecord(f"{data.file.filename} episode {name} cannot be read: {exc}") from exc
+
+
 class Evidence:
     """A dataset, and optionally the generation run that produced it, as metrics read them.
 
@@ -105,7 +117,7 @@ class Evidence:
         source: Evidence | None = None,
     ) -> None:
         self.env_args = read_env_args(h5_file)
-        self.all_episodes = [Episode(group) for group in h5_file["data"].values()]
+        self.all_episodes = [_episode(h5_file["data"], name) for name in h5_file["data"]]
         self.episodes = list(self.all_episodes)
         self.failures: dict[str, dict[str, str]] = {}
         self.check_groups: dict[str, str] = {}
@@ -154,10 +166,13 @@ class Evidence:
 
     @cached_property
     def camera_paths(self) -> frozenset[str]:
-        """Paths of the camera streams, 4-D ``uint8`` arrays, that any episode records."""
-        return frozenset(
-            path
-            for episode in self.all_episodes
-            for path, dataset in episode.datasets()
-            if dataset.dtype == np.uint8 and dataset.ndim == 4
-        )
+        """Paths of the camera streams, 4-D ``uint8`` arrays, that any readable episode records."""
+        paths = set()
+        for episode in self.all_episodes:
+            try:
+                paths.update(
+                    path for path, dataset in episode.datasets() if dataset.dtype == np.uint8 and dataset.ndim == 4
+                )
+            except Exception:  # An episode that cannot be read fails its own checks.
+                continue
+        return frozenset(paths)
