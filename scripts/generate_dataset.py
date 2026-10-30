@@ -419,7 +419,12 @@ def main() -> None:
         enable_cameras=args_cli.record_images,
     )
 
+    env_cfg.seed = generation_policy_params.seed
     env = gym.make(env_name, cfg=env_cfg, **env_make_kwargs.get(env_name, {})).unwrapped
+    # Environment initialization can reseed or consume the global RNGs.
+    random.seed(generation_policy_params.seed)
+    np.random.seed(generation_policy_params.seed)
+    torch.manual_seed(generation_policy_params.seed)
 
     env.reset()
 
