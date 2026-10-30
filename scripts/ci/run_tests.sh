@@ -47,7 +47,8 @@ REPO_ROOT=$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)
 cd "${REPO_ROOT}"
 
 # cuRobo (-c) is required for the SkillGen tests; one image covers the whole suite.
-RUN_DOCKER_ARGS=(-c)
+# -u rebuilds the runner's image when it was not built from this checkout.
+RUN_DOCKER_ARGS=(-c -u)
 if [ "${FORCE_REBUILD}" = "true" ]; then
     RUN_DOCKER_ARGS+=(-r)
 fi
