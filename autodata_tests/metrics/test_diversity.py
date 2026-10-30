@@ -11,14 +11,15 @@ from pathlib import Path
 import pytest
 
 from autodata_metrics import REGISTERED_METRICS, build_report
+from autodata_metrics.diversity import MAX_PAIRS, _pairs
 
 CUBE = np.array([0.5, 0.0, 0.02])
+BALL = np.array([0.5, 0.5, 0.02])
+SIDES = ([1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, 0, 1])
 
 
-def _write(path: Path, episodes: list[dict[str, np.ndarray]], format_version: int | None = None) -> str:
+def _write(path: Path, episodes: list[dict[str, np.ndarray]]) -> str:
     with h5py.File(path, "w") as h5_file:
-        if format_version is not None:
-            h5_file.attrs["format_version"] = format_version
         data = h5_file.create_group("data")
         data.attrs["env_args"] = json.dumps({"env_name": "Test-v0"})
         for index, arrays in enumerate(episodes):
@@ -40,37 +41,50 @@ def _starts(**positions: list[float]) -> dict[str, np.ndarray]:
     return {"actions": np.zeros((2, 7)), **poses}
 
 
-def _hand(track: list) -> dict[str, np.ndarray]:
-    """An episode whose hand passes through ``track``."""
+def _hand(track: np.ndarray, name: str = "arm") -> dict[str, np.ndarray]:
+    """An episode whose hand ``name`` passes through ``track``."""
     poses = np.tile(np.eye(4), (len(track), 1, 1))
     poses[:, :3, 3] = track
-    return {"actions": np.zeros((len(track), 7)), "obs/datagen_info/eef_pose/arm": poses}
+    return {"actions": np.zeros((len(track), 7)), f"obs/datagen_info/eef_pose/{name}": poses}
 
 
 def _lift(
-    direction: list[float], hand_offset: float = 0.0, yaw: float = 0.0, xyzw: bool = False, resting_hand: bool = False
+    direction: list[float],
+    hand_offset: float = 0.0,
+    yaw: float = 0.0,
+    walk: float = 0.0,
+    rise: float = 0.02,
+    resting_hand: bool = False,
+    hand: str = "arm",
+    name: str = "cube",
+    at: np.ndarray = CUBE,
 ) -> dict[str, np.ndarray]:
-    """An episode whose grasp point comes straight to the cube from 20 cm along ``direction`` in the cube's frame, then
-    lifts it 2 to 4 cm.
+    """An episode whose grasp point comes straight to an object from 20 cm along ``direction`` in the object's frame,
+    then lifts it by 1, 1.5 and 2 times ``rise``.
 
-    The cube is turned by ``yaw`` [rad], its quaternion stored as (x, y, z, w) when ``xyzw`` and as (w, x, y, z)
-    otherwise. The recorded hand frame sits ``hand_offset`` below the grasp point. With ``resting_hand``, a second
-    hand waits 20 cm from the cube.
+    The object is turned by ``yaw`` [rad]. Hand and object poses are observed before each step in a robot frame that
+    moves ``walk`` along y per step; the states record the object in the world after each step. The recorded hand
+    frame sits ``hand_offset`` below the grasp point. With ``resting_hand``, a second hand waits 20 cm from the object.
     """
     turn = np.array([[np.cos(yaw), -np.sin(yaw), 0.0], [np.sin(yaw), np.cos(yaw), 0.0], [0.0, 0.0, 1.0]])
-    track = [CUBE + 0.2 * turn @ np.array(direction) * (1 - step / 9) for step in range(10)]
-    track += [CUBE + [0.0, 0.0, rise] for rise in (0.02, 0.03, 0.04)]
-    half = [np.cos(yaw / 2), np.sin(yaw / 2)]
-    quaternion = [0.0, 0.0, half[1], half[0]] if xyzw else [half[0], 0.0, 0.0, half[1]]
-    cube = np.tile([*CUBE, *quaternion], (len(track), 1))
-    cube[10:, :3] = track[10:]
+    track = [at + 0.2 * turn @ np.array(direction) * (1 - step / 9) for step in range(10)]
+    track = np.array(track + [at + [0.0, 0.0, rise * scale] for scale in (1.0, 1.5, 2.0)])
+    robot = np.array([[0.0, walk * step, 0.0] for step in range(len(track))])
+    world = np.tile(np.eye(4), (len(track), 1, 1))
+    world[:, :3, :3] = turn
+    world[:, :3, 3] = at
+    world[10:, :3, 3] = track[10:]
+    observed = world.copy()
+    observed[:, :3, 3] -= robot
+    after = np.concatenate([world[1:, :3, 3], world[-1:, :3, 3]])
+    quaternion = np.tile([np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2)], (len(track), 1))
     episode = {
-        **_hand([point - [0.0, 0.0, hand_offset] for point in track]),
-        "states/rigid_object/cube/root_pose": cube,
+        **_hand(track - [0.0, 0.0, hand_offset] - robot, hand),
+        f"obs/datagen_info/object_pose/{name}": observed,
+        f"states/rigid_object/{name}/root_pose": np.concatenate([after, quaternion], axis=1),
     }
     if resting_hand:
-        rest = _hand([CUBE + [0.0, -0.2, 0.0]] * len(track))
-        episode["obs/datagen_info/eef_pose/other"] = rest["obs/datagen_info/eef_pose/arm"]
+        episode.update(_hand(np.tile(at + [0.0, -0.2, 0.0], (len(track), 1)) - robot, "other"))
     return episode
 
 
@@ -94,41 +108,88 @@ def test_start_spread_averages_the_layout_distance_over_the_objects_that_move(tm
 
 
 def test_workspace_coverage_averages_the_space_two_episodes_do_not_share(tmp_path):
-    # Two hands sweep 4 voxels each, 2 in common: 4 of the 6 voxels are not shared, and the paths are 10 cm apart.
-    across = [[0.525 + 0.05 * step, 0.025, 0.025] for step in range(6)]
-    seeds = _write(tmp_path / "s.hdf5", [_hand(across[:4]), _hand(across[:4])])
+    # Two hands sweep 9.5 cm along x, 7 cm apart. Of the 5 cm voxels they visit, x cells 10-11 and 11-13, three of
+    # four are not shared, and their paths are 7 cm apart.
+    sweep = np.array([[0.5025 + 0.005 * step, 0.0125, 0.0125] for step in range(20)])
+    seeds = _write(tmp_path / "s.hdf5", [_hand(sweep), _hand(sweep)])
 
-    row = _row(_write(tmp_path / "d.hdf5", [_hand(across[:4]), _hand(across[2:])]), "workspace_coverage", seeds)
+    row = _row(
+        _write(tmp_path / "d.hdf5", [_hand(sweep), _hand(sweep + [0.07, 0.0, 0.0])]), "workspace_coverage", seeds
+    )
 
-    assert row["value"] == pytest.approx(2 / 3) and row["baseline"] == 0.0
-    assert row["details"]["path_distance_mm"] == pytest.approx(100.0)
+    assert row["value"] == pytest.approx(3 / 4) and row["baseline"] == 0.0
+    assert row["details"]["path_distance_mm"] == pytest.approx(70.0)
 
 
-@pytest.mark.parametrize("hand_offset, resting_hand", [(0.0, False), (0.1, False), (0.26, True)])
-def test_approach_metrics_average_over_pairs_of_lifts_in_the_object_frame(tmp_path, hand_offset, resting_hand):
+@pytest.mark.parametrize(
+    "hand_offset, resting_hand, walk", [(0.0, False, 0.0), (0.1, False, 0.0), (0.26, True, 0.0), (0.0, False, 0.05)]
+)
+def test_approach_metrics_average_over_pairs_of_lifts_in_the_object_frame(tmp_path, hand_offset, resting_hand, walk):
     # From ±x, +y and above: one opposite pair and five perpendicular ones. Straight approaches over their last
     # 15.6 cm are 0.0913 m × |d1 - d2| apart in root-mean-square, so 138.0 mm on average.
     # A hand frame away from the grasp point, as a flange or a wrist is, gives the same answer, also when the other
-    # hand rests nearer the cube than the carrying wrist.
-    sides = ([1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, 0, 1])
-    dataset = _write(tmp_path / "d.hdf5", [_lift(side, hand_offset, resting_hand=resting_hand) for side in sides])
-    seeds = _write(tmp_path / "s.hdf5", [_lift([1, 0, 0]), _lift([1, 0, 0])])
+    # hand rests nearer the cube than the carrying wrist, and so does a robot frame that walks.
+    lifts = [_lift(side, hand_offset, walk=walk, resting_hand=resting_hand) for side in SIDES]
+    dataset = _write(tmp_path / "d.hdf5", lifts)
+    # Seeds from ±x: the ±x lifts follow a seed path, the others pass 129.1 mm from both.
+    seeds = _write(tmp_path / "s.hdf5", [_lift([1, 0, 0]), _lift([-1, 0, 0])])
 
     spread = _row(dataset, "approach_spread", seeds)
     diversity = _row(dataset, "behavior_diversity", seeds)
 
-    assert (spread["value"], spread["baseline"], spread["n"]) == (pytest.approx(105.0), 0.0, 4)
-    assert diversity["value"] == pytest.approx(138.0, abs=0.1) and diversity["baseline"] == 0.0
+    assert (spread["value"], spread["baseline"], spread["n"]) == (pytest.approx(105.0), pytest.approx(180.0), 4)
+    assert diversity["value"] == pytest.approx(138.0, abs=0.1) and diversity["baseline"] == pytest.approx(
+        182.6, abs=0.1
+    )
+    assert diversity["details"]["objects"]["cube"]["novelty_mm"] == pytest.approx(129.1 / 2, abs=0.1)
 
 
-@pytest.mark.parametrize("xyzw", [False, True])
-def test_approach_metrics_read_the_quaternion_order_of_the_file(tmp_path, xyzw):
+def test_lift_metrics_average_over_the_lifted_objects(tmp_path):
+    # One hand lifts the cube from the four sides above; the other lifts the ball, higher, from one side each time.
+    # Each object counts once, whatever its average.
+    episodes = [
+        _lift(side, hand="left") | _lift([1, 0, 0], rise=0.03, hand="right", name="ball", at=BALL) for side in SIDES
+    ]
+    dataset = _write(tmp_path / "d.hdf5", episodes)
+
+    spread, diversity = _row(dataset, "approach_spread"), _row(dataset, "behavior_diversity")
+
+    assert (spread["value"], spread["n"]) == (pytest.approx(105.0 / 2), 8)
+    assert diversity["value"] == pytest.approx(138.0 / 2, abs=0.1)
+
+
+def test_approach_metrics_measure_in_the_object_frame(tmp_path):
     # Every lift comes at the cube's own +x face while the cube turns, so in its frame all approaches are one.
-    lifts = [_lift([1, 0, 0], yaw=yaw, xyzw=xyzw) for yaw in np.radians([0, 30, 60, 90])]
-    dataset = _write(tmp_path / "d.hdf5", lifts, format_version=1 if xyzw else None)
+    dataset = _write(tmp_path / "d.hdf5", [_lift([1, 0, 0], yaw=yaw) for yaw in np.radians([0, 30, 60, 90])])
 
     assert _row(dataset, "approach_spread")["value"] == pytest.approx(0.0, abs=1e-3)
     assert _row(dataset, "behavior_diversity")["value"] == pytest.approx(0.0, abs=1e-3)
+
+
+def test_objects_without_usable_poses_are_left_out(tmp_path):
+    # Beside the cube, each episode records a ghost with an empty start pose and a lid observed but without a root
+    # pose; the metrics read the cube alone.
+    episodes = []
+    for index, side in enumerate(SIDES[::2]):
+        episode = _starts(cube=[0.04 * index, 0.0]) | _lift(side)
+        episode["initial_state/rigid_object/ghost/root_pose"] = np.zeros((0, 7))
+        episode["obs/datagen_info/object_pose/lid"] = episode["obs/datagen_info/object_pose/cube"]
+        episode["states/rigid_object/lid/root_velocity"] = np.zeros((13, 6))
+        episodes.append(episode)
+    dataset = _write(tmp_path / "d.hdf5", episodes)
+
+    rows = {name: _row(dataset, name) for name in ("start_spread", "workspace_coverage", "approach_spread")}
+
+    assert {name: row["status"] for name, row in rows.items()} == dict.fromkeys(rows, "ok")
+    assert rows["start_spread"]["value"] == pytest.approx(40.0) and rows["approach_spread"]["value"] == pytest.approx(
+        90.0
+    )
+
+
+def test_pairs_drawn_beyond_the_cap_never_pair_an_item_with_itself():
+    first, second = _pairs(65)  # 2,080 pairs, more than the cap
+
+    assert len(first) == MAX_PAIRS and (first != second).all()
 
 
 def test_exact_duplicates_counts_episodes_that_repeat_an_earlier_one(tmp_path):

@@ -250,6 +250,24 @@ def test_degenerate_inputs_are_reported_without_breaking_the_summary_or_json(tmp
     assert "typo.json does not exist" in report["warnings"][0]
 
 
+def test_an_episode_that_cannot_be_read_fails_its_checks_and_the_report_goes_on(tmp_path):
+    path = tmp_path / "d.hdf5"
+    with h5py.File(path, "w") as h5_file:
+        data = h5_file.create_group("data")
+        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0"})
+        for index in range(3):
+            data.create_dataset(f"demo_{index}/actions", data=np.zeros((4, 7)))
+            data.create_dataset(f"demo_{index}/obs/extra", data=np.zeros((4, 2)))
+        header = h5py.h5g.get_objinfo(data["demo_1/obs"].id, b"extra").objno[0]
+    with open(path, "r+b") as raw:  # A damaged object header: walking demo_1 fails.
+        raw.seek(header)
+        raw.write(b"\xff")
+
+    report = build_report(str(path), metrics={})
+
+    assert any("demo_1" in entry["examples"] for entry in report["check_failures"].values())
+
+
 def test_metrics_import_without_torch_or_isaaclab():
     code = "import sys, autodata_metrics; print(sorted({'torch', 'isaaclab', 'autodata_core'} & set(sys.modules)))"
     output = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout

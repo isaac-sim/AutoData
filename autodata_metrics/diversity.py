@@ -3,14 +3,18 @@
 
 """Diversity metrics: how differently the demonstrations use the workspace, approach what they lift, and start.
 
-The four spread metrics each average, over pairs of episodes or lifts, how much the two differ. That estimates how
-different two demonstrations drawn from the same generator are, so it does not grow with their number and is defined
-from two episodes on; fewer episodes only make it noisier. The source column holds the same average over the seeds.
+The four spread metrics each average, over pairs of episodes or lifts, how much the two differ; the two lift metrics
+then average over the lifted objects. That estimates how different two demonstrations drawn from the same generator
+are, so it does not grow with their number and is defined from two episodes on; fewer episodes only make it noisier.
+The source column holds the same average over the seeds.
 
-An object is carried by the hand in whose frame it moves least while it rises. The hand's grasp point is where the
-objects it carries sit in its frame at lift-off, the median over the dataset, because recorded hand frames differ
-(a fingertip point, a flange, a wrist); a hand that carries nothing keeps its frame. An object's approach is the grasp
-point's path from the last time it was :data:`APPROACH_M` from the object until lift-off, in the object's frame there.
+Hand and object poses come from ``obs/datagen_info``, which records both in one frame before each step. An object is
+lifted when ``states/``, recorded after each step in the world frame, first shows it :data:`LIFT_M` above its start;
+lift-off is the last observation before that. The object is carried by the hand in whose frame it moves least while
+it rises. The hand's grasp point is where the objects it carries sit in its frame at lift-off, the median over the
+dataset, because recorded hand frames differ (a fingertip point, a flange, a wrist); a hand that carries nothing keeps
+its frame. An object's approach is the grasp point's path in the object's frame from the last time it was
+:data:`APPROACH_M` from the object until lift-off.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ import numpy as np
 import weakref
 from dataclasses import dataclass
 
-from autodata_metrics.evidence import Evidence
+from autodata_metrics.evidence import Episode, Evidence
 from autodata_metrics.registry import NotApplicable, Value, metric
 
 WORKSPACE_VOXEL_M = 0.05
@@ -30,7 +34,7 @@ WORKSPACE_POINTS = 64
 MIN_START_EXTENT_M = 0.01
 """Spread along x or y below which an object's start position counts as fixed [m]."""
 LIFT_M = 0.01
-"""Rise above its start height at which an object counts as lifted; lift-off is the step before [m]."""
+"""Rise above its start height at which an object counts as lifted; lift-off is the last observation before [m]."""
 CARRY_STEPS = 5
 """Steps after lift-off over which the carrying hand is the one in whose frame the object moves least."""
 APPROACH_M = 0.15
@@ -97,18 +101,17 @@ def workspace_coverage(ev: Evidence) -> Value:
     unit="degrees",
     sample="lifts",
     better="higher",
-    requires=["obs/datagen_info/eef_pose", "states/rigid_object"],
+    requires=["obs/datagen_info/eef_pose", "obs/datagen_info/object_pose", "states/rigid_object"],
     baseline=True,
 )
 def approach_spread(ev: Evidence) -> Value:
-    """Average angle between the directions two lifts of an object approach it from, in its frame; the lowest object."""
+    """Average angle between the directions two lifts of an object come from, in its frame, over the lifted objects."""
     objects = {}
     for name, (directions, _) in _lifted(ev).items():
         first, second = _pairs(len(directions))
         angles = np.degrees(np.arccos(np.clip((directions[first] * directions[second]).sum(axis=1), -1.0, 1.0)))
         objects[name] = {"lifts": len(directions), "angle_deg": float(angles.mean())}
-    lowest = min(objects, key=lambda name: objects[name]["angle_deg"])
-    return Value(objects[lowest]["angle_deg"], n=objects[lowest]["lifts"], details={"objects": objects})
+    return _over_objects(objects, "angle_deg")
 
 
 @metric(
@@ -119,16 +122,16 @@ def approach_spread(ev: Evidence) -> Value:
     unit="mm",
     sample="lifts",
     better="higher",
-    requires=["obs/datagen_info/eef_pose", "states/rigid_object"],
+    requires=["obs/datagen_info/eef_pose", "obs/datagen_info/object_pose", "states/rigid_object"],
     baseline=True,
 )
 def behavior_diversity(ev: Evidence) -> Value:
-    """Average distance between two lifts' approach paths to an object, in its frame; the lowest object.
+    """Average distance between two lifts' approach paths to an object, in its frame, over the lifted objects.
 
-    Novelty, in the details, is the median over the lifts of the distance from each approach path to the nearest seed
-    path of the object.
+    Novelty, in each object's details, is the median over its lifts of the distance from each approach path to the
+    nearest seed path.
     """
-    seeds = _demos(ev.source).lifts if ev.source is not None else {}
+    seeds = _demos(ev.baseline).lifts if ev.baseline is not None else {}
     objects = {}
     for name, (_, paths) in _lifted(ev).items():
         first, second = _pairs(len(paths))
@@ -137,8 +140,7 @@ def behavior_diversity(ev: Evidence) -> Value:
         if name in seeds:
             nearest = _squared_distances(paths, seeds[name][1]).min(axis=1)
             objects[name]["novelty_mm"] = 1000 * float(np.median(np.sqrt(nearest)))
-    lowest = min(objects, key=lambda name: objects[name]["path_distance_mm"])
-    return Value(objects[lowest]["path_distance_mm"], n=objects[lowest]["lifts"], details={"objects": objects})
+    return _over_objects(objects, "path_distance_mm")
 
 
 @metric(
@@ -153,11 +155,11 @@ def behavior_diversity(ev: Evidence) -> Value:
     baseline=True,
 )
 def start_spread(ev: Evidence) -> Value:
-    """Average root-mean-square distance between two episodes' xy starts of the objects that start in more than one
-    place.
+    """Average distance between two episodes' object layouts in the horizontal plane.
 
-    The details give each object's average distance, with a source the seeds' too, for the objects that move here or
-    in the seeds, so an object the seeds move but this dataset pins shows.
+    A layout distance is the root-mean-square, over the objects that start in more than one place, of their xy start
+    distances. The details give each object's average distance, with a source the seeds' too, for the objects that
+    move here or in the seeds, so an object the seeds move but this dataset pins shows.
     """
     if len(ev.episodes) < 2:
         raise NotApplicable("needs two episodes")
@@ -213,6 +215,12 @@ def _pairs(count: int) -> tuple[np.ndarray, np.ndarray]:
     return first, second + (second >= first)
 
 
+def _over_objects(objects: dict[str, dict], field: str) -> Value:
+    """The average of ``field`` over the objects, each counted once, with every object in the details."""
+    value = float(np.mean([entry[field] for entry in objects.values()]))
+    return Value(value, n=sum(entry["lifts"] for entry in objects.values()), details={"objects": objects})
+
+
 def _moves(points: np.ndarray) -> bool:
     return np.ptp(points, axis=0).max() >= MIN_START_EXTENT_M
 
@@ -226,13 +234,14 @@ def _lifted(ev: Evidence) -> dict[str, tuple[np.ndarray, np.ndarray]]:
 
 
 def _start_positions(ev: Evidence) -> dict[str, np.ndarray]:
-    """Per rigid object every episode records, in name order, the xy of its initial root pose in each episode [m]."""
-    group = "initial_state/rigid_object"
-    names = set.intersection(*(set(episode.children(group)) if group in episode else set() for episode in ev.episodes))
-    return {
-        name: np.array([episode[f"{group}/{name}/root_pose"][0, :2] for episode in ev.episodes])
-        for name in sorted(names)
-    }
+    """Per rigid object with an initial root pose in every episode, in name order, its xy in each episode [m]."""
+    group, starts = "initial_state/rigid_object", {}
+    for episode in ev.episodes:
+        for name in episode.children(group) if group in episode else ():
+            path = f"{group}/{name}/root_pose"
+            if path in episode and len(pose := episode[path]):
+                starts.setdefault(name, []).append(pose[0, :2])
+    return {name: np.array(points) for name, points in sorted(starts.items()) if len(points) == len(ev.episodes)}
 
 
 def _demos(ev: Evidence) -> _Demos:
@@ -241,29 +250,29 @@ def _demos(ev: Evidence) -> _Demos:
         return _DEMOS[ev]
     episodes, raw = [], []
     for episode in ev.episodes:
-        group = "obs/datagen_info/eef_pose"
-        hands = {name: episode[f"{group}/{name}"] for name in episode.children(group)} if group in episode else {}
+        hands, objects = (_named(episode, f"obs/datagen_info/{group}") for group in ("eef_pose", "object_pose"))
         if not hands:
             continue
         episodes.append(hands)
-        for name in episode.children("states/rigid_object") if "states/rigid_object" in episode else ():
-            pose = episode[f"states/rigid_object/{name}/root_pose"]
-            raised = np.flatnonzero(pose[:, 2] - pose[0, 2] > LIFT_M)
-            if not len(raised) or raised[0] == 0:
+        for name, poses in objects.items():
+            state = f"states/rigid_object/{name}/root_pose"
+            if state not in episode:
                 continue
-            step = raised[0] - 1
-            later = min(step + CARRY_STEPS, len(pose) - 1)
+            height = episode[state][:, 2]
+            raised = np.flatnonzero(height - height[0] > LIFT_M)
+            if not len(raised):
+                continue
+            # States record each step's outcome, so observation raised[0] is the last before the rise.
+            step = raised[0]
+            later = min(step + CARRY_STEPS, len(poses) - 1)
             shifts = {
-                hand: np.linalg.norm(_in_hand(poses, pose, later) - _in_hand(poses, pose, step))
-                for hand, poses in hands.items()
+                hand: np.linalg.norm(_in_hand(frames, poses, later) - _in_hand(frames, poses, step))
+                for hand, frames in hands.items()
             }
             hand = min(shifts, key=shifts.get)
-            raw.append((name, hand, hands[hand][: step + 1], pose[step]))
+            raw.append((name, hand, hands[hand][: step + 1], poses[: step + 1]))
     offsets = {
-        hand: np.median(
-            [poses[-1, :3, :3].T @ (pose[:3] - poses[-1, :3, 3]) for _, other, poses, pose in raw if other == hand],
-            axis=0,
-        )
+        hand: np.median([_in_hand(frames, poses, -1) for _, other, frames, poses in raw if other == hand], axis=0)
         for hand in {hand for _, hand, _, _ in raw}
     }
     voxels, paths = [], []
@@ -277,9 +286,9 @@ def _demos(ev: Evidence) -> _Demos:
     same_hands = len({tuple(sorted(hands)) for hands in episodes}) == 1
     scale = np.sqrt(WORKSPACE_POINTS * len(episodes[0])) if episodes else 1.0
     lifts: dict[str, list[tuple[np.ndarray, np.ndarray]]] = {}
-    for name, hand, poses, pose in raw:
-        rotation = _rotation(pose[3:7], ev.quaternions_xyzw)
-        approach = (poses[:, :3, 3] + poses[:, :3, :3] @ offsets[hand] - pose[:3]) @ rotation
+    for name, hand, frames, poses in raw:
+        grasp = frames[:, :3, 3] + frames[:, :3, :3] @ offsets[hand]
+        approach = np.einsum("sji,sj->si", poses[:, :3, :3], grasp - poses[:, :3, 3])
         outside = np.flatnonzero(np.linalg.norm(approach, axis=1) >= APPROACH_M)
         if len(outside):
             approach = approach[outside[-1] :]
@@ -294,9 +303,14 @@ def _demos(ev: Evidence) -> _Demos:
     return demos
 
 
-def _in_hand(poses: np.ndarray, pose: np.ndarray, step: int) -> np.ndarray:
-    """Where the object of root poses ``pose`` sits in the frame of hand poses ``poses`` at ``step``."""
-    return poses[step, :3, :3].T @ (pose[step, :3] - poses[step, :3, 3])
+def _named(episode: Episode, group: str) -> dict[str, np.ndarray]:
+    """The arrays under ``group`` by name, such as each hand's poses; empty when the episode lacks the group."""
+    return {name: episode[f"{group}/{name}"] for name in episode.children(group)} if group in episode else {}
+
+
+def _in_hand(frames: np.ndarray, poses: np.ndarray, step: int) -> np.ndarray:
+    """Where the object of poses ``poses`` sits in the frame of hand poses ``frames`` at ``step``."""
+    return frames[step, :3, :3].T @ (poses[step, :3, 3] - frames[step, :3, 3])
 
 
 def _resample(path: np.ndarray, points: int) -> np.ndarray:
@@ -304,16 +318,6 @@ def _resample(path: np.ndarray, points: int) -> np.ndarray:
     lengths = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))])
     samples = np.linspace(0.0, lengths[-1], points)
     return np.stack([np.interp(samples, lengths, path[:, axis]) for axis in range(3)], axis=1)
-
-
-def _rotation(quaternion: np.ndarray, xyzw: bool) -> np.ndarray:
-    """Rotation matrix of a quaternion stored as ``(x, y, z, w)``, or as ``(w, x, y, z)`` when ``xyzw`` is false."""
-    x, y, z, w = (quaternion if xyzw else np.roll(quaternion, -1)) / np.linalg.norm(quaternion)
-    return np.array([
-        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-    ])
 
 
 def _squared_distances(a: np.ndarray, b: np.ndarray) -> np.ndarray:

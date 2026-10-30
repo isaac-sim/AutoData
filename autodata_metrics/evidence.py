@@ -8,7 +8,6 @@ from __future__ import annotations
 import copy
 import h5py
 import json
-import numbers
 import numpy as np
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -63,7 +62,10 @@ class Episode:
     @contextmanager
     def listed(self) -> Iterator[None]:
         """Within the block, :meth:`datasets` walks the episode once, so several checks share one listing."""
-        self._listing = self.datasets()
+        try:
+            self._listing = self.datasets()
+        except Exception:  # An episode that cannot be walked is walked by each check, which fails it with the error.
+            self._listing = None
         try:
             yield
         finally:
@@ -93,8 +95,6 @@ class Evidence:
         run: The result's ``run`` block, or empty.
         attempts: Attempt-log lines, or None.
         source: Evidence of the source dataset the run started from, or None.
-        quaternions_xyzw: Whether the file stores quaternions as ``(x, y, z, w)``, as Isaac Lab does from format
-            version 1; older files store ``(w, x, y, z)``.
     """
 
     def __init__(
@@ -105,10 +105,6 @@ class Evidence:
         source: Evidence | None = None,
     ) -> None:
         self.env_args = read_env_args(h5_file)
-        version = h5_file.attrs.get("format_version", 0)
-        if not isinstance(version, numbers.Integral) or isinstance(version, bool):
-            raise InvalidRecord(f"{h5_file.filename} format_version must be an integer, not {version!r}.")
-        self.quaternions_xyzw = version >= 1
         self.all_episodes = [Episode(group) for group in h5_file["data"].values()]
         self.episodes = list(self.all_episodes)
         self.failures: dict[str, dict[str, str]] = {}
@@ -150,6 +146,11 @@ class Evidence:
         baseline = copy.copy(self)
         baseline.env_args = {**self.env_args, "autodata": {**run.entry, **self.entry}}
         return baseline
+
+    @cached_property
+    def baseline(self) -> Evidence | None:
+        """The source dataset as a baseline for this run, built once on first use, after the episode checks."""
+        return self.source.as_baseline_for(self) if self.source is not None else None
 
     @cached_property
     def camera_paths(self) -> frozenset[str]:

@@ -184,8 +184,8 @@ def evaluate(spec: MetricSpec, evidence: Evidence) -> dict[str, Any]:
         "n": int(value.n),
         "details": _finite_or_none(value.details),
     }
-    if spec.baseline and evidence.source is not None:
-        row["baseline"] = evaluate(spec, evidence.source.as_baseline_for(evidence)).get("value")
+    if spec.baseline and evidence.baseline is not None:
+        row["baseline"] = evaluate(spec, evidence.baseline).get("value")
     return row
 
 

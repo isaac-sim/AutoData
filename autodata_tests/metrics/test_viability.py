@@ -46,10 +46,11 @@ def test_time_to_dataset_counts_only_annotation_recorded_as_automatic():
 
 
 def test_generation_bias_flags_the_start_cell_that_fails_more_than_the_rest():
-    # A 3x3 grid of cube starts, 20 attempts each: one corner never succeeds, the rest half the time.
+    # A 3x3 grid of cube starts, 20 attempts each: one corner never succeeds, the opposite one twice and the rest half
+    # the time. Twice in 20 is below the overall rate at p = 0.0036, which only the correction for nine cells forgives.
     attempts = [
         {
-            "success": (i, j) != (2, 2) and k % 2 == 0,
+            "success": k < 2 if (i, j) == (0, 0) else (i, j) != (2, 2) and k % 2 == 0,
             "initial_object_positions": {"cube": [0.05 + 0.1 * i, 0.05 + 0.1 * j], "table": [0.0, 0.0]},
         }
         for i in range(3)

@@ -208,13 +208,13 @@ def planning_time(ev: Evidence) -> Value:
     requires=["attempts.initial_object_positions"],
 )
 def generation_bias(ev: Evidence) -> Value:
-    """Start-position cells whose success rate is significantly below the overall rate, stop-corrected when the
-    attempt log allows.
+    """Start-position cells whose success rate is significantly below the overall rate.
 
     Each moving object's attempted starts are split into :data:`BIAS_BINS` cells per moving axis. Every cell with
     :data:`SPARSE_CELL_ATTEMPTS` or more attempts gets a one-sided exact binomial test against the overall rate,
-    Bonferroni-corrected at 2.5%; a few hundred attempts are needed to flag even a cell that never succeeds. The
-    details name the worst tested cell, flagged or not.
+    stop-corrected when the attempt log allows, Bonferroni-corrected at 2.5%. With nine cells tested, a cell that never
+    succeeds is flagged from 10 attempts at an overall rate of 50%, and from 56 at 10%. The details name the worst
+    tested cell, flagged or not.
     """
     attempts, corrected = _counted_attempts(ev)
     success = np.array([attempt["success"] for attempt in attempts])
