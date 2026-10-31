@@ -126,9 +126,13 @@ class Evidence:
 
     def as_baseline_for(self, run: Evidence) -> Evidence:
         """This source dataset, with the run's ``autodata`` fields where its own entry lacks them, so a baseline
-        reads the robot layout and limits."""
+        reads the robot layout and limits; datasheet limits fill in kind by kind."""
         baseline = copy.copy(self)
-        baseline.env_args = {**self.env_args, "autodata": {**run.entry, **self.entry}}
+        entry = {**run.entry, **self.entry}
+        limits = {**run.entry.get("hardware_limits", {}), **self.entry.get("hardware_limits", {})}
+        if limits:
+            entry["hardware_limits"] = limits
+        baseline.env_args = {**self.env_args, "autodata": entry}
         return baseline
 
     @cached_property
