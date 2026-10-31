@@ -419,8 +419,6 @@ def main() -> None:
     )
     PreStepDatagenInfoRecorder.datastream = datastream
     run_id = uuid.uuid4().hex
-    autodata_entry = collect_autodata_entry(env, embodiment_adapter, run_id) if args_cli.record_metric_inputs else None
-
     # SkillGen needs one curobo planner per env. Mimic/DexMimic take no kwargs.
     motion_planners: dict | None = None
     alg_kwargs: dict = {}
@@ -434,6 +432,14 @@ def main() -> None:
         )
         alg_kwargs["motion_planners"] = motion_planners
     algorithm = get_algorithm(args_cli.alg, **alg_kwargs)
+    autodata_entry = None
+    if args_cli.record_metric_inputs:
+        noises = [spec.action_noise for specs in task_descriptor.subtasks.values() for spec in specs]
+        noises += [getattr(planner.config, "motion_noise_scale", 0.0) for planner in (motion_planners or {}).values()]
+        autodata_entry = {
+            **collect_autodata_entry(env, embodiment_adapter, run_id),
+            "action_noise": max(noises, default=0.0),
+        }
 
     attempts_file = attempts_file_for(args_cli.result_file, run_id) if autodata_entry and args_cli.result_file else None
     attempt_log = AttemptLog(attempts_file, run_id) if attempts_file else None

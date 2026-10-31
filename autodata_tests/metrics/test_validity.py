@@ -141,3 +141,124 @@ def test_action_rotation_error_measures_commanded_rotations(tmp_path):
     row = report["metrics"]["action_rotation_error"]
     assert row["value"]["p95"] == pytest.approx(1.01**2 - 1) and row["n"] == 4
     assert report["num_valid_episodes"] == 1
+
+
+def _poses(positions: np.ndarray) -> np.ndarray:
+    poses = np.tile(np.eye(4), (len(positions), 1, 1))
+    poses[:, :3, 3] = positions
+    return poses
+
+
+def test_tracking_error_measures_absolute_targets_against_the_next_step(tmp_path):
+    reached = _poses(np.array([[0.01 * step, 0.0, 0.0] for step in range(5)]))
+    targets = _poses(np.vstack([reached[1:, :3, 3] + [0.0, 0.02, 0.0], [[0.0, 0.0, 0.0]]]))
+    targets[-1] = 0
+    pose_action = {
+        "arm": {"action_slice": [0, 6], "absolute": True},
+        "wrist": {"action_slice": [6, 7], "absolute": False},
+    }
+    groups = ("obs/datagen_info/eef_pose", "obs/datagen_info/target_eef_pose")
+    episode = {"actions": np.zeros((5, 7)), f"{groups[0]}/arm": reached, f"{groups[1]}/arm": targets}
+    # A relative action and a channel that commands no pose action are not tracked.
+    episode.update({f"{group}/{eef}": _poses(np.zeros((5, 3))) for group in groups for eef in ("wrist", "body")})
+    one_step = {key: array[:1] for key, array in episode.items()}
+    dataset = _write(
+        tmp_path / "d.hdf5", [episode, one_step], {"run_id": "r", "exported_episodes": 2, "pose_action": pose_action}
+    )
+
+    row = build_report(dataset, metrics=_metrics("tracking_error"))["metrics"]["tracking_error"]
+
+    assert row["value"]["p50"] == pytest.approx(20.0) and row["n"] == 4
+
+
+def test_action_saturation_counts_steps_at_the_bound_and_borrows_the_run_layout_for_its_baseline(tmp_path):
+    actions = np.zeros((4, 7))
+    actions[1, 2] = -1.0
+    entry = {"run_id": "r", "exported_episodes": 1, "pose_action": {"arm": {"action_slice": [0, 6], "bound": 1.0}}}
+    source = _write(tmp_path / "source.hdf5", [{"actions": actions}])
+
+    report = build_report(
+        _write(tmp_path / "d.hdf5", [{"actions": actions}], entry), source=source, metrics=_metrics("action_saturation")
+    )
+
+    row = report["metrics"]["action_saturation"]
+    assert (row["value"], row["baseline"]) == (0.25, 0.25)
+
+
+def test_motion_smoothness_is_the_jerk_of_the_hand_labelled_with_the_noise(tmp_path):
+    step = 0.01 * 5
+    positions = np.array([[2.0 * (index * step) ** 3, 0.0, 0.0] for index in range(6)])
+    entry = {"run_id": "r", "exported_episodes": 1, "action_noise": 0.03}
+    episode = {"actions": np.zeros((6, 7)), "obs/datagen_info/eef_pose/arm": _poses(positions)}
+
+    row = build_report(_write(tmp_path / "d.hdf5", [episode], entry), metrics=_metrics("motion_smoothness"))["metrics"][
+        "motion_smoothness"
+    ]
+
+    assert row["value"]["p50"] == pytest.approx(12.0) and row["details"]["action_noise"] == 0.03
+
+
+@pytest.mark.parametrize("action_slice, failed", [([1, 7], 0), ([6, 8], 1)])
+def test_pose_action_slices_must_lie_within_the_actions(tmp_path, action_slice, failed):
+    entry = {
+        "run_id": "r",
+        "exported_episodes": 1,
+        "pose_action": {"arm": {"action_slice": action_slice, "bound": 1.0}},
+    }
+
+    report = build_report(_write(tmp_path / "d.hdf5", [{"actions": np.zeros((3, 7))}], entry), metrics={})
+
+    assert report["check_failures"]["pose_action_bounds"]["failed"] == failed
+
+
+def test_joint_limit_ratio_baseline_fills_what_its_source_entry_lacks_from_the_run(tmp_path):
+    # The source's own velocity limit applies to it, and the run fills in the acceleration limit and the robot asset
+    # the source's entry lacks.
+    joints = {"asset": "robot", "names": ["j1"]}
+    run = {
+        "run_id": "r",
+        "exported_episodes": 1,
+        "joints": joints,
+        "hardware_limits": {"velocity": {"j1": 2.0}, "acceleration": {"j1": 10.0}},
+    }
+    source = {
+        "run_id": "a",
+        "exported_episodes": 1,
+        "joints": {"names": ["j1"]},
+        "hardware_limits": {"velocity": {"j1": 1.0}},
+    }
+    episode = {"actions": np.zeros((3, 7)), "states/articulation/robot/joint_velocity": np.array([[0.0], [1.0], [1.0]])}
+
+    report = build_report(
+        _write(tmp_path / "d.hdf5", [episode], run),
+        source=_write(tmp_path / "s.hdf5", [episode], source),
+        metrics=_metrics("joint_limit_ratio"),
+    )
+
+    row = report["metrics"]["joint_limit_ratio"]
+    assert (row["value"], row["baseline"]) == (
+        {"velocity": 0.0, "acceleration": 1.0},
+        {"velocity": 1.0, "acceleration": 1.0},
+    )
+
+
+def test_joint_limit_ratio_compares_velocity_and_acceleration_with_the_datasheet(tmp_path):
+    entry = {
+        "run_id": "r",
+        "exported_episodes": 3,
+        "joints": {"asset": "robot", "names": ["j1", "j2"]},
+        "hardware_limits": {"velocity": {"j[12]": 2.0}, "acceleration": {"j1": 10.0}},
+    }
+    # The first episode doubles j2's velocity limit and j1's acceleration limit; the others run at 96% and 94% of j1's.
+    velocities = [[[0.0, 4.0], [1.0, 0.0], [1.0, 0.0]], [[1.92, 0.0]] * 3, [[1.88, 0.0]] * 3]
+    episodes = [
+        {"actions": np.zeros((3, 7)), "states/articulation/robot/joint_velocity": np.array(velocity)}
+        for velocity in velocities
+    ]
+
+    row = build_report(_write(tmp_path / "d.hdf5", episodes, entry), metrics=_metrics("joint_limit_ratio"))["metrics"][
+        "joint_limit_ratio"
+    ]
+
+    assert row["value"] == pytest.approx({"velocity": 2 / 3, "acceleration": 1 / 3})
+    assert (row["details"]["acceleration_peak_ratio"], row["details"]["velocity_worst_joint"]) == (2.0, "j2")
