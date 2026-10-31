@@ -198,6 +198,44 @@ def test_motion_smoothness_is_the_jerk_of_the_hand_labelled_with_the_noise(tmp_p
     assert row["value"]["p50"] == pytest.approx(12.0) and row["details"]["action_noise"] == 0.03
 
 
+@pytest.mark.parametrize("action_slice, failed", [([1, 7], 0), ([6, 8], 1)])
+def test_pose_action_slices_must_lie_within_the_actions(tmp_path, action_slice, failed):
+    entry = {
+        "run_id": "r",
+        "exported_episodes": 1,
+        "pose_action": {"arm": {"action_slice": action_slice, "bound": 1.0}},
+    }
+
+    report = build_report(_write(tmp_path / "d.hdf5", [{"actions": np.zeros((3, 7))}], entry), metrics={})
+
+    assert report["check_failures"]["pose_action_bounds"]["failed"] == failed
+
+
+def test_joint_limit_ratio_baseline_fills_the_limit_kinds_its_source_lacks_from_the_run(tmp_path):
+    # The source's own velocity limit applies to it, and the run's acceleration limit fills in the kind it lacks.
+    joints = {"asset": "robot", "names": ["j1"]}
+    run = {
+        "run_id": "r",
+        "exported_episodes": 1,
+        "joints": joints,
+        "hardware_limits": {"velocity": {"j1": 2.0}, "acceleration": {"j1": 10.0}},
+    }
+    source = {"run_id": "a", "exported_episodes": 1, "joints": joints, "hardware_limits": {"velocity": {"j1": 1.0}}}
+    episode = {"actions": np.zeros((3, 7)), "states/articulation/robot/joint_velocity": np.array([[0.0], [1.0], [1.0]])}
+
+    report = build_report(
+        _write(tmp_path / "d.hdf5", [episode], run),
+        source=_write(tmp_path / "s.hdf5", [episode], source),
+        metrics=_metrics("joint_limit_ratio"),
+    )
+
+    row = report["metrics"]["joint_limit_ratio"]
+    assert (row["value"], row["baseline"]) == (
+        {"velocity": 0.0, "acceleration": 1.0},
+        {"velocity": 1.0, "acceleration": 1.0},
+    )
+
+
 def test_joint_limit_ratio_compares_velocity_and_acceleration_with_the_datasheet(tmp_path):
     entry = {
         "run_id": "r",

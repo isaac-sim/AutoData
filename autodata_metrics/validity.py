@@ -113,8 +113,15 @@ def valid_rotations(episode: Episode, ev: Evidence) -> str | None:
 
 @check("pose_action_bounds", requires=["env_args.autodata.pose_action"])
 def pose_action_bounds(episode: Episode, ev: Evidence) -> str | None:
-    """Fails an episode whose pose actions exceed the bound the embodiment clips them to."""
+    """Fails an episode whose pose actions exceed the bound the embodiment clips them to, or lie beyond its actions."""
     actions = episode["actions"]
+    outside = [
+        f"{eef} {layout['action_slice']}"
+        for eef, layout in ev.entry["pose_action"].items()
+        if layout["action_slice"][1] > actions.shape[-1]
+    ]
+    if outside:
+        return f"pose action slices beyond the {actions.shape[-1]} action columns: {', '.join(outside)}"
     bad = []
     for eef, layout in ev.entry["pose_action"].items():
         if layout.get("bound") is None:
