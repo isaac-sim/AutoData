@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 class PreStepDatagenInfoRecorder(RecorderTerm):
-    """Records end-effector and commanded target poses, and optionally object poses, before each step.
+    """Records end-effector, commanded target and object poses before each step, in one frame.
 
     Attributes:
         datastream: Datastream to read. Set it on the class once the Datastream exists, since Isaac Lab
@@ -27,13 +27,11 @@ class PreStepDatagenInfoRecorder(RecorderTerm):
 
     def record_pre_step(self):
         assert self.datastream is not None, "Set PreStepDatagenInfoRecorder.datastream before stepping the env."
-        datagen_info = {
+        return "obs/datagen_info", {
             "eef_pose": self.datastream.embodiment_adapter.get_eef_poses(env_ids=None),
             "target_eef_pose": self.datastream.action_to_target_eef_pose(self._env.action_manager.action),
+            "object_pose": self.datastream.get_object_poses(),
         }
-        if self.cfg.record_object_poses:
-            datagen_info["object_pose"] = self.datastream.get_object_poses()
-        return "obs/datagen_info", datagen_info
 
 
 @configclass
@@ -41,8 +39,6 @@ class PreStepDatagenInfoRecorderCfg(RecorderTermCfg):
     """Configuration for :class:`PreStepDatagenInfoRecorder`."""
 
     class_type: type[RecorderTerm] = PreStepDatagenInfoRecorder
-    record_object_poses: bool = True
-    """Annotation needs object poses for the source pool; generation leaves them out, as no metric reads them."""
 
 
 class PostStepSuccessRecorder(RecorderTerm):
@@ -83,13 +79,13 @@ def add_step_success_recorder(recorder_cfg: object, success_term: TerminationTer
 
 
 def add_pose_recorder(recorder_cfg: object) -> None:
-    """Add the per-step end-effector and commanded target pose term to any recorder manager configuration.
+    """Add the per-step end-effector, commanded target and object pose term to any recorder manager configuration.
 
-    Object poses are left out, as no metric reads them. A configuration that already has the
-    ``record_pre_step_datagen_info`` term, such as :class:`DatagenInfoRecorderManagerCfg`, keeps its own.
+    A configuration that already has the ``record_pre_step_datagen_info`` term, such as
+    :class:`DatagenInfoRecorderManagerCfg`, keeps its own.
 
     Args:
         recorder_cfg: Recorder manager configuration the env will be built with.
     """
     if not hasattr(recorder_cfg, "record_pre_step_datagen_info"):
-        recorder_cfg.record_pre_step_datagen_info = PreStepDatagenInfoRecorderCfg(record_object_poses=False)
+        recorder_cfg.record_pre_step_datagen_info = PreStepDatagenInfoRecorderCfg()

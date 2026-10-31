@@ -126,7 +126,7 @@ Four layers report what happened:
 * **Per step** — annotation records ``obs/datagen_info`` (object, end-effector and commanded
   target poses) for the source pool. With ``--record_metric_inputs``, every exported episode also
   records ``step_success``, whether the task's success term held after each step, and generation
-  records the end-effector pose and its commanded target.
+  records the end-effector, commanded target and object poses.
 * **Per attempt** — ``GenerationResult``: ``success``, ``extras`` from the algorithm's
   ``attempt_extras()``, and ``initial_state``. With ``--record_metric_inputs`` and ``--result_file``,
   each completed attempt is also written as one line of ``<result_file stem>.<run_id>.attempts.jsonl``.

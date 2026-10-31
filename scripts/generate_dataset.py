@@ -109,8 +109,8 @@ parser.add_argument(
     "--record_metric_inputs",
     action="store_true",
     help=(
-        "Record what the dataset metrics read: per-step end-effector and target poses and task success, run "
-        "metadata in the dataset and, with --result_file, a run block and an attempt log. Off by default."
+        "Record what the dataset metrics read: per-step end-effector, target and object poses and task success, "
+        "run metadata in the dataset and, with --result_file, a run block and an attempt log. Off by default."
     ),
 )
 parser.add_argument(

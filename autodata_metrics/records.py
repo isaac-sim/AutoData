@@ -72,6 +72,7 @@ ATTEMPT = {
     "start_time_s": NUMBER,
     "end_time_s": NUMBER,
     "extras": Maybe({"planning_time_s": Maybe(NON_NEGATIVE), "planning_failed": Maybe(bool)}),
+    "initial_object_positions": Maybe(MapOf(ListOf(NUMBER, 2))),
 }
 ANNOTATION = {
     "mode": Maybe(("auto", "manual")),
@@ -118,7 +119,8 @@ def parse(value: Any, shape: Any, where: str) -> Any:
                 parsed[name] = field
         return parsed
     if isinstance(shape, ListOf):
-        _require(isinstance(value, list) and shape.length in (None, len(value)), value, "a list", where)
+        expected = "a list" if shape.length is None else f"a list of {shape.length}"
+        _require(isinstance(value, list) and shape.length in (None, len(value)), value, expected, where)
         return [parse(item, shape.shape, f"{where}[{index}]") for index, item in enumerate(value)]
     if isinstance(shape, MapOf):
         _require(isinstance(value, dict), value, "an object", where)

@@ -9,7 +9,8 @@ import copy
 import h5py
 import json
 import numpy as np
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from functools import cached_property
 from typing import Any
 
@@ -46,6 +47,7 @@ class Episode:
     def __init__(self, group: h5py.Group) -> None:
         self.name = group.name.rsplit("/", 1)[-1]
         self._group = group
+        self._listing: list[tuple[str, h5py.Dataset]] | None = None
 
     def __contains__(self, key: str) -> bool:
         return key in self._group
@@ -57,13 +59,39 @@ class Episode:
         """Names under the group ``key``, such as the end effectors under ``obs/datagen_info/eef_pose``."""
         return list(self._group[key])
 
+    @contextmanager
+    def listed(self) -> Iterator[None]:
+        """Within the block, :meth:`datasets` walks the episode once, so several checks share one listing."""
+        try:
+            self._listing = self.datasets()
+        except Exception:  # An episode that cannot be walked is walked by each check, which fails it with the error.
+            self._listing = None
+        try:
+            yield
+        finally:
+            self._listing = None
+
     def datasets(self) -> list[tuple[str, h5py.Dataset]]:
         """Every dataset of the episode with its path, unread until accessed."""
+        if self._listing is not None:
+            return self._listing
         found: list[tuple[str, h5py.Dataset]] = []
         self._group.visititems(
             lambda path, item: found.append((path, item)) if isinstance(item, h5py.Dataset) else None
         )
         return found
+
+
+def _episode(data: h5py.Group, name: str) -> Episode:
+    """The episode ``name`` of the ``data`` group.
+
+    Raises:
+        InvalidRecord: If the episode's group cannot be opened.
+    """
+    try:
+        return Episode(data[name])
+    except (KeyError, OSError, RuntimeError) as exc:
+        raise InvalidRecord(f"{data.file.filename} episode {name} cannot be read: {exc}") from exc
 
 
 class Evidence:
@@ -89,7 +117,7 @@ class Evidence:
         source: Evidence | None = None,
     ) -> None:
         self.env_args = read_env_args(h5_file)
-        self.all_episodes = [Episode(group) for group in h5_file["data"].values()]
+        self.all_episodes = [_episode(h5_file["data"], name) for name in h5_file["data"]]
         self.episodes = list(self.all_episodes)
         self.failures: dict[str, dict[str, str]] = {}
         self.check_groups: dict[str, str] = {}
@@ -136,11 +164,19 @@ class Evidence:
         return baseline
 
     @cached_property
+    def baseline(self) -> Evidence | None:
+        """The source dataset as a baseline for this run, built once on first use, after the episode checks."""
+        return self.source.as_baseline_for(self) if self.source is not None else None
+
+    @cached_property
     def camera_paths(self) -> frozenset[str]:
-        """Paths of the camera streams, 4-D ``uint8`` arrays, that any episode records."""
-        return frozenset(
-            path
-            for episode in self.all_episodes
-            for path, dataset in episode.datasets()
-            if dataset.dtype == np.uint8 and dataset.ndim == 4
-        )
+        """Paths of the camera streams, 4-D ``uint8`` arrays, that any readable episode records."""
+        paths = set()
+        for episode in self.all_episodes:
+            try:
+                paths.update(
+                    path for path, dataset in episode.datasets() if dataset.dtype == np.uint8 and dataset.ndim == 4
+                )
+            except Exception:  # An episode that cannot be read fails its own checks.
+                continue
+        return frozenset(paths)

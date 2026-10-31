@@ -10,12 +10,17 @@ import numpy as np
 from collections import Counter
 from typing import Any
 
+from autodata_metrics.diversity import MIN_START_EXTENT_M
 from autodata_metrics.evidence import Evidence
 from autodata_metrics.registry import NotApplicable, Value, metric
 
 Z_95 = 1.959963984540054
 MIN_ATTEMPTS_PER_ENV_FOR_STOP_CORRECTION = 3
 """Below this many logged attempts in some env, the stop correction is itself biased."""
+BIAS_BINS = 3
+"""Cells per moving axis of the start-position grid that ``generation_bias`` tests."""
+SPARSE_CELL_ATTEMPTS = 10
+"""Fewest attempts a start-position cell needs for ``generation_bias`` to test its success rate."""
 
 
 def wilson_interval(successes: int, trials: int, z: float = Z_95) -> tuple[float, float]:
@@ -26,6 +31,23 @@ def wilson_interval(successes: int, trials: int, z: float = Z_95) -> tuple[float
     center = (p + z**2 / (2 * trials)) / denominator
     half_width = z * math.sqrt(p * (1 - p) / trials + z**2 / (4 * trials**2)) / denominator
     return max(0.0, center - half_width), min(1.0, center + half_width)
+
+
+def binomial_cdf(successes: int, trials: int, rate: float) -> float:
+    """Probability of at most ``successes`` successes in ``trials`` trials that each succeed at ``rate``."""
+    if successes >= trials:
+        return 1.0
+    assert 0.0 < rate < 1.0, "rate must lie strictly between 0 and 1 when some trial fails"
+    # Log space: binomial coefficients overflow a float beyond about a thousand trials.
+    log_terms = (
+        math.lgamma(trials + 1)
+        - math.lgamma(k + 1)
+        - math.lgamma(trials - k + 1)
+        + k * math.log(rate)
+        + (trials - k) * math.log1p(-rate)
+        for k in range(successes + 1)
+    )
+    return min(1.0, sum(math.exp(term) for term in log_terms))
 
 
 def attempts_before_stop(attempts: list[dict[str, Any]], num_envs: int) -> list[dict[str, Any]] | None:
@@ -173,3 +195,61 @@ def planning_time(ev: Evidence) -> Value:
     generation_time = ev.run.get("generation_time_s")
     share = float(times.sum() / generation_time) if generation_time else None
     return Value({"p50": float(p50), "p95": float(p95)}, n=len(times), details={"share_of_generation_time": share})
+
+
+@metric(
+    "generation_bias",
+    area="diagnostics",
+    signal="failure causes",
+    scope="run",
+    unit="low start cells",
+    sample="attempts",
+    better="lower",
+    requires=["attempts.initial_object_positions"],
+)
+def generation_bias(ev: Evidence) -> Value:
+    """Start-position cells whose success rate is significantly below the overall rate.
+
+    Each moving object's attempted starts are split into :data:`BIAS_BINS` cells per moving axis. Every cell with
+    :data:`SPARSE_CELL_ATTEMPTS` or more attempts gets a one-sided exact binomial test against the overall rate,
+    stop-corrected when the attempt log allows, Bonferroni-corrected at 2.5%. With nine cells tested, a cell that never
+    succeeds is flagged from 10 attempts at an overall rate of 50%, and from 56 at 10%. The details name the worst
+    tested cell, flagged or not.
+    """
+    attempts, corrected = _counted_attempts(ev)
+    success = np.array([attempt["success"] for attempt in attempts])
+    if not success.any():
+        raise NotApplicable("no attempt succeeded")
+    rate = float(success.mean())
+    names = set.intersection(*(set(attempt["initial_object_positions"]) for attempt in attempts))
+    if not names:
+        raise NotApplicable("no object's start position is in every attempt")
+    tested = []
+    for name in sorted(names):
+        starts = np.array([attempt["initial_object_positions"][name] for attempt in attempts])
+        moving = np.ptp(starts, axis=0) >= MIN_START_EXTENT_M
+        if not moving.any():
+            continue
+        axes = [axis for axis, moves in zip("xy", moving) if moves]
+        low, extent = starts[:, moving].min(axis=0), np.ptp(starts[:, moving], axis=0)
+        bins = np.clip(((starts[:, moving] - low) / extent * BIAS_BINS).astype(int), 0, BIAS_BINS - 1)
+        for cell in np.unique(bins, axis=0):
+            members = (bins == cell).all(axis=1)
+            count, successes = int(members.sum()), int(success[members].sum())
+            if count >= SPARSE_CELL_ATTEMPTS:
+                p_value = binomial_cdf(successes, count, rate)
+                label = dict(zip(axes, cell.tolist()))
+                tested.append(
+                    {"object": name, "cell": label, "attempts": count, "successes": successes, "p_value": p_value}
+                )
+    if not tested:
+        raise NotApplicable(f"no moving object's start cell has {SPARSE_CELL_ATTEMPTS} attempts")
+    low_cells = [entry for entry in tested if entry["p_value"] < 0.025 / len(tested)]
+    details = {
+        "success_rate": rate,
+        "stop_corrected": corrected,
+        "tested_cells": len(tested),
+        "worst_cell": min(tested, key=lambda entry: entry["p_value"]),
+        "low_cells": low_cells,
+    }
+    return Value(len(low_cells), n=len(attempts), details=details)

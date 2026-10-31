@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from autodata_metrics.viability import attempts_before_stop, time_to_dataset, wilson_interval
+from autodata_metrics.viability import attempts_before_stop, generation_bias, time_to_dataset, wilson_interval
 
 
 def test_wilson_interval_matches_known_values():
@@ -43,3 +43,21 @@ def test_time_to_dataset_counts_only_annotation_recorded_as_automatic():
     assert automatic.value == 175.0
     assert (manual.value, manual.details["uncounted_annotation_s"]) == (115.0, 600.0)
     assert (unknown.value, unknown.details["uncounted_annotation_s"]) == (100.0, 60.0)
+
+
+def test_generation_bias_flags_the_start_cell_that_fails_more_than_the_rest():
+    # A 3x3 grid of cube starts, 20 attempts each: one corner never succeeds, the opposite one twice and the rest half
+    # the time. Twice in 20 is below the overall rate at p = 0.0036, which only the correction for nine cells forgives.
+    attempts = [
+        {
+            "success": k < 2 if (i, j) == (0, 0) else (i, j) != (2, 2) and k % 2 == 0,
+            "initial_object_positions": {"cube": [0.05 + 0.1 * i, 0.05 + 0.1 * j], "table": [0.0, 0.0]},
+        }
+        for i in range(3)
+        for j in range(3)
+        for k in range(20)
+    ]
+
+    bias = generation_bias(SimpleNamespace(attempts=attempts, run={}))
+
+    assert bias.value == 1 and [cell["cell"] for cell in bias.details["low_cells"]] == [{"x": 2, "y": 2}]
