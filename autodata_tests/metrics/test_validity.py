@@ -211,8 +211,9 @@ def test_pose_action_slices_must_lie_within_the_actions(tmp_path, action_slice, 
     assert report["check_failures"]["pose_action_bounds"]["failed"] == failed
 
 
-def test_joint_limit_ratio_baseline_fills_the_limit_kinds_its_source_lacks_from_the_run(tmp_path):
-    # The source's own velocity limit applies to it, and the run's acceleration limit fills in the kind it lacks.
+def test_joint_limit_ratio_baseline_fills_what_its_source_entry_lacks_from_the_run(tmp_path):
+    # The source's own velocity limit applies to it, and the run fills in the acceleration limit and the robot asset
+    # the source's entry lacks.
     joints = {"asset": "robot", "names": ["j1"]}
     run = {
         "run_id": "r",
@@ -220,7 +221,12 @@ def test_joint_limit_ratio_baseline_fills_the_limit_kinds_its_source_lacks_from_
         "joints": joints,
         "hardware_limits": {"velocity": {"j1": 2.0}, "acceleration": {"j1": 10.0}},
     }
-    source = {"run_id": "a", "exported_episodes": 1, "joints": joints, "hardware_limits": {"velocity": {"j1": 1.0}}}
+    source = {
+        "run_id": "a",
+        "exported_episodes": 1,
+        "joints": {"names": ["j1"]},
+        "hardware_limits": {"velocity": {"j1": 1.0}},
+    }
     episode = {"actions": np.zeros((3, 7)), "states/articulation/robot/joint_velocity": np.array([[0.0], [1.0], [1.0]])}
 
     report = build_report(
