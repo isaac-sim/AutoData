@@ -125,13 +125,17 @@ class Evidence:
         return self.env_args.get("autodata", {})
 
     def as_baseline_for(self, run: Evidence) -> Evidence:
-        """This source dataset, with the run's ``autodata`` fields where its own entry lacks them, one level into
-        nested records such as ``joints`` and ``hardware_limits``, so a baseline reads the robot layout and limits."""
+        """This source dataset, with the run's ``autodata`` fields where its own entry lacks them, so a baseline
+        reads the robot layout and limits.
+
+        ``joints`` and ``hardware_limits`` fill in field by field. A ``pose_action`` the source records stays whole,
+        as a channel it leaves out is not a pose action.
+        """
         baseline = copy.copy(self)
         entry = {**run.entry, **self.entry}
-        for key, value in self.entry.items():
-            if isinstance(value, Mapping) and isinstance(run.entry.get(key), Mapping):
-                entry[key] = {**run.entry[key], **value}
+        for key in ("joints", "hardware_limits"):
+            if key in self.entry and key in run.entry:
+                entry[key] = {**run.entry[key], **self.entry[key]}
         baseline.env_args = {**self.env_args, "autodata": entry}
         return baseline
 

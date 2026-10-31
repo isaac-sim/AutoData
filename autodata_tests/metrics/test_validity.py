@@ -171,18 +171,24 @@ def test_tracking_error_measures_absolute_targets_against_the_next_step(tmp_path
     assert row["value"]["p50"] == pytest.approx(20.0) and row["n"] == 4
 
 
-def test_action_saturation_counts_steps_at_the_bound_and_borrows_the_run_layout_for_its_baseline(tmp_path):
+@pytest.mark.parametrize(
+    "source_entry, baseline", [(None, 0.25), ({"run_id": "a", "exported_episodes": 1, "pose_action": {}}, None)]
+)
+def test_action_saturation_counts_steps_at_the_bound_and_borrows_a_missing_source_layout(
+    tmp_path, source_entry, baseline
+):
+    # A source without a layout borrows the run's; one that records no pose actions keeps that.
     actions = np.zeros((4, 7))
     actions[1, 2] = -1.0
     entry = {"run_id": "r", "exported_episodes": 1, "pose_action": {"arm": {"action_slice": [0, 6], "bound": 1.0}}}
-    source = _write(tmp_path / "source.hdf5", [{"actions": actions}])
+    source = _write(tmp_path / "source.hdf5", [{"actions": actions}], source_entry)
 
     report = build_report(
         _write(tmp_path / "d.hdf5", [{"actions": actions}], entry), source=source, metrics=_metrics("action_saturation")
     )
 
     row = report["metrics"]["action_saturation"]
-    assert (row["value"], row["baseline"]) == (0.25, 0.25)
+    assert (row["value"], row["baseline"]) == (0.25, baseline)
 
 
 def test_motion_smoothness_is_the_jerk_of_the_hand_labelled_with_the_noise(tmp_path):
