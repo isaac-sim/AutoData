@@ -66,7 +66,11 @@ SoftMimicGen uses the rope's **simulation-node positions** to compare the source
 rope shapes. It selects a source demonstration using registration cost, then fits a
 **thin-plate-spline (TPS)** transform to adapt the source end-effector trajectory to the new
 shape. Annotation records the nodal positions needed for this transform along with the
-subtask signals. The source data and live rope must have matching node counts and topology.
+subtask signals. The source data and live rope must have matching node counts, topology,
+and **node ordering**: node ``i`` in the source must correspond to node ``i`` in the live rope.
+AutoData records nodes in simulation order. Use the same rope asset and physics backend
+throughout the workflow, and preserve that order when converting or preprocessing datasets.
+The setup check verifies node counts but does not detect reordered nodes.
 
 
 Workflow

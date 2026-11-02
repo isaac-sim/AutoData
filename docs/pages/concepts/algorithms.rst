@@ -1,9 +1,9 @@
 Generation Algorithms
 =====================
 
-AutoData ships four generation algorithms, selected with ``--alg`` on the CLI (the
-task descriptor's ``algo`` field independently selects which per-subtask ``algo_params``
-schema the descriptor is parsed with — keep the two consistent). All four plug into the
+AutoData ships four generation algorithms. The task descriptor's ``algo`` field selects the
+algorithm and its per-subtask ``algo_params`` schema. ``--alg`` is optional; when supplied,
+it must match the descriptor's ``algo``. All four plug into the
 :doc:`data generator <data_generator>` and share the same skeleton — split
 source demonstrations into subtask segments, select a segment per subtask, transform it to the
 current scene, execute, and keep successful demonstrations — and differ in how segments are bridged and how
@@ -74,10 +74,11 @@ positions in the source and current object shapes, then warps the source end-eff
 trajectory to match. End-effector orientations are also adapted by default
 (``use_rotation_transform: true``). Subtask transitions use the same interpolation as MimicGen.
 
-Select ``--alg softmimicgen`` and set ``algo: softmimicgen`` in the task descriptor. For each
-deformable subtask, set ``algo_params.object_soft: true`` and provide an ``object_ref``.
+Set ``algo: softmimicgen`` in the task descriptor; optionally pass ``--alg softmimicgen`` on
+the CLI. For each deformable subtask, set ``algo_params.object_soft: true`` and provide an ``object_ref``.
 Source annotations must include that object's simulation-node positions, and the source and
-live objects must have matching node counts and topology. Rigid-object subtasks retain
+live objects must have matching node counts, topology, and node ordering: each array index
+must refer to the same mesh node in both objects. Rigid-object subtasks retain
 MimicGen's object-pose transform. The ``registration_cost`` selection strategy ranks source
 shapes by their TPS fitting cost (see below).
 

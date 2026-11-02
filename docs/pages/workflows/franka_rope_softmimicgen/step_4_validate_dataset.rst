@@ -83,7 +83,8 @@ Look for a firm grasp, smooth motion after the grasp boundary, and the rope ends
 together while the rope remains on the table. Watch for slipping grasps, abrupt transitions,
 or distorted rope geometry. If these occur repeatedly, inspect the source demonstrations
 and their ``grasp`` annotations before increasing the generation target. Keep the source
-and live rope assets consistent; changing node topology requires compatible source data.
+and live rope assets consistent, including simulation-node ordering. Matching node counts
+alone does not establish correspondence.
 
 .. note::
 
