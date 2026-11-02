@@ -83,7 +83,7 @@ class AbsolutePoseEmbodimentAdapter(EmbodimentAdapter):
         These entries are not clipped.
         """
         pose_action = {
-            name: {"action_slice": list(spec["pose_action_slice"]), "bound": None}
+            name: {"action_slice": list(spec["pose_action_slice"]), "bound": None, "absolute": True}
             for name, spec in self.eefs.items()
             if spec.get("pose_action_slice") is not None
         }

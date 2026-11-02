@@ -34,9 +34,7 @@ def test_time_to_dataset_counts_only_annotation_recorded_as_automatic():
     run = {"setup_time_s": 20.0, "generation_time_s": 80.0}
 
     def measured(annotation: dict):
-        return time_to_dataset(
-            SimpleNamespace(source=SimpleNamespace(env_args={"autodata": {"annotation": annotation}}), run=run)
-        )
+        return time_to_dataset(SimpleNamespace(source=SimpleNamespace(entry={"annotation": annotation}), run=run))
 
     automatic = measured({"mode": "auto", "setup_time_s": 15.0, "time_s": 60.0})
     manual = measured({"mode": "manual", "setup_time_s": 15.0, "time_s": 600.0})

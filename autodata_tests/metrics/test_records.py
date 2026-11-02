@@ -29,17 +29,18 @@ def _no_git(monkeypatch):
     monkeypatch.setattr(report_module, "code_revision", lambda: None)
 
 
-def _write_dataset(path: Path, entry: dict, num_episodes: int = 2) -> str:
-    pose = np.tile(np.eye(4), (3, 1, 1))
+def _write_dataset(path: Path, env_args: dict, num_episodes: int = 2) -> str:
+    pose = np.tile(np.eye(4), (4, 1, 1))
     with h5py.File(path, "w") as h5_file:
         data = h5_file.create_group("data")
-        data.attrs["env_args"] = json.dumps({"env_name": "Test-v0", "autodata": entry})
+        data.attrs["env_args"] = json.dumps(env_args)
         for index in range(num_episodes):
             episode = data.create_group(f"demo_{index}")
-            episode.create_dataset("actions", data=np.zeros((3, 7)))
-            episode.create_dataset("step_success", data=[False, True, True])
+            episode.create_dataset("actions", data=np.zeros((4, 7)))
+            episode.create_dataset("step_success", data=[False, False, True, True])
             episode.create_dataset("obs/datagen_info/eef_pose/arm", data=pose)
             episode.create_dataset("obs/datagen_info/target_eef_pose/arm", data=pose)
+            episode.create_dataset("states/articulation/robot/joint_velocity", data=np.zeros((4, 2)))
     return str(path)
 
 
@@ -53,6 +54,7 @@ def _samples(tmp_path: Path) -> dict[str, dict]:
         "setup_time_s": 10.0,
         "time_s": 20.0,
     }
+    sim_args = {"dt": 0.01, "decimation": 5}
     source_entry = {"version": 1, "run_id": "annotation", "exported_episodes": 2, "annotation": annotation}
     run = {
         "run_id": "run-a",
@@ -77,14 +79,18 @@ def _samples(tmp_path: Path) -> dict[str, dict]:
         "initial_object_positions": {"cube": [0.1, 0.2]},
         "extras": {"planning_time_s": 0.5, "planning_failed": False},
     }
+    entry = {
+        "version": 1,
+        "run_id": "run-a",
+        "exported_episodes": 2,
+        "pose_action": {"arm": {"action_slice": [0, 6], "bound": 1.0, "absolute": True}},
+        "action_noise": 0.03,
+        "joints": {"asset": "robot", "names": ["j1", "j2"]},
+        "hardware_limits": {"velocity": {"j[12]": 2.0}, "acceleration": {"j1": 10.0}},
+    }
     return {
-        "entry": {
-            "version": 1,
-            "run_id": "run-a",
-            "exported_episodes": 2,
-            "pose_action": {"arm": {"action_slice": [0, 6], "bound": 1.0}},
-        },
-        "source_entry": source_entry,
+        "env_args": {"env_name": "Test-v0", "sim_args": sim_args, "autodata": entry},
+        "source_env_args": {"env_name": "Test-v0", "sim_args": sim_args, "autodata": source_entry},
         "result": {"algorithm": "mimicgen", "num_success": 2, "num_failures": 1, "num_attempts": 3, "run": run},
         "attempt": attempt,
     }
@@ -112,8 +118,8 @@ def _replaced(record: dict, path: tuple, value: object) -> dict:
 
 def _report_or_refusal(tmp_path: Path, records: dict) -> dict | None:
     """Build, summarize and serialize the report of these records; None when the report refuses them."""
-    dataset = _write_dataset(tmp_path / "data.hdf5", records["entry"])
-    source = _write_dataset(tmp_path / "source.hdf5", records["source_entry"])
+    dataset = _write_dataset(tmp_path / "data.hdf5", records["env_args"])
+    source = _write_dataset(tmp_path / "source.hdf5", records["source_env_args"])
     result_file = tmp_path / "result.json"
     result_file.write_text(
         json.dumps(records["result"]).replace(json.dumps(SOURCE_RECORD), json.dumps(input_record(source)))
@@ -141,7 +147,7 @@ def test_every_malformed_record_field_is_refused_or_reported(tmp_path):
     negative = {**samples["attempt"], "extras": {"planning_time_s": -5.0, "planning_failed": False}}
     assert _report_or_refusal(tmp_path, {**samples, "attempt": negative}) is None
     crashes = []
-    for kind in ("entry", "source_entry", "result", "attempt"):
+    for kind in ("env_args", "source_env_args", "result", "attempt"):
         for path in _paths(samples[kind]):
             for wrong in WRONG_VALUES:
                 records = {**samples, kind: _replaced(samples[kind], path, wrong)}

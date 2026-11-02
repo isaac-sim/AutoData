@@ -20,6 +20,9 @@ METRICS = {
     "correctness_pass_rate",
     "final_success_rate",
     "action_rotation_error",
+    "action_saturation",
+    "motion_smoothness",
+    "joint_limit_ratio",
 }
 
 

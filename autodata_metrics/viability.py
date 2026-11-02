@@ -87,7 +87,7 @@ def demos_per_gpu_hour(ev: Evidence) -> Value:
     if ev.run["num_gpus"] == 0:
         raise NotApplicable("the run used no GPU")
     gpu_hours = ev.run["generation_time_s"] / 3600 * ev.run["num_gpus"]
-    exported = ev.env_args["autodata"]["exported_episodes"]
+    exported = ev.entry["exported_episodes"]
     details = {key: ev.run.get(key) for key in ("gpu", "cpu", "device", "num_envs")}
     return Value(exported / gpu_hours, n=exported, details=details)
 
@@ -108,7 +108,7 @@ def time_to_dataset(ev: Evidence) -> Value:
 
     Annotation that was manual, or recorded without its mode, is reported in ``uncounted_annotation_s`` instead.
     """
-    annotation = ev.source.env_args.get("autodata", {}).get("annotation", {}) if ev.source else {}
+    annotation = ev.source.entry.get("annotation", {}) if ev.source else {}
     parts = {"setup_s": ev.run["setup_time_s"], "generation_s": ev.run["generation_time_s"]}
     uncounted = None
     if annotation:
@@ -131,7 +131,7 @@ def time_to_dataset(ev: Evidence) -> Value:
 )
 def annotation_pass_rate(ev: Evidence) -> Value:
     """Share of processed recordings that annotation exported into the source dataset."""
-    annotation = ev.source.env_args["autodata"]["annotation"]
+    annotation = ev.source.entry["annotation"]
     if annotation["processed_episodes"] == 0:
         raise NotApplicable("annotation processed no episodes")
     rate = annotation["annotated_episodes"] / annotation["processed_episodes"]
