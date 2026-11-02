@@ -1,13 +1,13 @@
 Generation Algorithms
 =====================
 
-AutoData ships three generation algorithms, selected with ``--alg`` on the CLI (the
+AutoData ships four generation algorithms, selected with ``--alg`` on the CLI (the
 task descriptor's ``algo`` field independently selects which per-subtask ``algo_params``
-schema the descriptor is parsed with — keep the two consistent). All three plug into the
+schema the descriptor is parsed with — keep the two consistent). All four plug into the
 :doc:`data generator <data_generator>` and share the same skeleton — split
 source demonstrations into subtask segments, select a segment per subtask, transform it to the
 current scene, execute, and keep successful demonstrations — and differ in how segments are bridged and how
-multiple arms are handled.
+reference objects and multiple arms are handled.
 
 .. list-table::
    :widths: 18 14 18 50
@@ -29,6 +29,10 @@ multiple arms are handled.
      - 1
      - Motion planning
      - cuRobo-planned, collision-free transit; requires start signals.
+   * - ``softmimicgen``
+     - 1 or 2
+     - Interpolation
+     - Thin-plate-spline warping for deformable objects.
 
 MimicGen
 --------
@@ -75,6 +79,26 @@ abandoned and counted as a failure.
 See the :doc:`SkillGen workflow <../workflows/skillgen/index>` and
 :doc:`../advanced/motion_planners`.
 
+SoftMimicGen
+------------
+
+SoftMimicGen (`Moghani et al., 2026 <https://arxiv.org/abs/2603.25725>`_) adapts demonstrations
+to deformable objects such as ropes, whose shape cannot be described by a rigid-object pose
+alone. It fits a **thin-plate-spline (TPS)** transform between corresponding simulation-node
+positions in the source and current object shapes, then warps the source end-effector
+trajectory to match. End-effector orientations are also adapted by default
+(``use_rotation_transform: true``). Subtask transitions use the same interpolation as MimicGen.
+
+Select ``--alg softmimicgen`` and set ``algo: softmimicgen`` in the task descriptor. For each
+deformable subtask, set ``algo_params.object_soft: true`` and provide an ``object_ref``.
+Source annotations must include that object's simulation-node positions, and the source and
+live objects must have matching node counts and topology. Rigid-object subtasks retain
+MimicGen's object-pose transform. The ``registration_cost`` selection strategy ranks source
+shapes by their TPS fitting cost (see below).
+
+See the :doc:`Franka rope workflow <../workflows/franka_rope_softmimicgen/index>` for recording,
+annotation, generation, and replay with Newton or PhysX.
+
 Source Demonstration Selection Strategies
 -----------------------------------------
 
@@ -96,10 +120,14 @@ configured per subtask in the task descriptor (``selection_strategy`` /
    * - ``nearest_neighbor_robot_distance``
      - Ranks demonstrations by how close their (object-frame-transformed) source end-effector pose
        lands to the current end-effector pose, then picks among the ``nn_k`` nearest.
+   * - ``registration_cost``
+     - For deformable objects, ranks source shapes by TPS fitting cost and picks randomly among
+       the ``nn_k`` lowest-cost valid candidates.
 
 The nearest-neighbor strategies trade diversity for reliability: segments recorded under
 similar geometry transform with less distortion, raising the success rate, while ``nn_k``
-keeps some randomness so the output does not collapse onto a single source demonstration. The shipped
-examples use ``nearest_neighbor_object`` with ``nn_k: 3``. How often selection re-runs — per
+keeps some randomness so the output does not collapse onto a single source demonstration. The
+cube-stacking examples use ``nearest_neighbor_object`` with ``nn_k: 3`` while the SoftMimicGen rope
+example uses ``registration_cost`` with ``nn_k: 3``. How often selection re-runs — per
 subtask, per arm, or once per episode — is set by the generation policy's
 ``select_src_per_subtask`` / ``select_src_per_arm`` flags.
