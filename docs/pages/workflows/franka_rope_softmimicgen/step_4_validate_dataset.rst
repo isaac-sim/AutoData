@@ -55,10 +55,6 @@ generate the dataset, and keep the Arena registration callback:
              --num_envs 1 \
              --dataset_file ./datasets/generated_dataset_softmimicgen_franka_rope_newton.hdf5
 
-      .. todo::
-
-         Image placeholder: Replaying generated Franka rope demonstrations with Newton.
-
    .. group-tab:: PhysX
 
       .. code-block:: bash
@@ -73,9 +69,12 @@ generate the dataset, and keep the Arena registration callback:
              --num_envs 1 \
              --dataset_file ./datasets/generated_dataset_softmimicgen_franka_rope_physx.hdf5
 
-      .. todo::
+.. figure:: ../../../images/franka_rope_softmimicgen_replay.gif
+   :width: 90%
+   :align: center
+   :alt: Replaying a generated Franka demonstration
 
-         Image placeholder: Replaying generated Franka rope demonstrations with PhysX.
+   Replay a generated demonstration to inspect the data.
 
 If you only ran small-scale generation, use the corresponding ``_small.hdf5`` file in the
 replay command as well. Press ``B`` to pause replay and ``N`` to resume.

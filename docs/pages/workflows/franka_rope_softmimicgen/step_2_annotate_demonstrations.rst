@@ -94,10 +94,6 @@ To mark the boundary yourself, omit ``--auto`` and use ``--viz kit``:
 
          Use ``--no-reset_sim_buffer_each_episode`` when annotating Newton demonstrations.
 
-      .. todo::
-
-         Image placeholder: Marking the rope grasp boundary during Newton annotation.
-
    .. group-tab:: PhysX
 
       .. code-block:: bash
@@ -113,9 +109,12 @@ To mark the boundary yourself, omit ``--auto`` and use ``--viz kit``:
              --input_file ./datasets/dataset_franka_rope_physx.hdf5 \
              --output_file ./datasets/dataset_franka_rope_physx_annotated.hdf5
 
-      .. todo::
+.. figure:: ../../../images/franka_rope_annotation.png
+   :width: 100%
+   :align: center
+   :alt: Three frames showing the approach, the grasp boundary to mark with S, and subsequent rope manipulation
 
-         Image placeholder: Marking the rope grasp boundary during PhysX annotation.
+   Mark ``grasp`` just after the gripper closes around the rope, before the manipulation motion begins.
 
 Each episode starts paused. Use these controls:
 

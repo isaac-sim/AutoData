@@ -47,10 +47,6 @@ Run the recording command for your backend:
          Newton recording requires ``--no-reset_sim_buffer_each_episode``. Keep this flag
          when using either a SpaceMouse or a keyboard.
 
-      .. todo::
-
-         Image placeholder: Teleoperating the Franka arm to bring the rope ends together with Newton.
-
    .. group-tab:: PhysX
 
       .. code-block:: bash
@@ -66,9 +62,12 @@ Run the recording command for your backend:
              --num_demos 3 \
              --dataset_file ./datasets/dataset_franka_rope_physx.hdf5
 
-      .. todo::
+.. figure:: ../../../images/franka_rope_teleop.gif
+   :width: 90%
+   :align: center
+   :alt: Recorded source demonstration of the Franka grasping one rope end and moving it toward the other
 
-         Image placeholder: Teleoperating the Franka arm to bring the rope ends together with PhysX.
+   A source demonstration: approach the rope, grasp one end, and bring it toward the other.
 
 ``--external_callback`` registers AutoData's Arena rope environment before Isaac Lab creates
 it. Keep this option when recording or replaying with Isaac Lab's tools.

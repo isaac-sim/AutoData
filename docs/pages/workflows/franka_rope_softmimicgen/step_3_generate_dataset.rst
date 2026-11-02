@@ -29,6 +29,14 @@ Use the source dataset that matches your physics backend:
       ``./datasets/dataset_franka_rope_physx_annotated.hdf5`` instead.
 
 
+.. figure:: ../../../images/franka_rope_softmimicgen_datagen.png
+   :width: 90%
+   :align: center
+   :alt: Parallel environments generating data with SoftMimicGen
+
+   Parallel environments generating data with SoftMimicGen.
+
+
 Small-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^^
 
@@ -54,10 +62,6 @@ Start with two parallel environments in a Kit window to inspect the generated mo
              --input_file ./datasets/annotated_datasets/dataset_franka_rope_newton_annotated.hdf5 \
              --output_file ./datasets/generated_dataset_softmimicgen_franka_rope_newton_small.hdf5
 
-      .. todo::
-
-         Image placeholder: Parallel SoftMimicGen rope data generation with Newton.
-
    .. group-tab:: PhysX
 
       .. code-block:: bash
@@ -76,11 +80,8 @@ Start with two parallel environments in a Kit window to inspect the generated mo
              --input_file ./datasets/annotated_datasets/dataset_franka_rope_physx_annotated.hdf5 \
              --output_file ./datasets/generated_dataset_softmimicgen_franka_rope_physx_small.hdf5
 
-      .. todo::
 
-         Image placeholder: Parallel SoftMimicGen rope data generation with PhysX.
-
-Failed attempts are normal. The task descriptor sets ``guarantee_success: true`` 
+Failed attempts are normal. The task descriptor sets ``guarantee_success: true``
 so generation retries until it reaches the target of 5 successful
 demonstrations and exports only successes. The console reports progress and success rate.
 

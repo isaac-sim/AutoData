@@ -13,19 +13,12 @@ The same workflow supports **Newton** and **PhysX**. Use the tabs throughout the
 select a physics backend. Keep that backend consistent for recording, annotation, generation,
 and replay. The commands use separate dataset filenames for each backend.
 
-.. tabs::
+.. figure:: ../../../images/franka_rope_softmimicgen.png
+   :width: 100%
+   :align: center
+   :alt: Franka arm grasping a deformable rope on the table in the Kit viewer
 
-   .. group-tab:: Newton
-
-      .. todo::
-
-         Image placeholder: Franka rope task overview with Newton.
-
-   .. group-tab:: PhysX
-
-      .. todo::
-
-         Image placeholder: Franka rope task overview with PhysX.
+   The Franka rope manipulation task.
 
 
 Task Overview
