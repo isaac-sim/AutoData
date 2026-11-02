@@ -91,7 +91,7 @@ parser.add_argument(
 parser.add_argument("--generation_num_trials", type=int, default=None, help="Number of demos to generate.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
 parser.add_argument(
-    "--presets", choices=("physx",), default=None, help="Physics backend preset for Arena environments."
+    "--presets", choices=("physx", "newton"), default=None, help="Physics backend preset for Arena environments."
 )
 parser.add_argument("--input_file", type=str, required=True, help="Source dataset HDF5 file.")
 parser.add_argument(

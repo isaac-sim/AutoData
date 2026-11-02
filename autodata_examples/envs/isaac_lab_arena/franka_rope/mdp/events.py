@@ -78,6 +78,7 @@ def reset_rope_nodal_state(
     pose_range: dict[str, tuple[float, float]],
     partial_pose_range: dict[str, tuple[float, float]],
     asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    transition_length: float | None = None,
 ) -> None:
     """Reset and randomize the rope, including a transform of one rope half.
 
@@ -87,6 +88,8 @@ def reset_rope_nodal_state(
         pose_range: Translation [m] and rotation [rad] ranges applied to all nodes.
         partial_pose_range: Additional translation [m] and rotation [rad] ranges applied to one rope half.
         asset_cfg: Deformable rope entity.
+        transition_length: Length [m] over which to blend the half-rope transform.
+            None preserves the original piecewise reset used by PhysX.
     """
 
     rope: DeformableObject = env.scene[asset_cfg.name]
@@ -101,6 +104,24 @@ def reset_rope_nodal_state(
     )
     node_ids = torch.tensor(_ROPE_PARTIAL_NODE_IDS, device=rope.device)
     position, quaternion = _sample_pose_delta(partial_pose_range, len(env_ids), rope.device)
-    nodal_state[..., node_ids, :3] = rope.transform_nodal_pos(nodal_state[..., node_ids, :3], position, quaternion)
+    if transition_length is None:
+        nodal_state[..., node_ids, :3] = rope.transform_nodal_pos(nodal_state[..., node_ids, :3], position, quaternion)
+    else:
+        assert transition_length > 0.0
+        nodes = nodal_state[..., :3]
+        center = nodes.mean(dim=1, keepdim=True)
+        half_center = nodes[:, node_ids].mean(dim=1, keepdim=True)
+        axis = torch.nn.functional.normalize(half_center - center, dim=-1)
+        distance = ((nodes - center) * axis).sum(dim=-1, keepdim=True)
+        fraction = (distance / transition_length + 0.5).clamp(0.0, 1.0)
+        # A C2-continuous transition avoids tearing/inverting the tetrahedra at
+        # the boundary of the two halves. End sections retain their rigid poses.
+        weight = fraction**3 * (10.0 - 15.0 * fraction + 6.0 * fraction**2)
+        transformed = (
+            math_utils.quat_apply(quaternion[:, None, :].expand(-1, nodes.shape[1], -1), nodes - half_center)
+            + half_center
+            + position[:, None, :]
+        )
+        nodal_state[..., :3] = nodes + weight * (transformed - nodes)
 
     rope.write_nodal_state_to_sim_index(nodal_state, env_ids=env_ids)

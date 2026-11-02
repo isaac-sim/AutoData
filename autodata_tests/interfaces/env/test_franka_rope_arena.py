@@ -33,7 +33,7 @@ from autodata_examples.envs.isaac_lab_arena.franka_rope.environment import (
     FrankaRopeArenaEnvironmentCfg,
     _configure_franka_rope_env,
 )
-from autodata_examples.envs.isaac_lab_arena.franka_rope.rope_asset import FrankaRopeAsset
+from autodata_examples.envs.isaac_lab_arena.franka_rope.rope_asset import FrankaRopeAsset, rope_newton_spawn_cfg
 from autodata_examples.envs.isaac_lab_arena.franka_rope.task import FrankaRopeTask
 
 
@@ -48,7 +48,7 @@ def test_arena_environment_factory_is_registered():
     assert registry.get_environment_cfg_type(FrankaRopeArenaEnvironment) is FrankaRopeArenaEnvironmentCfg
 
 
-@pytest.mark.parametrize("presets", [None, "physx"])
+@pytest.mark.parametrize("presets", [None, "physx", "newton"])
 def test_arena_registration_uses_run_configuration_and_preserves_make_kwargs(monkeypatch, presets):
     captured = {}
     variation_recorder = object()
@@ -186,6 +186,28 @@ def test_rope_asset_uses_deformable_scene_key():
     assert object_cfg.spawn.usd_path.endswith("/isaac_lab_arena/franka_rope/assets/Rope.usd")
 
 
+def test_newton_rope_preserves_simulation_topology():
+    from pxr import Usd
+
+    physx_stage = Usd.Stage.Open(FrankaRopeAsset().object_cfg.spawn.usd_path)
+    newton_stage = Usd.Stage.Open(rope_newton_spawn_cfg().usd_path)
+    for attribute in ("points", "tetVertexIndices", "omniphysics:restShapePoints", "omniphysics:restTetVtxIndices"):
+        original = physx_stage.GetPrimAtPath("/World/simulation_mesh").GetAttribute(attribute).Get()
+        adapted = newton_stage.GetPrimAtPath("/World/simulation_mesh").GetAttribute(attribute).Get()
+        assert original is not None
+        assert original == adapted
+    assert len(newton_stage.GetPrimAtPath("/World/simulation_mesh").GetAttribute("points").Get()) == 549
+    assert physx_stage.GetPrimAtPath("/World/collision_mesh").IsActive()
+    assert not newton_stage.GetPrimAtPath("/World/collision_mesh").IsActive()
+    assert physx_stage.GetPrimAtPath("/World/Xform").IsActive()
+    assert newton_stage.GetPrimAtPath("/World/Xform").IsActive()
+    for attribute in ("points", "faceVertexCounts", "faceVertexIndices", "primvars:st"):
+        original = physx_stage.GetPrimAtPath("/World/Xform").GetAttribute(attribute).Get()
+        adapted = newton_stage.GetPrimAtPath("/World/Xform").GetAttribute(attribute).Get()
+        assert adapted == original
+    assert sum(prim.GetTypeName() == "TetMesh" for prim in newton_stage.Traverse()) == 1
+
+
 def test_rope_mdp_terms_are_owned_by_arena_package():
     arena_module_prefix = "autodata_examples.envs.isaac_lab_arena.franka_rope.mdp"
     assert mdp.object_nodal_pos.__module__.startswith(arena_module_prefix)
@@ -253,6 +275,120 @@ def test_gripper_observation_reads_finger_joints():
     observed = term.func(env, **term.params)
 
     torch.testing.assert_close(observed, torch.tensor([[0.04, -0.03]]))
+
+
+def test_newton_embodiment_compensates_gravity_without_changing_physx():
+    physx = FrankaRopeIKEmbodiment()
+    newton = FrankaRopeIKEmbodiment()
+    physx.configure_physics_backend(PhysicsBackend.PHYSX)
+    newton.configure_physics_backend(PhysicsBackend.NEWTON)
+    assert physx.scene_config.robot.spawn.rigid_props.disable_gravity is True
+    assert physx.scene_config.robot.spawn.collision_props is None
+    assert newton.scene_config.robot.spawn.rigid_props.gravcomp == 1.0
+    assert newton.scene_config.robot.spawn.make_uninstanceable is True
+    assert newton.scene_config.robot.spawn.collision_props.sdf_max_resolution == 64
+    assert physx.scene_config.robot.actuators["panda_shoulder"].stiffness == 400.0
+    assert newton.scene_config.robot.actuators["panda_shoulder"].stiffness == 800.0
+    assert physx.action_config.gripper_action.close_command_expr == {"panda_finger_.*": 0.0}
+    assert newton.action_config.gripper_action.close_command_expr == {"panda_finger_.*": 0.0}
+    for name in newton.camera_config.camera_names():
+        assert getattr(newton.camera_config, name).renderer_cfg.renderer_type == "newton_warp"
+        assert getattr(physx.camera_config, name).renderer_cfg.renderer_type == "isaac_rtx"
+
+
+def test_newton_rope_reset_preserves_tetrahedra(monkeypatch):
+    """Reset poses must not invert or excessively stretch the volume mesh."""
+    import itertools
+    import numpy as np
+    import torch
+
+    from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
+    from isaaclab.utils import math as math_utils
+    from pxr import Gf, Usd, UsdGeom
+
+    from autodata_examples.envs.isaac_lab_arena.franka_rope.mdp import events
+
+    stage = Usd.Stage.Open(FrankaRopeAsset().object_cfg.spawn.usd_path)
+    mesh = UsdGeom.TetMesh(stage.GetPrimAtPath("/World/simulation_mesh"))
+    transform = UsdGeom.XformCache().GetLocalToWorldTransform(mesh.GetPrim())
+    nodes = torch.tensor(
+        np.asarray([transform.Transform(Gf.Vec3d(point)) for point in mesh.GetPointsAttr().Get()]),
+        dtype=torch.float32,
+    )
+    # Match the task's initial orientation: the rope's long axis is world Y.
+    nodes = math_utils.quat_apply(torch.tensor([0.0, 0.0, 2**-0.5, 2**-0.5]).expand(len(nodes), -1), nodes)
+    corners = torch.tensor(list(itertools.product((0.0, 0.1), (0.0, 0.1), (-torch.pi / 6, torch.pi / 6))))
+    count = len(corners)
+    state = torch.zeros(count, len(nodes), 6)
+    state[..., :3] = nodes
+    written = {}
+    rope = SimpleNamespace(device="cpu", data=SimpleNamespace(default_nodal_state_w=SimpleNamespace(torch=state)))
+    rope.transform_nodal_pos = lambda *args: BaseDeformableObject.transform_nodal_pos(rope, *args)
+    rope.write_nodal_state_to_sim_index = lambda values, env_ids: written.update(state=values, env_ids=env_ids)
+    translations = torch.zeros(count, 3)
+    translations[:, :2] = corners[:, :2]
+    rotations = math_utils.quat_from_euler_xyz(torch.zeros(count), torch.zeros(count), corners[:, 2])
+    samples = iter(
+        ((torch.zeros(count, 3), torch.tensor([0.0, 0.0, 0.0, 1.0]).repeat(count, 1)), (translations, rotations))
+    )
+    monkeypatch.setattr(events, "_sample_pose_delta", lambda *_: next(samples))
+    env_ids = torch.arange(count)
+    events.reset_rope_nodal_state(SimpleNamespace(scene={"object": rope}), env_ids, {}, {}, transition_length=0.4)
+    indices = torch.tensor(np.asarray(mesh.GetTetVertexIndicesAttr().Get()), dtype=torch.long)
+    rest = nodes[indices[:, 1:]] - nodes[indices[:, :1]]
+    result = written["state"][..., :3]
+    deformed = result[:, indices[:, 1:]] - result[:, indices[:, :1]]
+    gradient = torch.linalg.solve(rest.transpose(-1, -2), deformed.transpose(-1, -2), left=False)
+    assert torch.linalg.det(gradient).min() > 0.25
+    assert torch.linalg.svdvals(gradient).max() < 2.0
+    torch.testing.assert_close(written["state"][..., 3:], torch.zeros_like(state[..., 3:]))
+    torch.testing.assert_close(written["env_ids"], env_ids)
+    torch.testing.assert_close(state[..., :3], nodes.expand(count, -1, -1))
+
+
+def test_rope_reset_smoothing_is_newton_only():
+    from isaaclab_newton.physics import NewtonCfg
+
+    for physics in (None, NewtonCfg()):
+        task = FrankaRopeTask()
+        cfg = SimpleNamespace(
+            sim=SimulationCfg() if physics is None else SimulationCfg(physics=physics),
+            scene=SimpleNamespace(
+                object=FrankaRopeAsset().object_cfg,
+                table=SimpleNamespace(spawn=SimpleNamespace()),
+            ),
+            events=task.get_events_cfg(),
+            terminations=SimpleNamespace(success=None),
+        )
+        _configure_franka_rope_env(cfg)
+        params = cfg.events.reset_object_position.params
+        if physics is None:
+            assert "transition_length" not in params
+        else:
+            assert params["transition_length"] == 0.4
+    assert "transition_length" not in FrankaRopeTask().get_events_cfg().reset_object_position.params
+
+
+def test_newton_rope_contact_buffer_fits_full_surface():
+    from collections import Counter
+    from itertools import combinations
+
+    from pxr import Usd, UsdGeom
+
+    from autodata_examples.envs.isaac_lab_arena.franka_rope.newton_cfg import rope_newton_physics_cfg
+
+    stage = Usd.Stage.Open(rope_newton_spawn_cfg().usd_path)
+    mesh = UsdGeom.TetMesh(stage.GetPrimAtPath("/World/simulation_mesh"))
+    face_counts = Counter(
+        tuple(sorted(face)) for tet in mesh.GetTetVertexIndicesAttr().Get() for face in combinations(tet, 3)
+    )
+    surface_faces = [face for face, count in face_counts.items() if count == 1]
+    surface_edges = {edge for face in surface_faces for edge in combinations(face, 2)}
+    contact_count = len(mesh.GetPointsAttr().Get()) + len(surface_faces) + len(surface_edges)
+    soft_solver = next(
+        entry.solver_cfg for entry in rope_newton_physics_cfg().solver_cfg.entries if entry.name == "soft"
+    )
+    assert soft_solver.rigid_body_particle_contact_buffer_size >= contact_count
 
 
 def test_recording_success_rechecks_rope_condition_without_losing_progress():
