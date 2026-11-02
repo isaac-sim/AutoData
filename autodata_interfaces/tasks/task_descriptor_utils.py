@@ -162,15 +162,18 @@ def _coerce_tuples(kwargs: dict[str, Any], hints: dict[str, Any]) -> dict[str, A
 
 
 def build_subtask(st_data: dict[str, Any], algo_cls: type[SubtaskAlgoParams]) -> Subtask:
-    """Build a :class:`Subtask` from a parsed subtask dict."""
+    """Build a :class:`Subtask` from a parsed subtask dict.
+
+    ``algo_cls``'s ``algo_params`` are built via :meth:`~.subtask_spec.SubtaskAlgoParams.from_dict`
+    (the registration hook every algo's params class can override for its own nested schema).
+    """
 
     st_data = dict(st_data)  # copy so we don't mutate caller's dict
     algo_kwargs = st_data.pop("algo_params", {})
 
     st_kwargs = _coerce_tuples(st_data, get_type_hints(Subtask))
-    algo_kwargs = _coerce_tuples(algo_kwargs, get_type_hints(algo_cls))
 
-    return Subtask(**st_kwargs, algo_params=algo_cls(**algo_kwargs))
+    return Subtask(**st_kwargs, algo_params=algo_cls.from_dict(algo_kwargs))
 
 
 def build_constraint(c_data: dict[str, Any]) -> SubtaskConstraint:

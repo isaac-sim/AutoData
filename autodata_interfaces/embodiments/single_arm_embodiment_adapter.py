@@ -47,7 +47,12 @@ class SingleArmEmbodimentAdapter(EmbodimentAdapter):
             frame the pose observation reports, expressed in the control link's
             frame. The adapter reports poses in the control-link frame so the
             whole pipeline (planner targets, recorded skill targets, delta-pose
-            actions) shares one frame. Defaults to no offset.
+            actions) shares one frame. Defaults to no offset. ``autodata_retargeting``
+            reads this same value back out of the embodiment YAML (plus an
+            ``eef_rotation`` it alone declares) as the embodiment's canonical
+            grasp-frame offset for cross-embodiment alignment -- the same
+            control-link -> observed-EEF transform, reused deliberately, not a
+            second field that happens to share the name.
     """
 
     name: str
@@ -127,6 +132,15 @@ class DeltaPoseIKSingleArmAdapter(SingleArmEmbodimentAdapter):
     """
 
     clip_pose_action_to_unit: bool = True
+
+    def metric_context(self) -> dict[str, Any]:
+        """Action entries 0-5 command the end effector's pose change: delta position, then axis-angle rotation.
+
+        They are clipped to ±1 when ``clip_pose_action_to_unit`` is set.
+        """
+        bound = 1.0 if self.clip_pose_action_to_unit else None
+        pose_action = {self.eef_name: {"action_slice": [0, _DELTA_POSE_ACTION_DIM], "bound": bound}}
+        return {**super().metric_context(), "pose_action": pose_action}
 
     @property
     def action_dim(self) -> int:

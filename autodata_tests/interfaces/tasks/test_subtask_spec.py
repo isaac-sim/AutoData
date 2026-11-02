@@ -10,6 +10,7 @@ from autodata_interfaces.tasks.subtask_spec import (
     DexMimicGenSubtaskAlgoParams,
     MimicGenSubtaskAlgoParams,
     SkillGenSubtaskAlgoParams,
+    SoftMimicGenSubtaskAlgoParams,
     Subtask,
     SubtaskAlgoParams,
 )
@@ -81,6 +82,7 @@ def test_algo_params_registry_contents():
         "mimicgen": MimicGenSubtaskAlgoParams,
         "dexmimicgen": DexMimicGenSubtaskAlgoParams,
         "skillgen": SkillGenSubtaskAlgoParams,
+        "softmimicgen": SoftMimicGenSubtaskAlgoParams,
     }
     for cls in ALGO_PARAMS_REGISTRY.values():
         assert issubclass(cls, SubtaskAlgoParams)
@@ -89,6 +91,15 @@ def test_algo_params_registry_contents():
 def test_skillgen_algo_params_default_and_override():
     assert SkillGenSubtaskAlgoParams().subtask_start_offset_range == (0, 0)
     assert SkillGenSubtaskAlgoParams(subtask_start_offset_range=(1, 3)).subtask_start_offset_range == (1, 3)
+
+
+def test_softmimicgen_algo_params_defaults_and_override():
+    defaults = SoftMimicGenSubtaskAlgoParams()
+    assert defaults.object_soft is False
+    assert defaults.use_rotation_transform is True
+    assert defaults.bend_coef == 0.1
+    assert defaults.rot_coef == 1e-3
+    assert SoftMimicGenSubtaskAlgoParams(object_soft=True).object_soft is True
 
 
 @pytest.mark.parametrize("cls", [MimicGenSubtaskAlgoParams, DexMimicGenSubtaskAlgoParams])

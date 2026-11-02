@@ -147,5 +147,6 @@ Table of Contents
    :maxdepth: 1
    :caption: References
 
+   pages/references/metrics
    pages/references/troubleshooting
    pages/references/release_notes

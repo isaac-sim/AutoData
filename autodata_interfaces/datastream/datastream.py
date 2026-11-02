@@ -20,6 +20,43 @@ from autodata_utils import pose_math
 from autodata_utils.tensor_utils import as_torch
 
 
+def scene_object_poses(
+    scene: Any,
+    index: slice | Sequence[int],
+    robot_asset_name: str,
+    reference_inverse: torch.Tensor | None = None,
+) -> dict[str, torch.Tensor]:
+    """Non-robot rigid and articulated object poses (SE(3)) read live from ``scene``.
+
+    The single implementation shared by :meth:`Datastream.get_object_poses` and
+    :mod:`autodata_retargeting`'s per-step datagen-info recorder, which need the same live-scene
+    reading (env-local root poses, optionally expressed in an embodiment's reference frame) and must
+    not be allowed to drift apart again (see git history of this function).
+
+    Args:
+        scene: The env's ``InteractiveScene``.
+        index: Environment selector into each asset's batched root-pose ``(num_envs, ...)`` tensors
+            -- a slice (``slice(None)`` for every env) or a sequence of env indices.
+        robot_asset_name: Scene key of the robot articulation, excluded from the result.
+        reference_inverse: Optional inverse reference-frame pose(s), left-multiplied into the result;
+            ``None`` leaves poses in the scene's env-local frame.
+
+    Returns:
+        ``{object_name: (*, 4, 4)}`` SE(3) poses, batch shape matching ``index``.
+    """
+    env_origins = as_torch(scene.env_origins)[index]
+    assets = {**scene.rigid_objects, **getattr(scene, "articulations", {})}
+    poses: dict[str, torch.Tensor] = {}
+    for name, obj in assets.items():
+        if name == robot_asset_name:
+            continue
+        pos_rel = as_torch(obj.data.root_pos_w)[index] - env_origins
+        quat = as_torch(obj.data.root_quat_w)[index]
+        pose = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
+        poses[name] = reference_inverse @ pose if reference_inverse is not None else pose
+    return poses
+
+
 class Datastream:
     """Aggregates the env, task descriptor, embodiment adapter, and DataGenInfoPool
     behind one interface. The data generator uses this interface to access all static
@@ -255,21 +292,37 @@ class Datastream:
         """Get non-robot rigid and articulated object poses in the embodiment's reference frame."""
 
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
+        robot_name = getattr(self.embodiment_adapter, "robot_asset_name", "robot")
+        return scene_object_poses(self.env.scene, index, robot_name, self._reference_frame_inverse(env_ids))
+
+    def get_object_nodal_positions(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
+        """Get all deformable-object nodal positions in the embodiment's reference frame.
+
+        Without a configured controller frame, positions remain environment-relative.
+
+        Args:
+            env_ids: Environments to read; ``None`` reads all.
+
+        Returns:
+            Mapping from deformable-object name to a tensor shaped
+            ``(len(env_ids), num_nodes, 3)`` containing positions [m].
+        """
+
+        index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
         scene = self.env.scene
         env_origins = scene.env_origins[index]
-        object_pose_matrix: dict[str, torch.Tensor] = {}
-        assets = {**scene.rigid_objects, **getattr(scene, "articulations", {})}
         reference_inverse = self._reference_frame_inverse(env_ids)
-        robot_name = getattr(self.embodiment_adapter, "robot_asset_name", "robot")
-        for obj_name, obj in assets.items():
-            if obj_name == robot_name:
-                continue
-            pos_rel = as_torch(obj.data.root_pos_w)[index] - env_origins
-            quat = as_torch(obj.data.root_quat_w)[index]
-            object_pose_matrix[obj_name] = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
+        object_nodal_positions: dict[str, torch.Tensor] = {}
+        for obj_name, obj in scene.deformable_objects.items():
+            nodal_pos_w = obj.data.nodal_pos_w
+            nodal_pos_w = nodal_pos_w.torch if hasattr(nodal_pos_w, "torch") else as_torch(nodal_pos_w)
+            nodes = nodal_pos_w[index] - env_origins.unsqueeze(1)
             if reference_inverse is not None:
-                object_pose_matrix[obj_name] = reference_inverse @ object_pose_matrix[obj_name]
-        return object_pose_matrix
+                rotation = reference_inverse[:, :3, :3]
+                translation = reference_inverse[:, :3, 3]
+                nodes = nodes @ rotation.transpose(-1, -2) + translation.unsqueeze(1)
+            object_nodal_positions[obj_name] = nodes
+        return object_nodal_positions
 
     def get_subtask_term_signals(
         self, env_ids: Sequence[int] | None = None, obs_group: str = "subtask_terms"

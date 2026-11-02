@@ -30,10 +30,13 @@ terms (default ``subtask_terms``). SkillGen start signals still require manual m
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import time
 
 from isaaclab.app import AppLauncher
 
 from autodata_utils.cli import callable_path
+
+PROCESS_START = time.monotonic()
 
 parser = argparse.ArgumentParser(
     description="Manually annotate AutoData source demonstrations with subtask signals.",
@@ -44,6 +47,15 @@ parser.add_argument(
     type=str,
     default=None,
     help="Environment name. Overrides the env name recorded in the source dataset.",
+)
+parser.add_argument(
+    "--presets", choices=("physx", "newton"), default=None, help="Physics backend preset for Arena environments."
+)
+parser.add_argument(
+    "--reset_sim_buffer_each_episode",
+    action=argparse.BooleanOptionalAction,
+    default=None,
+    help="Flush simulation buffers before replay. Defaults to enabled for PhysX and disabled for Newton.",
 )
 parser.add_argument(
     "--task_descriptor",
@@ -88,6 +100,11 @@ parser.add_argument(
     action="store_true",
     help="Render and record the task's image observations.",
 )
+parser.add_argument(
+    "--record_metric_inputs",
+    action="store_true",
+    help="Record what the dataset metrics read: per-step task success and run metadata in the dataset. Off by default.",
+)
 AppLauncher.add_app_launcher_args(parser)
 parser.add_argument("--external_callback", type=callable_path, help="Callable registering environments after startup.")
 args_cli, environment_args = parser.parse_known_args()
@@ -102,25 +119,38 @@ simulation_app = app_launcher.app
 import contextlib  # noqa: E402
 import gymnasium as gym  # noqa: E402
 import math  # noqa: E402
+import numpy as np  # noqa: E402
 import os  # noqa: E402
+import random  # noqa: E402
 import sys  # noqa: E402
 import torch  # noqa: E402
 import traceback  # noqa: E402
+import uuid  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401, E402  (registers gym envs)
 from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg  # noqa: E402
-from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg  # noqa: E402
-from isaaclab.managers import DatasetExportMode, RecorderTerm, RecorderTermCfg, TerminationTermCfg  # noqa: E402
-from isaaclab.utils import configclass  # noqa: E402
+from isaaclab.managers import DatasetExportMode, RecorderTermCfg, TerminationTermCfg  # noqa: E402
 from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa: E402
 
 from autodata_core.pool import DataGenInfoPool  # noqa: E402
+from autodata_examples.envs import register_environment_for_run  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
-from autodata_interfaces.env import get_env_name_from_dataset, setup_env_config, setup_output_paths  # noqa: E402
+from autodata_interfaces.env import (  # noqa: E402
+    collect_autodata_entry,
+    get_env_name_from_dataset,
+    setup_env_config,
+    setup_output_paths,
+)
+from autodata_interfaces.env.datagen_info_recorder import (  # noqa: E402
+    DatagenInfoRecorderManagerCfg,
+    PreStepDatagenInfoRecorder,
+)
+from autodata_interfaces.env.recorders import PreStepCameraObservationsRecorder  # noqa: E402
 from autodata_interfaces.env.registration import register_external_environment  # noqa: E402
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
+from autodata_utils.dataset_metadata import exported_dataset_files, merge_autodata_entry  # noqa: E402
 
 is_paused = False
 current_action_index = 0
@@ -149,34 +179,6 @@ def mark_subtask_cb() -> None:
     global current_action_index, marked_subtask_action_indices
     marked_subtask_action_indices.append(current_action_index)
     print(f"Marked a subtask signal at action index: {current_action_index}")
-
-
-# Recorder term that writes per-step datagen info read through the Datastream.
-class PreStepDatagenInfoRecorder(RecorderTerm):
-    """Recorder term that records ``obs/datagen_info`` from the Datastream on each step."""
-
-    def record_pre_step(self):
-        assert _datastream is not None, "Datastream must be initialized before recording."
-        datagen_info = {
-            "object_pose": _datastream.get_object_poses(),
-            "eef_pose": _datastream.embodiment_adapter.get_eef_poses(env_ids=None),
-            "target_eef_pose": _datastream.action_to_target_eef_pose(self._env.action_manager.action),
-        }
-        return "obs/datagen_info", datagen_info
-
-
-@configclass
-class PreStepDatagenInfoRecorderCfg(RecorderTermCfg):
-    """Configuration for :class:`PreStepDatagenInfoRecorder`."""
-
-    class_type: type[RecorderTerm] = PreStepDatagenInfoRecorder
-
-
-@configclass
-class AnnotationRecorderManagerCfg(ActionStateRecorderManagerCfg):
-    """Action/state recorder plus the datagen-info term used during annotation."""
-
-    record_pre_step_datagen_info = PreStepDatagenInfoRecorderCfg()
 
 
 def _build_signal_names(
@@ -235,6 +237,19 @@ def main() -> int:
     task_descriptor = TaskDescriptor.from_yaml(args_cli.task_descriptor)
     generation_policy = task_descriptor.get_generation_policy()
 
+    random.seed(generation_policy.seed)
+    np.random.seed(generation_policy.seed)
+    torch.manual_seed(generation_policy.seed)
+
+    env_make_kwargs = register_environment_for_run(
+        env_name=env_name,
+        enable_cameras=args_cli.record_images,
+        num_envs=1,
+        device=args_cli.device,
+        seed=generation_policy.seed,
+        presets=args_cli.presets,
+    )
+
     # Start signals are required only by SkillGen.
     annotate_start_signals = generation_policy.use_skillgen
 
@@ -264,13 +279,30 @@ def main() -> int:
         num_envs=1,
         device=args_cli.device,
         generation_policy_params=generation_policy,
-        recorder_cfg=AnnotationRecorderManagerCfg(),
+        recorder_cfg=DatagenInfoRecorderManagerCfg(),
         enable_cameras=args_cli.record_images,
+        record_step_success=args_cli.record_metric_inputs,
     )
+    if args_cli.reset_sim_buffer_each_episode is None:
+        from isaaclab_newton.physics import NewtonCfg
+
+        # Preserve the established PhysX replay behavior. Newton keeps solver buffers
+        # across episode restores, as in Lab's public replay tool.
+        args_cli.reset_sim_buffer_each_episode = not isinstance(env_cfg.sim.physics, NewtonCfg)
+    if args_cli.record_images:
+        env_cfg.recorders.record_pre_step_camera_observations = RecorderTermCfg(
+            class_type=PreStepCameraObservationsRecorder
+        )
     # Only export episodes we explicitly mark successful (i.e. fully annotated).
     env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY
 
-    env = gym.make(env_name, cfg=env_cfg).unwrapped
+    env_cfg.seed = generation_policy.seed
+    env = gym.make(env_name, cfg=env_cfg, **env_make_kwargs.get(env_name, {})).unwrapped
+    # Environment initialization can reseed or consume the global RNGs.
+    random.seed(generation_policy.seed)
+    np.random.seed(generation_policy.seed)
+    torch.manual_seed(generation_policy.seed)
+    autodata_entry = None
     try:
         # Create the Datastream
         embodiment_adapter = embodiment_adapter_from_yaml(args_cli.embodiment)
@@ -287,6 +319,9 @@ def main() -> int:
             source_pool=empty_pool,
             uses_start_signals=annotate_start_signals,
         )
+        PreStepDatagenInfoRecorder.datastream = _datastream
+        if args_cli.record_metric_inputs:
+            autodata_entry = collect_autodata_entry(env, embodiment_adapter, uuid.uuid4().hex)
 
         env.reset()
 
@@ -311,6 +346,7 @@ def main() -> int:
 
         exported_episode_count = 0
         processed_episode_count = 0
+        annotation_start = time.monotonic()
         with contextlib.suppress(KeyboardInterrupt), torch.inference_mode():
             for episode_index, episode_name in enumerate(episode_names):
                 if not simulation_app.is_running() or simulation_app.is_exiting():
@@ -342,10 +378,22 @@ def main() -> int:
             f"\nExported {exported_episode_count} (out of {processed_episode_count}) annotated"
             f" episode{'s' if exported_episode_count != 1 else ''} to {args_cli.output_file}."
         )
+        if autodata_entry is not None:
+            autodata_entry["annotation"] = {
+                "mode": "auto" if args_cli.auto else "manual",
+                "input_episodes": len(episode_names),
+                "processed_episodes": processed_episode_count,
+                "annotated_episodes": exported_episode_count,
+                "setup_time_s": annotation_start - PROCESS_START,
+                "time_s": time.monotonic() - annotation_start,
+            }
         print("Exiting the app.")
         return exported_episode_count
     finally:
         env.close()
+        if autodata_entry is not None:
+            for dataset_file in exported_dataset_files(output_dir, output_file_name, kept_failed=False):
+                merge_autodata_entry(dataset_file, autodata_entry)
 
 
 def replay_episode(
@@ -372,8 +420,9 @@ def replay_episode(
     initial_state = episode.data["initial_state"]
     actions = episode.data["actions"]
 
-    # Reset the simulation before restoring state (use of env.sim.reset() for deterministic replay)
-    env.sim.reset()
+    # A full solver reset is distinct from restoring an episode's scene state.
+    if args_cli.reset_sim_buffer_each_episode:
+        env.sim.reset()
     env.recorder_manager.reset()
     env.reset_to(initial_state, torch.tensor([0], device=env.device), is_relative=True)
 

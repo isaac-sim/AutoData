@@ -31,3 +31,16 @@ action_layout:
 # that same frame, so no shift is needed. SkillGen's cube-stack dataset is annotated in the
 # panda_hand frame, so it needs [0, 0, 0.1034] — use franka_cube_stack_embodiment_skillgen.yaml.
 eef_offset: [0.0, 0.0, 0.0]
+
+# Franka FCI datasheet joint limits, keyed by joint-name pattern. Read only by the dataset metrics.
+hardware_limits:
+  velocity: # [rad/s]
+    panda_joint[1-4]: 2.175
+    panda_joint[5-7]: 2.61
+  acceleration: # [rad/s^2]
+    panda_joint1: 15.0
+    panda_joint2: 7.5
+    panda_joint3: 10.0
+    panda_joint4: 12.5
+    panda_joint5: 15.0
+    panda_joint[6-7]: 20.0

@@ -16,6 +16,7 @@ from autodata_core.algorithms import (
     GenerationAlgorithm,
     MimicGen,
     SkillGen,
+    SoftMimicGen,
     get_algorithm,
     iter_algorithms,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "GenerationResult",
     "MimicGen",
     "MultiWaypoint",
+    "SoftMimicGen",
     "SkillGen",
     "Waypoint",
     "WaypointSequence",

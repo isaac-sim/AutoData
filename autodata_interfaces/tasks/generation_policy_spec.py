@@ -23,6 +23,9 @@ class GenerationPolicy:
         use_skillgen: Whether SkillGen is used to generate motion trajectories.
         use_navigation_controller: Whether a navigation controller generates loco-manipulation
             trajectories.
+        reset_settling_steps: Number of ordinary batched environment steps to run after reset
+            before generation begins. During these steps, the resetting environment receives
+            ``env.cfg.idle_action`` (zeros when absent) while other environments execute their generated actions.
         max_navigation_hold_steps: Maximum consecutive simulation steps spent waiting for a
             navigation goal at the end of its recorded segment. Reaching the limit fails the attempt.
 
@@ -49,6 +52,7 @@ class GenerationPolicy:
     task_name: str | None = None
     use_skillgen: bool = False
     use_navigation_controller: bool = False
+    reset_settling_steps: int = 0
     max_navigation_hold_steps: int = 1000
 
     # --- segment stitching ---

@@ -86,6 +86,27 @@ def _skillgen_task() -> TaskDescriptor:
     })
 
 
+def _softmimicgen_task() -> TaskDescriptor:
+    return TaskDescriptor.from_dict({
+        "name": "rope",
+        "algo": "softmimicgen",
+        "subtasks": {
+            "franka": [
+                {
+                    "object_ref": "rope",
+                    "subtask_term_signal": "grasp",
+                    "algo_params": {"object_soft": True},
+                },
+                {
+                    "object_ref": "rope",
+                    "subtask_term_signal": "",
+                    "algo_params": {"object_soft": True},
+                },
+            ]
+        },
+    })
+
+
 def _step_signal(length: int, edge: int) -> torch.Tensor:
     """A per-step step-function: False before ``edge``, True from ``edge`` on."""
     sig = torch.ones(length, dtype=torch.bool)
@@ -157,6 +178,18 @@ def _skillgen_episode(
     )
 
 
+def _softmimicgen_episode(actions_len: int = 10, term_edge: int = 4) -> types.SimpleNamespace:
+    return _episode(
+        actions_len=actions_len,
+        datagen_info={
+            "eef_pose": {"franka": torch.zeros(actions_len, 4, 4)},
+            "object_nodal_position": {"rope": torch.zeros(actions_len, 12, 3)},
+            "target_eef_pose": {"franka": torch.zeros(actions_len, 4, 4)},
+            "subtask_term_signals": {"grasp": _step_signal(actions_len, term_edge)},
+        },
+    )
+
+
 # ---------------------------------------------------------------------------------------------------
 # __init__: subtask signal-name / offset-range tables built from the task descriptor
 # ---------------------------------------------------------------------------------------------------
@@ -190,6 +223,16 @@ def test_add_episode_populates_datagen_info_and_passthrough():
     # passthrough derived from actions via the adapter: single-arm gripper channel of width 1.
     assert set(di.passthrough_action) == {"franka"}
     assert di.passthrough_action["franka"].shape == (8, 1)
+
+
+def test_add_episode_accepts_deformable_state_without_rigid_object_pose():
+    pool = _pool(_softmimicgen_task())
+    pool._add_episode(_softmimicgen_episode(actions_len=8, term_edge=3))
+    di = pool.datagen_infos[0]
+    assert di.object_poses is None
+    assert set(di.object_nodal_positions) == {"rope"}
+    assert di.object_nodal_positions["rope"].shape == (8, 12, 3)
+    assert pool.subtask_boundaries["franka"] == [[(0, 4), (4, 8)]]
 
 
 def test_add_episode_missing_datagen_info_error():
@@ -266,3 +309,32 @@ def test_add_episode_skillgen_rejects_start_offset_that_empties_subtask():
     pool = _pool(task, uses_start_signals=True)
     with pytest.raises(AssertionError, match="empty in worst case"):
         pool._add_episode(_skillgen_episode(actions_len=10, start_edges=(1, 6), term_edges=(4, 8)))
+
+
+def test_add_episode_maps_legacy_single_arm_names_without_mutating_source():
+    pool = _pool(_softmimicgen_task())
+    episode = _softmimicgen_episode()
+    info = episode.data["obs"]["datagen_info"]
+    for key in ("eef_pose", "target_eef_pose"):
+        info[key]["robot0"] = info[key].pop("franka")
+
+    pool._add_episode(episode)
+    recorded = pool.datagen_infos[0]
+    for key in ("eef_pose", "target_eef_pose"):
+        assert set(info[key]) == {"robot0"}
+        assert set(getattr(recorded, key)) == {"franka"}
+        torch.testing.assert_close(getattr(recorded, key)["franka"], info[key]["robot0"])
+
+
+def test_add_episode_rejects_inconsistent_pose_names():
+    episode = _softmimicgen_episode()
+    info = episode.data["obs"]["datagen_info"]
+    info["eef_pose"]["robot0"] = info["eef_pose"].pop("franka")
+    with pytest.raises(AssertionError, match="do not match target_eef_pose"):
+        _pool(_softmimicgen_task())._add_episode(episode)
+
+
+def test_add_episode_rejects_ambiguous_arm_name_mapping():
+    episode = _dexmimicgen_episode()
+    with pytest.raises(AssertionError, match="multi-arm datasets require matching names"):
+        _pool(_softmimicgen_task())._add_episode(episode)
