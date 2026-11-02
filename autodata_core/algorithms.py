@@ -7,22 +7,26 @@
 behavior diverges between Mimic, DexMimicGen, SkillGen, etc.
 Subclasses self-register at import time via :class:`_AlgorithmMeta`.
 
-The single behavioral hook is :meth:`GenerationAlgorithm.plan_subtask_trajectory`, called by
-``DataGenerator`` every time an EEF needs a new executable trajectory. The default implementation
-generates a subtask trajectory and merges an interpolation segment (the Mimic / DexMimicGen path).
-SkillGen overrides this to insert a motion-planned transit ahead of the merge.
+The main behavioral hook is :meth:`GenerationAlgorithm.plan_subtask_trajectory`, called by
+``DataGenerator`` every time an EEF needs a new executable trajectory. Object-state adaptation is
+routed through :meth:`GenerationAlgorithm.transform_source_eef_poses`. Rigid algorithms use the
+default object-pose transform while SoftMimicGen overrides it with nodal TPS registration.
 """
 
 from __future__ import annotations
 
 import time
+import torch
 from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, Any
+
+from autodata_core.selection_strategy import make_selection_strategy
 
 if TYPE_CHECKING:
     from autodata_core.data_generator import DataGenerator, _EEFGenerationState
     from autodata_core.waypoint import Waypoint
     from autodata_interfaces.datastream.datastream import Datastream
+    from autodata_interfaces.tasks.subtask_spec import Subtask
 
 REGISTERED_ALGORITHMS: dict[str, type[GenerationAlgorithm]] = {}
 
@@ -66,11 +70,59 @@ class GenerationAlgorithm(metaclass=_AlgorithmMeta):
     supports_coordination: bool = False
 
     def validate_setup(self, datastream: Datastream) -> None:
-        """Algorithm-specific validation against the composed datastream. Default: no-op.
+        """Validate source annotations against the composed datastream.
 
-        Subclasses can read ``datastream.get_subtasks(eef)``, ``datastream.get_task_constraints()``,
-        or ``datastream.get_env()`` (escape hatch) to enforce algorithm-specific invariants.
+        Rigid reference objects require source object-pose annotations. Subclasses can call this
+        implementation before enforcing their algorithm-specific invariants.
         """
+        for eef_name in datastream.get_eef_names():
+            for subtask_index, subtask in enumerate(datastream.get_subtasks(eef_name)):
+                if not subtask.object_ref or self.is_deformable_subtask(subtask):
+                    continue
+                for demo_index, info in enumerate(datastream.source_pool.datagen_infos):
+                    assert info.object_poses is not None and subtask.object_ref in info.object_poses, (
+                        f"Source demo {demo_index} lacks object_pose for {subtask.object_ref!r} "
+                        f"required by {eef_name}[{subtask_index}]"
+                    )
+
+    def is_deformable_subtask(self, subtask: Subtask) -> bool:
+        """Return whether ``subtask`` uses deformable nodal state instead of a rigid pose."""
+
+        return False
+
+    def transform_source_eef_poses(
+        self,
+        *,
+        data_generator: DataGenerator,
+        eef_name: str,
+        subtask_ind: int,
+        subtask_object_name: str | None,
+        subtask_object_pose: torch.Tensor | None,
+        src_subtask_object_pose: torch.Tensor | None,
+        subtask_object_nodal_positions: torch.Tensor | None,
+        src_subtask_object_nodal_positions: torch.Tensor | None,
+        src_eef_poses: torch.Tensor,
+        use_delta_transform: torch.Tensor | None,
+        coord_transform_scheme: Any,
+        runtime_subtask_constraints_dict: dict,
+    ) -> torch.Tensor:
+        """Adapt source EEF poses to the current subtask object state.
+
+        The default implementation performs the existing rigid-object transform. Algorithms using
+        another object representation override this method.
+        """
+
+        return data_generator._apply_subtask_transform(
+            eef_name=eef_name,
+            subtask_ind=subtask_ind,
+            subtask_object_name=subtask_object_name,
+            subtask_object_pose=subtask_object_pose,
+            src_subtask_object_pose=src_subtask_object_pose,
+            src_eef_poses=src_eef_poses,
+            use_delta_transform=use_delta_transform,
+            coord_transform_scheme=coord_transform_scheme,
+            runtime_subtask_constraints_dict=runtime_subtask_constraints_dict,
+        )
 
     def attempt_extras(self, eef_states: Iterable[_EEFGenerationState]) -> dict[str, Any]:
         """Algorithm-specific facts about one finished attempt, written to its attempt-log line. Default: none.
@@ -172,6 +224,107 @@ class DexMimicGen(GenerationAlgorithm):
     requires_motion_planner = False
     uses_subtask_start_signals = False
     supports_coordination = True
+
+
+class SoftMimicGen(GenerationAlgorithm):
+    """MimicGen for deformable reference objects.
+
+    Deformable subtasks select source segments using nodal state and warp their EEF trajectories
+    with a thin-plate-spline transform. Rigid subtasks retain the normal MimicGen transform.
+    """
+
+    name = "softmimicgen"
+    expected_eef_count = (1, 2)
+    requires_motion_planner = False
+    uses_subtask_start_signals = False
+    supports_coordination = False
+
+    def is_deformable_subtask(self, subtask: Subtask) -> bool:
+        return bool(getattr(subtask.algo_params, "object_soft", False))
+
+    def validate_setup(self, datastream: Datastream) -> None:
+        super().validate_setup(datastream)
+        live_nodal_positions = datastream.get_object_nodal_positions()
+        for eef_name in datastream.get_eef_names():
+            for subtask_index, subtask in enumerate(datastream.get_subtasks(eef_name)):
+                is_deformable = self.is_deformable_subtask(subtask)
+                strategy = make_selection_strategy(subtask.selection_strategy)
+                supports_object = (
+                    strategy.supports_deformable_objects if is_deformable else strategy.supports_rigid_objects
+                )
+                object_type = "deformable" if is_deformable else "rigid"
+                assert supports_object, (
+                    f"Selection strategy {subtask.selection_strategy!r} does not support {object_type} reference"
+                    f" objects for SoftMimicGen subtask {eef_name}[{subtask_index}]."
+                )
+                if not is_deformable:
+                    continue
+                assert (
+                    subtask.object_ref
+                ), f"SoftMimicGen deformable subtask {eef_name}[{subtask_index}] requires object_ref"
+                assert subtask.object_ref in live_nodal_positions, (
+                    f"Deformable object {subtask.object_ref!r} is not present in the live scene; "
+                    f"available: {sorted(live_nodal_positions)}"
+                )
+                live_node_count = live_nodal_positions[subtask.object_ref].shape[-2]
+                for demo_index, datagen_info in enumerate(datastream.source_pool.datagen_infos):
+                    assert (
+                        datagen_info.object_nodal_positions is not None
+                    ), f"Source demo {demo_index} lacks object_nodal_position annotations"
+                    assert (
+                        subtask.object_ref in datagen_info.object_nodal_positions
+                    ), f"Source demo {demo_index} lacks nodal positions for {subtask.object_ref!r}"
+                    source_node_count = datagen_info.object_nodal_positions[subtask.object_ref].shape[-2]
+                    assert source_node_count == live_node_count, (
+                        f"Source demo {demo_index} has {source_node_count} nodes for "
+                        f"{subtask.object_ref!r}, live object has {live_node_count}"
+                    )
+
+    def transform_source_eef_poses(
+        self,
+        *,
+        data_generator: DataGenerator,
+        eef_name: str,
+        subtask_ind: int,
+        subtask_object_name: str | None,
+        subtask_object_pose: torch.Tensor | None,
+        src_subtask_object_pose: torch.Tensor | None,
+        subtask_object_nodal_positions: torch.Tensor | None,
+        src_subtask_object_nodal_positions: torch.Tensor | None,
+        src_eef_poses: torch.Tensor,
+        use_delta_transform: torch.Tensor | None,
+        coord_transform_scheme: Any,
+        runtime_subtask_constraints_dict: dict,
+    ) -> torch.Tensor:
+        subtask = data_generator.datastream.get_subtask(eef_name, subtask_ind)
+        if not self.is_deformable_subtask(subtask):
+            return super().transform_source_eef_poses(
+                data_generator=data_generator,
+                eef_name=eef_name,
+                subtask_ind=subtask_ind,
+                subtask_object_name=subtask_object_name,
+                subtask_object_pose=subtask_object_pose,
+                src_subtask_object_pose=src_subtask_object_pose,
+                subtask_object_nodal_positions=subtask_object_nodal_positions,
+                src_subtask_object_nodal_positions=src_subtask_object_nodal_positions,
+                src_eef_poses=src_eef_poses,
+                use_delta_transform=use_delta_transform,
+                coord_transform_scheme=coord_transform_scheme,
+                runtime_subtask_constraints_dict=runtime_subtask_constraints_dict,
+            )
+
+        assert subtask_object_nodal_positions is not None, "current deformable nodal state is missing"
+        assert src_subtask_object_nodal_positions is not None, "source deformable nodal state is missing"
+        from autodata_core.deformable_transforms import transform_source_data_segment_using_nodal_registration
+
+        return transform_source_data_segment_using_nodal_registration(
+            src_eef_poses=src_eef_poses,
+            src_obj_nodal_pos=src_subtask_object_nodal_positions,
+            tgt_obj_nodal_pos=subtask_object_nodal_positions,
+            use_rotation_transform=subtask.algo_params.use_rotation_transform,
+            bend_coef=subtask.algo_params.bend_coef,
+            rot_coef=subtask.algo_params.rot_coef,
+        )
 
 
 class SkillGen(GenerationAlgorithm):

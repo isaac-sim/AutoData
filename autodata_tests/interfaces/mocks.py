@@ -18,11 +18,13 @@ class MockArticulationData:
         joint_names: list[str] | None = None,
         root_pos_w: torch.Tensor | None = None,
         root_quat_w: torch.Tensor | None = None,
+        nodal_pos_w: torch.Tensor | None = None,
     ) -> None:
         self.joint_pos = joint_pos
         self.joint_names = joint_names
         self.root_pos_w = root_pos_w
         self.root_quat_w = root_quat_w
+        self.nodal_pos_w = nodal_pos_w
 
 
 class MockAsset:
@@ -39,11 +41,13 @@ class MockScene:
         self,
         assets: dict[str, MockAsset] | None = None,
         rigid_objects: dict[str, MockAsset] | None = None,
+        deformable_objects: dict[str, MockAsset] | None = None,
         env_origins: torch.Tensor | None = None,
         state: Any = None,
     ) -> None:
         self._assets = assets or {}
         self.rigid_objects = rigid_objects or {}
+        self.deformable_objects = deformable_objects or {}
         self.env_origins = env_origins
         self._state = state
 

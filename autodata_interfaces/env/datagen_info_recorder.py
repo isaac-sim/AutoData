@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 class PreStepDatagenInfoRecorder(RecorderTerm):
-    """Records end-effector and commanded target poses, and optionally object poses, before each step.
+    """Records end-effector and target poses, and optionally rigid and deformable object state, before each step.
 
     Attributes:
         datastream: Datastream to read. Set it on the class once the Datastream exists, since Isaac Lab
@@ -33,6 +33,8 @@ class PreStepDatagenInfoRecorder(RecorderTerm):
         }
         if self.cfg.record_object_poses:
             datagen_info["object_pose"] = self.datastream.get_object_poses()
+        if self.cfg.record_object_nodal_positions:
+            datagen_info["object_nodal_position"] = self.datastream.get_object_nodal_positions()
         return "obs/datagen_info", datagen_info
 
 
@@ -43,6 +45,9 @@ class PreStepDatagenInfoRecorderCfg(RecorderTermCfg):
     class_type: type[RecorderTerm] = PreStepDatagenInfoRecorder
     record_object_poses: bool = True
     """Annotation needs object poses for the source pool; generation leaves them out, as no metric reads them."""
+
+    record_object_nodal_positions: bool = False
+    """Record deformable nodal positions for source annotations; pose-only metric recording leaves them out."""
 
 
 class PostStepSuccessRecorder(RecorderTerm):
@@ -66,7 +71,7 @@ class PostStepSuccessRecorderCfg(RecorderTermCfg):
 class DatagenInfoRecorderManagerCfg(ActionStateRecorderManagerCfg):
     """Action/state recorder plus the per-step ``obs/datagen_info`` term."""
 
-    record_pre_step_datagen_info = PreStepDatagenInfoRecorderCfg()
+    record_pre_step_datagen_info = PreStepDatagenInfoRecorderCfg(record_object_nodal_positions=True)
 
 
 def add_step_success_recorder(recorder_cfg: object, success_term: TerminationTermCfg | None) -> None:

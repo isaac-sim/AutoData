@@ -123,10 +123,33 @@ class DataGenInfoPool:
         ep_datagen_info = DatagenInfo.from_episode(ep_grp)
         missing = [
             name
-            for name in ("eef_pose", "object_poses", "target_eef_pose", "subtask_term_signals")
+            for name in ("eef_pose", "target_eef_pose", "subtask_term_signals")
             if getattr(ep_datagen_info, name) is None
         ]
         assert not missing, f"Episode's 'obs/datagen_info' is missing required field(s): {missing}"
+
+        # Legacy single-arm datasets use names such as "robot0". With exactly one
+        # recorded and one configured EEF, the correspondence is unambiguous.
+        # Normalize both pose mappings in memory without modifying the source episode.
+        eef_pose = ep_datagen_info.eef_pose
+        target_eef_pose = ep_datagen_info.target_eef_pose
+        expected_eefs = set(self.task_descriptor.get_eef_names())
+        recorded_eefs = set(eef_pose)
+        assert recorded_eefs == set(target_eef_pose), (
+            f"Source eef_pose names {sorted(recorded_eefs)} do not match "
+            f"target_eef_pose names {sorted(target_eef_pose)}."
+        )
+        if recorded_eefs != expected_eefs:
+            assert len(recorded_eefs) == len(expected_eefs) == 1, (
+                f"Source EEF names {sorted(recorded_eefs)} do not match configured names "
+                f"{sorted(expected_eefs)}. Automatic name matching requires exactly one "
+                "source and one configured EEF; multi-arm datasets require matching names."
+            )
+            source_eef = next(iter(recorded_eefs))
+            configured_eef = next(iter(expected_eefs))
+            ep_datagen_info.eef_pose = {configured_eef: eef_pose[source_eef]}
+            ep_datagen_info.target_eef_pose = {configured_eef: target_eef_pose[source_eef]}
+
         ep_datagen_info.passthrough_action = self.embodiment_adapter.actions_to_passthrough_actions(ep_grp["actions"])
         self._datagen_infos.append(ep_datagen_info)
 

@@ -198,8 +198,8 @@ If you use AutoData in your research, please cite:
 ```
 
 Depending on the generation algorithm used, please also cite the original
-[MimicGen](https://arxiv.org/abs/2310.17596), [DexMimicGen](https://arxiv.org/abs/2410.24185), or
-[SkillMimicGen](https://arxiv.org/abs/2410.18907) work. Isaac Lab users should also cite the
+[MimicGen](https://arxiv.org/abs/2310.17596), [DexMimicGen](https://arxiv.org/abs/2410.24185),
+[SkillMimicGen](https://arxiv.org/abs/2410.18907), or [SoftMimicGen](https://arxiv.org/abs/2603.25725) work. Isaac Lab users should also cite the
 [Isaac Lab paper](https://arxiv.org/abs/2511.04831).
 
 ## Acknowledgements
