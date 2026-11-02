@@ -64,21 +64,6 @@ are selected, transformed, and executed per arm. Two mechanisms keep the arms co
   synchronize specific subtask pairs across arms at runtime (see
   :doc:`task_descriptors`).
 
-SkillGen
---------
-
-SkillGen (`Garrett et al., 2024 <https://arxiv.org/abs/2410.18907>`_) replaces interpolation
-with **motion-planned transit**: each subtask executes as a collision-free cuRobo plan to the
-skill segment's start, followed by the transformed skill replay. Grasped objects are attached
-to the kinematic chain during planning, so held objects are collision-checked too. This
-requires knowing exactly where skills start — hence subtask **start signals** and a
-termination signal on every subtask, including the final one. Constraints apply only during
-skill segments; transit is constraint-free. If planning fails for an attempt, the attempt is
-abandoned and counted as a failure.
-
-See the :doc:`SkillGen workflow <../workflows/skillgen/index>` and
-:doc:`../advanced/motion_planners`.
-
 SoftMimicGen
 ------------
 
@@ -98,6 +83,22 @@ shapes by their TPS fitting cost (see below).
 
 See the :doc:`Franka rope workflow <../workflows/franka_rope_softmimicgen/index>` for recording,
 annotation, generation, and replay with Newton or PhysX.
+
+SkillGen
+--------
+
+SkillGen (`Garrett et al., 2024 <https://arxiv.org/abs/2410.18907>`_) replaces interpolation
+with **motion-planned transit**: each subtask executes as a collision-free cuRobo plan to the
+skill segment's start, followed by the transformed skill replay. Grasped objects are attached
+to the kinematic chain during planning, so held objects are collision-checked too. This
+requires knowing exactly where skills start — hence subtask **start signals** and a
+termination signal on every subtask, including the final one. Constraints apply only during
+skill segments; transit is constraint-free. If planning fails for an attempt, the attempt is
+abandoned and counted as a failure.
+
+See the :doc:`SkillGen workflow <../workflows/skillgen/index>` and
+:doc:`../advanced/motion_planners`.
+
 
 Source Demonstration Selection Strategies
 -----------------------------------------
