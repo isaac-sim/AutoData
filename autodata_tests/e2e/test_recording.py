@@ -14,7 +14,7 @@ from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
 
 
-def configure_recording_smoke() -> None:
+def configure_recording_smoke() -> list[str]:
     """Replace physical HID I/O and export three real simulation steps for the test."""
     import torch
 
@@ -22,9 +22,15 @@ def configure_recording_smoke() -> None:
     from isaaclab.devices import Se3SpaceMouse
     from isaaclab.envs import ManagerBasedRLEnv
 
+    from autodata_examples.envs import register_environments
+
     # This assertion observes the actual script's parser after Python startup,
     # before its task lookup. No task or environment resolution is mocked.
-    assert recorder.args_cli.task == "IsaacContrib-Stack-Cube-Franka-IK-Rel"
+    assert recorder.args_cli.task in {
+        "IsaacContrib-Stack-Cube-Franka-IK-Rel",
+        "Isaac-Rope-Franka-Arena-IK-Rel-v0",
+    }
+    remaining_args = register_environments()
     Se3SpaceMouse._find_device = lambda self: None
     Se3SpaceMouse._run_device = lambda self: None
     original_step = ManagerBasedRLEnv.step
@@ -35,6 +41,11 @@ def configure_recording_smoke() -> None:
         result = original_step(env, actions)
         steps += 1
         if steps == 3:
+            if recorder.args_cli.task == "Isaac-Rope-Franka-Arena-IK-Rel-v0":
+                camera_obs = env.obs_buf["camera_obs"]
+                assert len(camera_obs) == 2
+                for image in camera_obs.values():
+                    assert image.shape[:3] == (1, 128, 128)
             # Synthetic input does not solve the task. Explicitly export this
             # short test episode to verify recording and metadata, then stop.
             env.recorder_manager.record_pre_reset([0], force_export_or_skip=False)
@@ -46,10 +57,19 @@ def configure_recording_smoke() -> None:
         return result
 
     ManagerBasedRLEnv.step = step_and_finish
+    return remaining_args
 
 
 @pytest.mark.with_subprocess
-def test_lab_record_demos_task_startup(tmp_path):
+@pytest.mark.parametrize(
+    ("task_name", "camera_args"),
+    [
+        ("IsaacContrib-Stack-Cube-Franka-IK-Rel", []),
+        ("Isaac-Rope-Franka-Arena-IK-Rel-v0", ["--enable_cameras"]),
+    ],
+    ids=["franka_cube_stack", "franka_rope"],
+)
+def test_lab_record_demos_task_startup(tmp_path, task_name, camera_args):
     """The direct recorder uses the registered task and records real actions and states."""
     output_file = tmp_path / "recording.hdf5"
     script = Path(TestPaths.repo_root) / "submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py"
@@ -60,7 +80,7 @@ def test_lab_record_demos_task_startup(tmp_path):
             "--viz",
             "kit",
             "--task",
-            "IsaacContrib-Stack-Cube-Franka-IK-Rel",
+            task_name,
             "--teleop_device",
             "spacemouse",
             "--dataset_file",
@@ -69,12 +89,15 @@ def test_lab_record_demos_task_startup(tmp_path):
             "1",
             "--external_callback",
             "autodata_tests.e2e.test_recording.configure_recording_smoke",
+            *camera_args,
         ],
         env={**os.environ, "HEADLESS": "1"},
     )
     with h5py.File(output_file, "r") as dataset:
-        assert json.loads(dataset["data"].attrs["env_args"])["env_name"] == "IsaacContrib-Stack-Cube-Franka-IK-Rel"
+        assert json.loads(dataset["data"].attrs["env_args"])["env_name"] == task_name
         assert len(dataset["data"]) == 1
         episode = next(iter(dataset["data"].values()))
         assert episode["actions"].shape == (3, 7)
         assert "states" in episode
+        if task_name == "Isaac-Rope-Franka-Arena-IK-Rel-v0":
+            assert episode["states/deformable_object/object/nodal_position"].shape == (3, 549, 3)

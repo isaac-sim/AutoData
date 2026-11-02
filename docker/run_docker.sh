@@ -43,6 +43,8 @@ ISAACLAB_PATH="${WORKDIR}/submodules/IsaacLab-Arena/submodules/IsaacLab"
 
 # Optional host datasets directory mounted at /datasets (in addition to the repo's own datasets/).
 DATASETS_HOST_MOUNT_DIRECTORY="$HOME/datasets"
+# CI can provide a writable cache without changing the shared host cache's ownership.
+CACHE_HOST_MOUNT_DIRECTORY="${AUTODATA_DOCKER_CACHE_DIR:-$HOME/.cache}"
 
 FORCE_REBUILD=false
 NO_CACHE=""
@@ -133,6 +135,9 @@ add_volume_if_it_exists() {
     [ -d "$1" ] && echo "-v $1:$2"
 }
 
+# Create it as the host user before Docker can create a root-owned bind source.
+mkdir -p "${CACHE_HOST_MOUNT_DIRECTORY}"
+
 # Forward the host SSH agent if available (so git over SSH works in-container).
 SSH_DOCKER_ARGS=()
 if [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "$SSH_AUTH_SOCK" ]; then
@@ -151,8 +156,8 @@ DOCKER_RUN_ARGS=(
     # Live-mount the repo: host edits are reflected in the container's editable installs.
     "-v" "${REPO_ROOT}:${WORKDIR}"
     $(add_volume_if_it_exists "$DATASETS_HOST_MOUNT_DIRECTORY" /datasets)
-    # Share the host Kit/pip cache to speed up shader warmup and reinstalls across runs.
-    "-v" "$HOME/.cache:/home/$(id -un)/.cache"
+    # Share the selected cache, including Arena's hard-coded ~/.cache location.
+    "-v" "${CACHE_HOST_MOUNT_DIRECTORY}:/home/$(id -un)/.cache"
     # X11 passthrough so "--viz kit" can open a window.
     "-v" "/tmp/.X11-unix:/tmp/.X11-unix:rw"
     "${SSH_DOCKER_ARGS[@]}"
