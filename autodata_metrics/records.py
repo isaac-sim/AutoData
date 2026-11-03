@@ -45,9 +45,9 @@ class MapOf:
 
 
 NUMBER = "a finite number"
-COUNT = "a non-negative integer"
-DURATION = "a non-negative finite number"
+NON_NEGATIVE = "a non-negative finite number"
 POSITIVE = "a positive finite number"
+COUNT = "a non-negative integer"
 
 INPUT = {"path": str, "sha256": str}
 RUN = {
@@ -60,8 +60,8 @@ RUN = {
     "cpu": Maybe(str),
     "num_gpus": Maybe(COUNT),
     "num_envs": Maybe(COUNT),
-    "setup_time_s": Maybe(DURATION),
-    "generation_time_s": Maybe(DURATION),
+    "setup_time_s": Maybe(NON_NEGATIVE),
+    "generation_time_s": Maybe(NON_NEGATIVE),
     "attempts_file": Maybe(str),
 }
 RESULT = {"num_success": COUNT, "num_failures": Maybe(COUNT), "num_attempts": COUNT, "run": Maybe(RUN)}
@@ -71,22 +71,25 @@ ATTEMPT = {
     "success": bool,
     "start_time_s": NUMBER,
     "end_time_s": NUMBER,
-    "extras": Maybe({"planning_time_s": Maybe(DURATION), "planning_failed": Maybe(bool)}),
+    "extras": Maybe({"planning_time_s": Maybe(NON_NEGATIVE), "planning_failed": Maybe(bool)}),
 }
 ANNOTATION = {
     "mode": Maybe(("auto", "manual")),
     "input_episodes": COUNT,
     "processed_episodes": COUNT,
     "annotated_episodes": COUNT,
-    "setup_time_s": Maybe(DURATION),
-    "time_s": DURATION,
+    "setup_time_s": Maybe(NON_NEGATIVE),
+    "time_s": NON_NEGATIVE,
 }
 ENTRY = {
     "version": COUNT,
     "run_id": str,
     "exported_episodes": COUNT,
-    "pose_action": Maybe(MapOf({"action_slice": ListOf(int, 2), "bound": Maybe(NUMBER)})),
+    "pose_action": Maybe(MapOf({"action_slice": ListOf(COUNT, 2), "bound": Maybe(POSITIVE), "absolute": Maybe(bool)})),
     "annotation": Maybe(ANNOTATION),
+    "action_noise": Maybe(NUMBER),
+    "joints": Maybe({"asset": Maybe(str), "names": ListOf(str)}),
+    "hardware_limits": Maybe({"velocity": Maybe(MapOf(POSITIVE)), "acceleration": Maybe(MapOf(POSITIVE))}),
 }
 ENV_ARGS = {"autodata": Maybe(ENTRY), "sim_args": Maybe({"dt": Maybe(POSITIVE), "decimation": Maybe(POSITIVE)})}
 
@@ -94,9 +97,9 @@ ENV_ARGS = {"autodata": Maybe(ENTRY), "sim_args": Maybe({"dt": Maybe(POSITIVE), 
 def parse(value: Any, shape: Any, where: str) -> Any:
     """``value`` checked against ``shape``, with its absent or null optional fields left out.
 
-    A shape is a type, a tuple of allowed values, :data:`NUMBER`, :data:`COUNT`, :data:`DURATION`, :data:`POSITIVE`,
-    a :class:`Maybe`, :class:`ListOf` or :class:`MapOf`, or a dict of field shapes; a dict's fields are required
-    unless their shape is a :class:`Maybe`.
+    A shape is a type, a tuple of allowed values, :data:`NUMBER`, :data:`NON_NEGATIVE`, :data:`POSITIVE`,
+    :data:`COUNT`, a :class:`Maybe`, :class:`ListOf` or :class:`MapOf`, or a dict of field shapes; a dict's fields
+    are required unless their shape is a :class:`Maybe`.
 
     Raises:
         InvalidRecord: Naming ``where`` and the field, if ``value`` does not have ``shape``.
@@ -123,8 +126,8 @@ def parse(value: Any, shape: Any, where: str) -> Any:
         return {key: item for key, item in parsed.items() if item is not None}
     if isinstance(shape, tuple):
         _require(value in shape, value, f"one of {list(shape)}", where)
-    elif shape in (NUMBER, DURATION, POSITIVE):
-        in_range = is_finite_number(value) and (shape is NUMBER or value > 0 or (shape is DURATION and value == 0))
+    elif shape in (NUMBER, NON_NEGATIVE, POSITIVE):
+        in_range = is_finite_number(value) and (shape is NUMBER or value > 0 or (shape is NON_NEGATIVE and value == 0))
         _require(in_range, value, shape, where)
     elif shape is COUNT:
         _require(isinstance(value, int) and not isinstance(value, bool) and value >= 0, value, shape, where)
@@ -141,6 +144,9 @@ def parse_env_args(env_args: Any, where: str) -> dict[str, Any]:
     if isinstance(version, int) and version > AUTODATA_ENTRY_VERSION:
         raise InvalidRecord(f"{where}.autodata was written by a newer AutoData (entry version {version}).")
     parsed = parse(env_args, ENV_ARGS, where)
+    for eef, layout in parsed.get("autodata", {}).get("pose_action", {}).items():
+        start, end = layout["action_slice"]
+        _require(start < end, [start, end], "a non-empty range", f"{where}.autodata.pose_action.{eef}.action_slice")
     annotation = parsed.get("autodata", {}).get("annotation")
     if annotation is not None:
         counts = [annotation[name] for name in ("annotated_episodes", "processed_episodes", "input_episodes")]

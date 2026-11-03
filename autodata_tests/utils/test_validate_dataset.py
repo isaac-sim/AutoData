@@ -26,12 +26,13 @@ def _create_dataset(path: Path, *, include_actions: bool = True) -> None:
 
 
 def test_main_returns_zero_for_valid_dataset(tmp_path: Path) -> None:
-    """A structurally valid dataset should produce a successful exit status."""
+    """A structurally valid dataset should produce a successful exit status, with or without the report."""
 
     dataset_path = tmp_path / "valid.hdf5"
     _create_dataset(dataset_path)
 
     assert validate_dataset.main([str(dataset_path)]) == 0
+    assert validate_dataset.main([str(dataset_path), "--report"]) == 0
 
 
 def test_main_returns_nonzero_for_invalid_dataset_by_default(tmp_path: Path) -> None:

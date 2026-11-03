@@ -8,6 +8,7 @@ from __future__ import annotations
 import h5py
 import math
 import numpy as np
+import re
 
 from autodata_metrics.evidence import Episode, Evidence
 from autodata_metrics.registry import NotApplicable, Value, check, metric
@@ -26,6 +27,9 @@ SUBTASK_SIGNAL_PATHS = ("obs/datagen_info/subtask_term_signals/", "obs/datagen_i
 """Annotation's per-step subtask signals, stored as a ``(steps,)`` column or a ``(1, steps)`` row."""
 OBSERVED_POSE_PATHS = ("obs/datagen_info/eef_pose/", "obs/datagen_info/object_pose/")
 """Recorded poses that are observations; commanded targets are measured by ``action_rotation_error`` instead."""
+NEAR_LIMIT = 0.95
+"""Share of a datasheet limit from which an episode counts as running at the limit, which a simulator that clamps
+there never exceeds."""
 
 
 def _image_streams(episode: Episode, ev: Evidence) -> dict[str, h5py.Dataset]:
@@ -109,10 +113,17 @@ def valid_rotations(episode: Episode, ev: Evidence) -> str | None:
 
 @check("pose_action_bounds", requires=["env_args.autodata.pose_action"])
 def pose_action_bounds(episode: Episode, ev: Evidence) -> str | None:
-    """Fails an episode whose pose actions exceed the bound the embodiment clips them to."""
+    """Fails an episode whose pose actions exceed the bound the embodiment clips them to, or lie beyond its actions."""
     actions = episode["actions"]
+    outside = [
+        f"{eef} {layout['action_slice']}"
+        for eef, layout in ev.entry["pose_action"].items()
+        if layout["action_slice"][1] > actions.shape[-1]
+    ]
+    if outside:
+        return f"pose action slices beyond the {actions.shape[-1]} action columns: {', '.join(outside)}"
     bad = []
-    for eef, layout in ev.env_args["autodata"]["pose_action"].items():
+    for eef, layout in ev.entry["pose_action"].items():
         if layout.get("bound") is None:
             continue
         start, end = layout["action_slice"]
@@ -235,12 +246,156 @@ def action_rotation_error(ev: Evidence) -> Value:
     """p50 and p95 deviation of the commanded target rotations from a valid rotation, over every step and end effector."""
     errors = []
     for episode in ev.episodes:
-        for eef in episode.children("obs/datagen_info/target_eef_pose"):
+        for eef in _pose_channels(ev, episode, "obs/datagen_info/target_eef_pose"):
             targets = episode[f"obs/datagen_info/target_eef_pose/{eef}"]
-            # A channel that commands no pose records all-zero targets, which are not rotations.
-            errors.append(_rotation_errors(targets[np.abs(targets).reshape(len(targets), -1).max(axis=1) > 0]))
-    errors = np.concatenate(errors) if errors else np.empty(0)
-    if not len(errors):
-        raise NotApplicable("no end effector commands a pose")
-    p50, p95 = np.percentile(errors, [50, 95])
-    return Value({"p50": float(p50), "p95": float(p95)}, n=len(errors))
+            errors.append(_rotation_errors(targets[_commanded(targets)]))
+    return _percentiles(errors, "no end effector commands a pose")
+
+
+@metric(
+    "tracking_error",
+    area="validity",
+    signal="motion feasibility",
+    scope="dataset",
+    unit="mm",
+    sample="poses",
+    better="lower",
+    primary="p95",
+    requires=["env_args.autodata.pose_action", "obs/datagen_info/eef_pose", "obs/datagen_info/target_eef_pose"],
+    baseline=True,
+)
+def tracking_error(ev: Evidence) -> Value:
+    """p50 and p95 distance from each absolute end-effector target to the end effector one step later."""
+    absolute = [eef for eef, layout in ev.entry["pose_action"].items() if layout.get("absolute")]
+    distances = []
+    for episode in ev.episodes:
+        for eef in absolute:
+            target, observed = f"obs/datagen_info/target_eef_pose/{eef}", f"obs/datagen_info/eef_pose/{eef}"
+            if target not in episode or observed not in episode:
+                continue
+            targets, reached = episode[target][:-1], episode[observed][1:]
+            commanded = _commanded(targets)
+            distances.append(np.linalg.norm(targets[commanded, :3, 3] - reached[commanded, :3, 3], axis=1) * 1000)
+    return _percentiles(distances, "no pose action is recorded as absolute")
+
+
+@metric(
+    "action_saturation",
+    area="validity",
+    signal="motion feasibility",
+    scope="dataset",
+    unit="fraction",
+    sample="steps",
+    better="lower",
+    requires=["env_args.autodata.pose_action"],
+    baseline=True,
+)
+def action_saturation(ev: Evidence) -> Value:
+    """Share of steps at which a pose action sits at the bound the embodiment clips it to."""
+    layouts = [layout for layout in ev.entry["pose_action"].values() if "bound" in layout]
+    if not layouts:
+        raise NotApplicable("no pose action is clipped")
+    saturated = []
+    for episode in ev.episodes:
+        actions = np.abs(episode["actions"])
+        at_bound = [
+            actions[:, slice(*layout["action_slice"])].max(axis=1, initial=0.0) >= layout["bound"] * (1 - 1e-6)
+            for layout in layouts
+        ]
+        saturated.append(np.any(at_bound, axis=0))
+    saturated = np.concatenate(saturated)
+    return Value(float(saturated.mean()), n=len(saturated))
+
+
+@metric(
+    "motion_smoothness",
+    area="validity",
+    signal="motion quality",
+    scope="dataset",
+    unit="m/s³",
+    sample="poses",
+    better="lower",
+    primary="p95",
+    requires=["obs/datagen_info/eef_pose", "env_args.sim_args.dt", "env_args.sim_args.decimation"],
+    baseline=True,
+)
+def motion_smoothness(ev: Evidence) -> Value:
+    """p50 and p95 end-effector jerk, labelled with the run's largest action-noise scale."""
+    step = ev.env_args["sim_args"]["dt"] * ev.env_args["sim_args"]["decimation"]
+    jerks = [
+        np.linalg.norm(np.diff(episode[f"obs/datagen_info/eef_pose/{eef}"][:, :3, 3], n=3, axis=0), axis=1) / step**3
+        for episode in ev.episodes
+        for eef in _pose_channels(ev, episode, "obs/datagen_info/eef_pose")
+    ]
+    noise = {"action_noise": ev.entry.get("action_noise")}
+    return _percentiles(jerks, "no end effector that commands a pose records four steps", noise)
+
+
+@metric(
+    "joint_limit_ratio",
+    area="validity",
+    signal="motion feasibility",
+    scope="dataset",
+    unit="fraction of episodes",
+    sample="episodes",
+    better="lower",
+    primary="velocity",
+    requires=["env_args.autodata.joints.asset", "env_args.sim_args.dt", "env_args.sim_args.decimation"],
+    baseline=True,
+)
+def joint_limit_ratio(ev: Evidence) -> Value:
+    """Share of episodes that reach ``NEAR_LIMIT`` of a datasheet velocity or acceleration limit."""
+    joints, datasheet = ev.entry["joints"], ev.entry.get("hardware_limits", {})
+    limits = {kind: _datasheet(joints["names"], datasheet.get(kind, {})) for kind in ("velocity", "acceleration")}
+    limits = {kind: limit for kind, limit in limits.items() if np.isfinite(limit).any()}
+    if not limits:
+        raise NotApplicable("the embodiment config gives no hardware_limits for these joints")
+    path = f"states/articulation/{joints['asset']}/joint_velocity"
+    if not all(path in episode for episode in ev.episodes):
+        raise NotApplicable(f"not every episode records {path}")
+    step = ev.env_args["sim_args"]["dt"] * ev.env_args["sim_args"]["decimation"]
+    peaks = {kind: [] for kind in limits}
+    for episode in ev.episodes:
+        velocity = episode[path]
+        if velocity.shape[1:] != (len(joints["names"]),):
+            raise ValueError(
+                f"{episode.name} records joint velocities of shape {velocity.shape} for {len(joints['names'])} joints"
+            )
+        motion = {"velocity": velocity, "acceleration": np.diff(velocity, axis=0) / step}
+        for kind, limit in limits.items():
+            peaks[kind].append((np.abs(motion[kind]) / limit).max(axis=0, initial=0.0))
+    value, details = {}, {}
+    for kind, per_episode in peaks.items():
+        per_episode = np.array(per_episode)
+        value[kind] = float((per_episode.max(axis=1) >= NEAR_LIMIT).mean())
+        details[f"{kind}_peak_ratio"] = float(per_episode.max())
+        per_joint = np.where(np.isfinite(limits[kind]), per_episode.max(axis=0), -1.0)
+        details[f"{kind}_worst_joint"] = joints["names"][int(per_joint.argmax())]
+    return Value(value, n=len(ev.episodes), details=details)
+
+
+def _pose_channels(ev: Evidence, episode: Episode, group: str) -> list[str]:
+    """The end effectors under ``group`` that command a pose action, or every one when the entry does not say."""
+    commanding = ev.entry.get("pose_action")
+    return [eef for eef in episode.children(group) if commanding is None or eef in commanding]
+
+
+def _commanded(targets: np.ndarray) -> np.ndarray:
+    """Which steps of ``targets`` hold a pose: all-zero targets mark steps or channels that command none."""
+    return np.abs(targets).max(axis=tuple(range(1, targets.ndim))) > 0
+
+
+def _percentiles(samples: list[np.ndarray], empty: str, details: dict | None = None) -> Value:
+    values = np.concatenate(samples) if samples else np.empty(0)
+    if not len(values):
+        raise NotApplicable(empty)
+    p50, p95 = np.percentile(values, [50, 95])
+    return Value({"p50": float(p50), "p95": float(p95)}, n=len(values), details=details or {})
+
+
+def _datasheet(names: list[str], limits: dict[str, float]) -> np.ndarray:
+    """Each joint's limit from the first pattern its name fully matches, infinite where none does."""
+    return np.array(
+        [next((limit for pattern, limit in limits.items() if re.fullmatch(pattern, name)), np.inf) for name in names],
+        dtype=float,
+    )

@@ -197,8 +197,8 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
         Each holds a position, then a quaternion. These entries are not clipped.
         """
         pose_action = {
-            self.left.name: {"action_slice": list(self.left_pose_slice), "bound": None},
-            self.right.name: {"action_slice": list(self.right_pose_slice), "bound": None},
+            self.left.name: {"action_slice": list(self.left_pose_slice), "bound": None, "absolute": True},
+            self.right.name: {"action_slice": list(self.right_pose_slice), "bound": None, "absolute": True},
         }
         return {**super().metric_context(), "pose_action": pose_action}
 

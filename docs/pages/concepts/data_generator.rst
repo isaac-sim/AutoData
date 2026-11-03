@@ -171,11 +171,12 @@ Four layers report what happened:
 The ``run`` block is written only with ``--record_metric_inputs``. With that option, every exported
 dataset, whether from generation, annotation or retargeting, also carries an ``autodata`` entry in
 its ``env_args`` attribute. The entry holds the ``run_id`` and the number of exported episodes, the
-embodiment's pose-action layout, the robot's joint names with their simulator limits, and the
-embodiment's optional datasheet ``hardware_limits``. An annotated dataset's entry also records the
-annotation mode (automatic or manual), its episode counts, and its setup and annotation times. For a
-dataset generated with ``--result_file``, the ``run_id`` ties it to that run's attempt log and, once the
-run completes, its result file.
+embodiment's pose-action layout, the robot's asset and joint names with their simulator limits, and
+the embodiment's optional datasheet ``hardware_limits``. A generated dataset's entry also records the
+largest noise scale generation applies to actions (``action_noise``). An annotated dataset's entry also
+records the annotation mode (automatic or manual), its episode counts, and its setup and annotation
+times. For a dataset generated with ``--result_file``, the ``run_id`` ties it to that run's attempt log
+and, once the run completes, its result file.
 
 The GenerationAlgorithm Plug-In
 -------------------------------
