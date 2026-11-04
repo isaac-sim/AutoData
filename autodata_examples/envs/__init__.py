@@ -6,6 +6,13 @@
 import argparse
 from typing import Any
 
+from isaaclab_arena.assets import nucleus as arena_assets
+
+# Staging 6.1 bucket is gone, manually use 6.2
+# TODO: 11/4/26 - Remove after updating to Sim 6.2
+arena_assets.ARENA_NUCLEUS_DIR = arena_assets.ARENA_NUCLEUS_DIR.replace("/Isaac/6.1/", "/Isaac/6.2/")
+arena_assets.ISAAC_STAGING_NUCLEUS_DIR = arena_assets.ISAAC_STAGING_NUCLEUS_DIR.replace("/Isaac/6.1/", "/Isaac/6.2/")
+
 
 def register_environment_for_run(
     *,
