@@ -35,3 +35,16 @@ action_layout:
 # approach axis) while the SkillGen dataset is annotated in the panda_hand frame, so the adapter
 # shifts reports back to panda_hand to keep planned transits and recorded skill segments aligned.
 eef_offset: [0.0, 0.0, 0.1034]
+
+# Franka FCI datasheet joint limits, keyed by joint-name pattern. Read only by the dataset metrics.
+hardware_limits:
+  velocity: # [rad/s]
+    panda_joint[1-4]: 2.175
+    panda_joint[5-7]: 2.61
+  acceleration: # [rad/s^2]
+    panda_joint1: 15.0
+    panda_joint2: 7.5
+    panda_joint3: 10.0
+    panda_joint4: 12.5
+    panda_joint5: 15.0
+    panda_joint[6-7]: 20.0

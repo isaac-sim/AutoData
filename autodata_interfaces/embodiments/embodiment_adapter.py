@@ -33,10 +33,34 @@ class EmbodimentAdapter(ABC):
         env: Live env handle, bound post-construction via :meth:`bind_env`. ``None`` until bound.
         robot_asset_name: Scene key of the robot articulation this embodiment drives. Used by
             joint-state queries. Subclasses may override (e.g. expose it as a config field).
+        raw_config: The embodiment's full parsed YAML/dict config, attached once by
+            :func:`~.factory.embodiment_adapter_from_dict` (``None`` for an adapter built directly,
+            not through the factory). Lets a consumer read a section the typed adapter fields don't
+            model -- e.g. retargeting's ``hand_open``/``hand_close`` hand postures and ``eef_offset``/
+            ``eef_rotation``/``eefs.<eef>.offset`` grasp-frame alignment (see
+            ``autodata_retargeting.gripper_retargeting.hand_postures_from_adapter`` and
+            ``autodata_retargeting.eef_offset.eef_offset_from_adapter``) -- without re-opening and
+            re-parsing the same YAML file a second time. Note ``eef_offset`` on
+            :class:`~.single_arm_embodiment_adapter.SingleArmEmbodimentAdapter` is this exact
+            control-link -> observed-EEF translation read back out of ``raw_config`` by retargeting,
+            not a second, unrelated value of the same name.
     """
 
     env: Any = None
     robot_asset_name: str = "robot"
+    raw_config: dict[str, Any] | None = None
+
+    def metric_context(self) -> dict[str, Any]:
+        """Describe this embodiment for the dataset metrics; the description is saved with every dataset it records.
+
+        The base returns the optional ``hardware_limits`` section of the embodiment config: datasheet joint limits
+        keyed by joint-name pattern. Subclasses add ``pose_action``, which says for each end effector which part of
+        the action vector commands its pose (``action_slice``, a half-open ``[start, end)`` index range), the
+        value the adapter clips those entries to (``bound``, or None when they are not clipped), and whether they
+        command an absolute target pose or a change of pose (``absolute``).
+        """
+        hardware_limits = (self.raw_config or {}).get("hardware_limits")
+        return {"hardware_limits": hardware_limits} if hardware_limits else {}
 
     def get_navigation_eef_name(self) -> str | None:
         """Return the configured navigation channel without requiring a live environment."""

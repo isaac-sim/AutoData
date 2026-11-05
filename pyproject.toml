@@ -130,7 +130,14 @@ requires-dist = [
 py-modules = ["sitecustomize"]
 
 [tool.setuptools.packages.find]
-include = ["autodata_core*", "autodata_interfaces*", "autodata_utils*", "autodata_examples*"]
+include = [
+    "autodata_core*",
+    "autodata_interfaces*",
+    "autodata_metrics*",
+    "autodata_retargeting*",
+    "autodata_utils*",
+    "autodata_examples*",
+]
 namespaces = false
 
 [tool.isort]

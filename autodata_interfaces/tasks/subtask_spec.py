@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import MISSING, dataclass, field
-from typing import Any
+from typing import Any, get_origin, get_type_hints
 
 
 @dataclass
@@ -15,7 +15,29 @@ class SubtaskAlgoParams:
     subclass with the fields it needs.
     """
 
-    pass
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SubtaskAlgoParams:
+        """Build this algo-params record from its parsed YAML ``algo_params`` dict.
+
+        Default: coerce list values back to tuples where a field is tuple-typed, then construct
+        directly -- what every algo did before this hook existed. A subclass with structured fields
+        (not plain scalars/tuples -- e.g. retargeting's offset / subtask-end descriptors) overrides
+        this to parse them into their own objects first, so
+        :func:`~.task_descriptor_utils.build_subtask` (the shared task-parsing path) does not need to
+        know about any algo's nested schema.
+
+        Args:
+            data: The subtask's parsed ``algo_params`` mapping.
+
+        Returns:
+            A constructed instance of this algo-params class.
+        """
+        hints = get_type_hints(cls)
+        kwargs = {
+            name: tuple(value) if isinstance(value, list) and get_origin(hints.get(name)) is tuple else value
+            for name, value in data.items()
+        }
+        return cls(**kwargs)
 
 
 @dataclass
@@ -42,6 +64,23 @@ class SkillGenSubtaskAlgoParams(SubtaskAlgoParams):
     """
 
     subtask_start_offset_range: tuple[int, int] = (0, 0)
+
+
+@dataclass
+class SoftMimicGenSubtaskAlgoParams(SubtaskAlgoParams):
+    """SoftMimicGen-specific subtask parameters.
+
+    Args:
+        object_soft: Whether the reference object is deformable.
+        use_rotation_transform: Whether to transform EEF rotations with the local TPS Jacobian.
+        bend_coef: TPS bending regularization coefficient.
+        rot_coef: TPS affine-rotation regularization coefficient.
+    """
+
+    object_soft: bool = False
+    use_rotation_transform: bool = True
+    bend_coef: float = 0.1
+    rot_coef: float = 1e-3
 
 
 @dataclass(kw_only=True)
@@ -94,6 +133,7 @@ ALGO_PARAMS_REGISTRY: dict[str, type[SubtaskAlgoParams]] = {
     "mimicgen": MimicGenSubtaskAlgoParams,
     "dexmimicgen": DexMimicGenSubtaskAlgoParams,
     "skillgen": SkillGenSubtaskAlgoParams,
+    "softmimicgen": SoftMimicGenSubtaskAlgoParams,
 }
 """Maps the ``algo:`` discriminator in a YAML task config to the
 corresponding :class:`SubtaskAlgoParams` subclass.

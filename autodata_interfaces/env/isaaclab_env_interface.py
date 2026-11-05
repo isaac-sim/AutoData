@@ -18,12 +18,11 @@ import asyncio
 import contextlib
 import os
 import torch
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.envs.mdp.actions.pink_task_space_actions import PinkInverseKinematicsAction
-from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
 from isaaclab.managers import DatasetExportMode, EventTermCfg, SceneEntityCfg
 from isaaclab.managers.recorder_manager import RecorderManagerBaseCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
@@ -32,9 +31,47 @@ from isaaclab.utils.string import string_to_callable
 from isaaclab_physx.sim.schemas import PhysxRigidBodyPropertiesCfg
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
+from autodata_interfaces.env.datagen_info_recorder import add_step_success_recorder
 from autodata_interfaces.env.env_profile import EnvironmentProfile, convert_event_params
 from autodata_interfaces.env.pink_ik_action import PinkInverseKinematicsActionSharedUrdf
+from autodata_interfaces.env.recorders import make_action_state_recorder_manager_cfg
+from autodata_interfaces.env.reset_request import EnvResetRequest
+from autodata_interfaces.env.scene_state import get_scene_state
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
+from autodata_utils.dataset_metadata import AUTODATA_ENTRY_VERSION
+from autodata_utils.tensor_utils import as_torch
+
+if TYPE_CHECKING:
+    from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+
+
+def collect_autodata_entry(env: Any, embodiment_adapter: EmbodimentAdapter, run_id: str) -> dict[str, Any]:
+    """The ``autodata`` entry of the datasets this env exports, read while the env is alive.
+
+    It holds the run id, the embodiment's metric context, and the robot's asset name and joint names with env 0's
+    simulator position limits [rad or m] and velocity limits [rad/s or m/s]. Unbounded limits are stored as None.
+    :func:`~autodata_utils.dataset_metadata.merge_autodata_entry` writes it once the env has closed the file.
+
+    Args:
+        env: Live environment.
+        embodiment_adapter: Adapter of the embodiment the env drives.
+        run_id: Identifier shared by everything this run writes.
+    """
+    entry: dict[str, Any] = {"version": AUTODATA_ENTRY_VERSION, "run_id": run_id, **embodiment_adapter.metric_context()}
+    robot = env.scene.articulations.get(embodiment_adapter.robot_asset_name)
+    if robot is not None:
+        entry["joints"] = {
+            "asset": embodiment_adapter.robot_asset_name,
+            "names": list(robot.joint_names),
+            "position_limits": _finite_or_none(as_torch(robot.data.joint_pos_limits)[0].cpu()),
+            "velocity_limits": _finite_or_none(as_torch(robot.data.joint_vel_limits)[0].cpu()),
+        }
+    return entry
+
+
+def _finite_or_none(values: torch.Tensor) -> list:
+    """Nested lists of ``values`` with non-finite entries as None, so the JSON stays standard."""
+    return [_finite_or_none(row) if row.dim() else (row.item() if torch.isfinite(row) else None) for row in values]
 
 
 def setup_output_paths(output_file_path: str) -> tuple[str, str]:
@@ -166,6 +203,7 @@ def setup_env_config(
     recorder_cfg: RecorderManagerBaseCfg | None = None,
     env_profile: EnvironmentProfile | None = None,
     enable_cameras: bool = False,
+    record_step_success: bool = False,
 ) -> tuple[Any, Any]:
     """Configure the environment for data generation.
 
@@ -186,6 +224,8 @@ def setup_env_config(
             reset-event changes) before the generation-specific adjustments below.
         enable_cameras: Record the task's image observations. Defaults to low-dimensional
             observations, excluding the cameras used for teleoperation previews.
+        record_step_success: Also record whether the task's success term holds after each step, as
+            ``step_success``, for the dataset metrics.
 
     Returns:
         A tuple of the environment configuration and the success termination condition.
@@ -228,9 +268,11 @@ def setup_env_config(
 
     # Setup recorders
     if recorder_cfg is None:
-        env_cfg.recorders = ActionStateRecorderManagerCfg()
+        env_cfg.recorders = make_action_state_recorder_manager_cfg(record_images=enable_cameras)
     else:
         env_cfg.recorders = recorder_cfg
+    if record_step_success:
+        add_step_success_recorder(env_cfg.recorders, success_term)
     env_cfg.recorders.dataset_export_dir_path = output_dir
     env_cfg.recorders.dataset_filename = output_file_name
 
@@ -262,9 +304,12 @@ def env_loop(
     config) rather than from ``env.cfg.datagen_config``: ``num_trials`` interpreted as successes
     when ``guarantee_success`` is set, otherwise as total attempts.
 
+    Reset settling uses ``env.cfg.idle_action`` when configured, or zeros otherwise. A configured
+    idle action must be a finite vector matching one environment's action dimensions.
+
     Args:
         env: The environment to run the main step loop on.
-        env_reset_queue: The asyncio queue carrying per-env reset requests.
+        env_reset_queue: The asyncio queue carrying :class:`EnvResetRequest` instances.
         env_action_queue: The asyncio queue carrying ``(env_id, action)`` pairs to execute.
         asyncio_event_loop: The main asyncio event loop.
         generation_policy_params: The task descriptor's generation config (source of truth).
@@ -277,13 +322,26 @@ def env_loop(
     """
     num_trials = generation_policy_params.num_trials
     guarantee_success = generation_policy_params.guarantee_success
+    reset_settling_steps = generation_policy_params.reset_settling_steps
+    assert reset_settling_steps >= 0, "reset_settling_steps must be non-negative"
+    idle_actions = torch.zeros(env.action_space.shape, dtype=torch.float32, device=env.device)
+    configured_idle_action = getattr(env.cfg, "idle_action", None)
+    if reset_settling_steps > 0 and configured_idle_action is not None:
+        idle_action = torch.as_tensor(configured_idle_action, dtype=idle_actions.dtype, device=env.device)
+        assert (
+            idle_action.shape == env.action_space.shape[1:]
+        ), f"env.cfg.idle_action must have shape {env.action_space.shape[1:]}, got {tuple(idle_action.shape)}."
+        assert torch.isfinite(idle_action).all(), "env.cfg.idle_action must contain only finite values."
+        idle_actions[:] = idle_action
     env_id_tensor = torch.tensor([0], dtype=torch.int64, device=env.device)
+    settling_requests: dict[int, EnvResetRequest] = {}
+    settling_steps_remaining: dict[int, int] = {}
     prev_num_attempts = 0
     # simulate environment -- run everything in inference mode
     with contextlib.suppress(KeyboardInterrupt) and torch.inference_mode():
         while True:
             # check if any environment needs to be reset while waiting for actions
-            while env_action_queue.qsize() != env.num_envs:
+            while env_action_queue.qsize() + len(settling_requests) != env.num_envs:
                 asyncio_event_loop.run_until_complete(asyncio.sleep(0))
                 if data_gen_tasks is not None and data_gen_tasks.done():
                     exc = data_gen_tasks.exception()
@@ -291,24 +349,84 @@ def env_loop(
                         raise exc
                     return False
                 while not env_reset_queue.empty():
-                    env_id_tensor[0] = env_reset_queue.get_nowait()
+                    request = env_reset_queue.get_nowait()
+                    assert isinstance(
+                        request, EnvResetRequest
+                    ), f"env_reset_queue entries must be EnvResetRequest instances, got {type(request).__name__}"
+                    assert (
+                        0 <= request.env_id < env.num_envs
+                    ), f"Reset environment index {request.env_id} is outside [0, {env.num_envs})."
+                    assert (
+                        request.env_id not in settling_requests
+                    ), f"Environment {request.env_id} already has a reset settling request in progress."
+                    env_id_tensor[0] = request.env_id
                     env.reset(env_ids=env_id_tensor)
-                    env_reset_queue.task_done()
 
-            actions = torch.zeros(env.action_space.shape)
+                    if reset_settling_steps > 0:
+                        settling_requests[request.env_id] = request
+                        settling_steps_remaining[request.env_id] = reset_settling_steps
+                    else:
+                        if not request.completion.done():
+                            request.completion.set_result(None)
+                        env_reset_queue.task_done()
 
-            # batch-fetch all per-env actions in one gather instead of sequential blocking calls
-            get_tasks = [env_action_queue.get() for _ in range(env.num_envs)]
-            results = asyncio_event_loop.run_until_complete(asyncio.gather(*get_tasks))
+                expected_action_count = env.num_envs - len(settling_requests)
+                assert env_action_queue.qsize() <= expected_action_count, (
+                    f"Received {env_action_queue.qsize()} queued actions for only {expected_action_count} "
+                    "non-settling environments."
+                )
+
+            actions = idle_actions.clone()
+
+            # Settling environments use the idle action. Batch-fetch one real action for every
+            # other environment so their generation trajectories continue without interruption.
+            action_count = env.num_envs - len(settling_requests)
+            get_tasks = [env_action_queue.get() for _ in range(action_count)]
+            results = asyncio_event_loop.run_until_complete(asyncio.gather(*get_tasks)) if get_tasks else []
+            action_env_ids: set[int] = set()
             for env_id, action in results:
+                assert (
+                    env_id not in settling_requests
+                ), f"Environment {env_id} supplied an action while its reset was still settling."
+                assert env_id not in action_env_ids, f"Received multiple actions for environment {env_id}."
+                action_env_ids.add(env_id)
                 actions[env_id] = action
+            expected_action_env_ids = set(range(env.num_envs)) - settling_requests.keys()
+            assert (
+                action_env_ids == expected_action_env_ids
+            ), f"Expected actions for environments {sorted(expected_action_env_ids)}, got {sorted(action_env_ids)}."
 
             # perform action on environment
             env.step(actions)
 
             # mark done so the data generators can continue with the step results
-            for _ in range(env.num_envs):
+            for _ in range(action_count):
                 env_action_queue.task_done()
+
+            settled_env_ids: list[int] = []
+            for env_id in settling_steps_remaining:
+                settling_steps_remaining[env_id] -= 1
+                if settling_steps_remaining[env_id] == 0:
+                    settled_env_ids.append(env_id)
+
+            if settled_env_ids:
+                settled_env_ids_tensor = torch.tensor(settled_env_ids, dtype=torch.int64, device=env.device)
+                # Discard temporary settle frames, then capture the settled state as the generated
+                # episode's initial state before releasing the corresponding generators.
+                env.recorder_manager.reset(env_ids=settled_env_ids_tensor)
+                # Settling is not a reset: Arena correctly ignores post-reset callbacks here.
+                # Snapshot the actual settled state through the public recorder API instead.
+                env.recorder_manager.add_to_episodes(
+                    "initial_state",
+                    get_scene_state(env.scene, is_relative=True, env_ids=settled_env_ids_tensor),
+                    env_ids=settled_env_ids_tensor,
+                )
+                for env_id in settled_env_ids:
+                    request = settling_requests.pop(env_id)
+                    settling_steps_remaining.pop(env_id)
+                    if not request.completion.done():
+                        request.completion.set_result(None)
+                    env_reset_queue.task_done()
 
             if prev_num_attempts != stats["num_attempts"]:
                 prev_num_attempts = stats["num_attempts"]

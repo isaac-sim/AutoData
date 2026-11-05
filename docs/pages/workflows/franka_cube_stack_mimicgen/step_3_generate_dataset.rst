@@ -71,6 +71,9 @@ For dataset-scale generation, run headless (``--viz none``) with parallel enviro
 
 Progress is printed after every attempt (successful demonstrations, attempts, and the running success rate).
 
+To report the run's :doc:`metrics <../../references/metrics>` in the next step, add
+``--record_metric_inputs`` and ``--result_file ./datasets/generated_dataset_mimicgen_franka.json``.
+
 .. note::
 
   **Upgrade validation:** the 100-environment GPU benchmark achieved 38.0% success
