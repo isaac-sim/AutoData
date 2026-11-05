@@ -91,12 +91,7 @@ def test_lab_record_demos_task_startup(tmp_path, task_name, camera_args):
             "autodata_tests.e2e.test_recording.configure_recording_smoke",
             *camera_args,
         ],
-        # The recorder imports its callback from this test module, which is not an installed package.
-        env={
-            **os.environ,
-            "HEADLESS": "1",
-            "PYTHONPATH": os.pathsep.join(filter(None, [TestPaths.repo_root, os.environ.get("PYTHONPATH")])),
-        },
+        env={**os.environ, "HEADLESS": "1"},
     )
     with h5py.File(output_file, "r") as dataset:
         assert json.loads(dataset["data"].attrs["env_args"])["env_name"] == task_name
