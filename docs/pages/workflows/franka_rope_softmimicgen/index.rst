@@ -9,9 +9,13 @@ dataset for a Franka robot manipulating a deformable rope. It covers recording s
 demonstrations by teleoperation, annotating their subtask boundaries, generating a dataset,
 and validating the result.
 
-The same workflow supports **Newton** and **PhysX**. Use the tabs throughout the tutorial to
-select a physics backend. Keep that backend consistent for recording, annotation, generation,
-and replay. The commands use separate dataset filenames for each backend.
+The workflow supports **Newton** and **PhysX**. Use the tabs throughout the tutorial to
+select a physics backend. The commands use separate dataset filenames for each backend.
+
+.. important::
+
+   Keep the physics backend consistent for recording, annotation, generation, and replay.
+   Use the source dataset that matches your selected backend.
 
 .. figure:: ../../../images/franka_rope_softmimicgen.png
    :width: 100%

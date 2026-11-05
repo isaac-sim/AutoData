@@ -1,9 +1,9 @@
 Generation Algorithms
 =====================
 
-AutoData ships four generation algorithms. The task descriptor's ``algo`` field selects the
-algorithm and its per-subtask ``algo_params`` schema. ``--alg`` is optional; when supplied,
-it must match the descriptor's ``algo``. All four plug into the
+The task descriptor's ``algo`` field selects the generation algorithm and its per-subtask
+``algo_params`` schema. ``--alg`` is optional; when supplied, it must match the descriptor's
+``algo``. The algorithms plug into the
 :doc:`data generator <data_generator>` and share the same skeleton — split
 source demonstrations into subtask segments, select a segment per subtask, transform it to the
 current scene, execute, and keep successful demonstrations — and differ in how segments are bridged and how
