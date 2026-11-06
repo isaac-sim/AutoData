@@ -47,8 +47,8 @@ the amount of manual collection needed to produce datasets for policy training.
 
 - **Demonstration amplification** — Transform and recombine a small number of annotated demonstrations into larger,
   more diverse datasets.
-- **Three generation algorithms** — Use MimicGen for single-arm tasks, DexMimicGen for coordinated multi-arm tasks,
-  or SkillGen for collision-aware, motion-planned transitions.
+- **Generation algorithms** — Use MimicGen for single-arm tasks, DexMimicGen for coordinated multi-arm tasks,
+  SkillGen for collision-aware, motion-planned transitions, or SoftMimicGen for deformable-object manipulation.
 - **Parallel simulation** — Generate demonstrations across multiple Isaac Lab environments at once.
 - **Robot and task configuration** — Describe embodiments, tasks, subtasks, and generation policies in
   reusable YAML files.

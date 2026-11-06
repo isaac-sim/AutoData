@@ -42,7 +42,6 @@ curobo = [
 required-version = ">=0.12.21"
 default-groups = ["sim", "dev"]
 # uv reads resolver settings only from the root project, so these mirror Arena's [tool.uv].
-# autodata_tests/utils/test_uv_lock.py checks that they and the locked versions still match.
 environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 prerelease = "if-necessary"  # Equivalent to Arena's if-necessary-or-explicit, which uv deprecates.
 index-strategy = "first-index"
