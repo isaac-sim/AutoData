@@ -4,7 +4,8 @@ Testing and CI
 Test Suite
 ----------
 
-The test suite lives in ``autodata_tests/`` and runs inside the dev container. It is
+The test suite lives in ``autodata_tests/`` and runs inside the dev container, or in the native uv
+environment with ``uv run --locked pytest``. It is
 organized in tiers of increasing cost:
 
 .. list-table::
@@ -46,8 +47,8 @@ Common invocations:
 
 .. note::
 
-   The SkillGen end-to-end tests require the cuRobo image
-   (``./docker/run_docker.sh -c``).
+   The SkillGen end-to-end tests require cuRobo: the cuRobo image (``./docker/run_docker.sh -c``)
+   or the uv ``curobo`` group described in :doc:`../quickstart/installation`.
 
 Debugging Isaac Sim Runs
 ------------------------
@@ -81,7 +82,8 @@ Linting
 -------
 
 Pre-commit hooks enforce the style guide (black, flake8, isort, pyupgrade, codespell, and
-RST checks). Run them inside the development container before committing:
+RST checks). Run them before committing, inside the development container or with
+``uv run --locked pre-commit run --all-files`` in the uv environment:
 
 .. code-block:: bash
 

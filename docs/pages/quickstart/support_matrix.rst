@@ -34,11 +34,14 @@ Isaac Lab or Isaac Lab-Arena revisions.
      - Minimum: 100 GB SSD. Recommended: 500 GB SSD
    * - Docker installation
      - Docker Engine with the NVIDIA Container Toolkit; recommended AutoData installation
+   * - uv installation
+     - Optional: Linux x86_64, uv >= 0.12.21, CMake, and a C++ compiler; ``uv sync --locked`` installs
+       the repository's ``uv.lock``. See :doc:`installation`.
    * - Conda installation
      - Optional: Python 3.12, conda, uv >= 0.12.21, CMake, and a C++ compiler;
        ``conda_installer.sh`` installs Arena's locked environment. See :doc:`installation`.
    * - Isaac Sim
-     - ``nvcr.io/nvidia/isaac-sim:6.1.0`` (Docker) or ``isaacsim==6.1.0.0`` (conda/pip)
+     - ``nvcr.io/nvidia/isaac-sim:6.1.0`` (Docker) or ``isaacsim==6.1.0.0`` (uv, conda, or pip)
    * - Isaac Lab
      - 3.0.0 at commit ``28a386f063e41c04c07f50e63eefb83fd8408fbe``
    * - Isaac Lab-Arena
