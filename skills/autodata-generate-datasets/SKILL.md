@@ -82,7 +82,7 @@ Start from the shipped examples in `autodata_examples/` (`tasks/`, `embodiments/
 
 ### Step 3 — Generate
 
-Use the bundled helper for generation; it invokes `generate_dataset.py` with the container's interpreter, or the active environment's `python` under `uv run`. Required helper flags are `--alg`, `--task`, `--embodiment`, and `--input`.
+Use the bundled helper for generation; it invokes `generate_dataset.py` with the container's interpreter, the active environment's `python`, or the repo's `.venv`. Required helper flags are `--alg`, `--task`, `--embodiment`, and `--input`.
 Use `--env-name`, `--output`, `--trials`, and `--num-envs` for a reproducible run. Full direct-CLI
 flag reference is in `references/cli-reference.md`.
 
@@ -104,8 +104,8 @@ skills/autodata-generate-datasets/scripts/run_generation.sh \
 `--num_envs` controls how many Isaac Lab environments run in parallel; increase it (within GPU
 memory) to speed up generation. For SkillGen, make sure cuRobo is available (the `-c` container or the uv `curobo` group).
 
-The bundled `skills/autodata-generate-datasets/scripts/run_generation.sh` helper resolves the Isaac Sim interpreter and validates
-the completed output automatically (see its `--help`).
+The bundled `skills/autodata-generate-datasets/scripts/run_generation.sh` helper validates the completed output
+automatically (see its `--help`).
 
 ### Step 4 — Validate
 

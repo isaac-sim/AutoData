@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Replay a generated Franka dataset in Isaac Sim.
-# Run this script from the repo root, inside the AutoData container or with `uv run --locked`.
+# Run this script from the repo root, inside the AutoData container or with the repo's uv environment.
 
 set -euo pipefail
 
@@ -22,8 +22,10 @@ if [[ -x /isaac-sim/python.sh ]]; then
   python_cmd=(/isaac-sim/python.sh)
 elif python -c 'import importlib.util, sys; sys.exit(importlib.util.find_spec("isaaclab_arena") is None)' 2>/dev/null; then
   python_cmd=(python)
+elif [[ -x .venv/bin/python ]]; then
+  python_cmd=(.venv/bin/python)
 else
-  echo "ERROR: Isaac Lab-Arena was not found. Start ./docker/run_docker.sh, or run this script with uv run --locked." >&2
+  echo "ERROR: Isaac Lab-Arena was not found. Start ./docker/run_docker.sh, or run uv sync --locked." >&2
   exit 1
 fi
 
