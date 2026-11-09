@@ -14,12 +14,13 @@ without it, most metrics report that their inputs are missing.
        --gate datasets/gate.yaml \
        --report_file datasets/generated_report.json
 
-The command prints a summary; ``--report_file`` writes the full report, with every detail, as JSON.
+The command prints a summary; ``--report_file`` writes the full report as JSON, including inputs, checks,
+warnings and metric results.
 
 .. code-block:: text
 
    AutoData metrics · generated.hdf5 · run cc273b3f · source dataset_franka_annotated.hdf5
-   20/20 episodes valid · 11 computed · 5 not computed · gate failed on 1 of 4
+   20/20 episodes valid · 11 computed · 5 not computed · gate failed on 1 of 2
 
                                         Value   Source  Based on
    VALIDITY
@@ -30,8 +31,8 @@ The command prints a summary; ``--report_file`` writes the full report, with eve
      joint_limit_ratio           velocity 40%      10%  20 episodes
      motion_smoothness           p95 142 m/s³  40 m/s³  4,743 poses
    DIVERSITY
-   ✓ start_layout_spread               217 mm   222 mm  20 episodes
-   ✓ workspace_spread                 46.9 mm  44.7 mm  20 episodes
+     start_layout_spread               217 mm   222 mm  20 episodes
+     workspace_spread                 46.9 mm  44.7 mm  20 episodes
    VIABILITY
      demos_per_gpu_hour       863 demos/GPU-h           20 demos
    ✗ generation_success_rate              40%           50 attempts · 95% CI 27.6–53.8%
@@ -71,12 +72,13 @@ it is created: a malformed one makes that metric an error, and the other metrics
 Gating
 ------
 
-``--gate`` reads metric bounds from YAML and makes the command fail when one is violated:
+``--gate`` reads metric bounds from YAML and makes the command fail when one is violated.
+The example report uses these bounds in ``datasets/gate.yaml``:
 
 .. code-block:: yaml
 
-   generation_success_rate: {min: 0.3, version: 1}
-   planning_time: {max: 5.0, key: p95}
+   correctness_pass_rate: {min: 1.0, version: 1}
+   generation_success_rate: {min: 0.5, version: 1}
 
 A gated metric also violates the gate if it is not applicable, fails, or reports a different
 ``version``. A gate entry may set ``min``, ``max``, ``key`` and ``version``; any other field, or a bound
@@ -99,8 +101,9 @@ Built-in metrics
 Diversity metrics
 -----------------
 
-The diversity metrics describe how different the demonstrations in a dataset are from one another. Each
-averages a distance over pairs of episodes, so it needs at least two:
+The diversity metrics are supporting dispersion diagnostics. They describe variation within the recorded
+positions, not coverage of a target distribution, object-relative behavioral novelty or policy learning value.
+Each averages a distance over pairs of episodes, so it needs at least two:
 
 - ``start_layout_spread`` [mm]: how far apart two episodes' starting scenes are. Each object's horizontal
   start distance is combined with the others' as a root-sum-square, so an object that never moves adds nothing
@@ -118,14 +121,26 @@ grow with the number of episodes. The spreads read episodes in a ranking by a di
 and how many earlier episodes repeat them, at most the first 1,000, so the order of episodes in the file does
 not matter unless two episodes repeat each other's actions exactly.
 
+Interpreting spread
+~~~~~~~~~~~~~~~~~~~
+
+A larger spread is not necessarily better. Two distant groups of demonstrations can have a large spread
+while leaving a gap between them. Moving objects can widen hand workspaces without adding new
+object-relative behaviors. Use the values as context or scoped regression diagnostics, not as data-quality
+acceptance scores. Coverage requires a declared target distribution and task-relevant tolerances; these
+metrics do not use a target or identify uncovered conditions.
+
 Comparing datasets
 ~~~~~~~~~~~~~~~~~~
 
 Two spreads compare only on the same task and scene objects, and two workspaces only with the same hands
-recorded in the same frames; each metric's details list its objects or hands. On the Franka stack's test
-datasets and runs, moving a hand's frame between its MimicGen and SkillGen frames, 10.34 cm along the gripper,
-moved the workspace by up to 3.3%, and the same distance across the gripper by up to 42.2%. Workspace values
-assume each path starts at its episode's first recorded step, the reset pose. On the test datasets and
+recorded in the same frames. Each metric's details list the reported dataset's objects or hands.
+The Source column contains only the baseline value, without its breakdown or reason for being unavailable.
+
+On the Franka stack's test datasets and runs, moving a hand's frame between its MimicGen and SkillGen
+frames, 10.34 cm along the gripper, moved the workspace by up to 3.3%. Moving it the same distance across
+the gripper changed the workspace by up to 42.2%. Workspace values assume each path starts at its
+episode's first recorded step, the reset pose. On the test datasets and
 generated runs, leaving that step out moved them by up to 7.1%, and halving the recording rate moved them by
 under 1%, except for the GR1 pick-and-place seeds and run and the fridge seeds, which it made not applicable.
 A hand that moves far between recorded steps blurs its path, so the workspace is not applicable when any hand
