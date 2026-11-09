@@ -1,7 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Diversity metrics: how different the demonstrations in a dataset are from one another.
+"""Supporting dispersion diagnostics: how different recorded demonstrations are from one another.
 
 Each spread averages a distance over pairs of episodes:
 
@@ -9,7 +9,8 @@ Each spread averages a distance over pairs of episodes:
 - ``workspace_spread``: how far one episode's hands pass from where the other's went [mm].
 
 An average over pairs estimates how different two demonstrations from the same producer are, so it does not grow with
-the number of episodes. The metrics reference page defines each metric and when two values compare.
+the number of episodes. These spreads do not measure target coverage, behavioral novelty or policy learning value.
+A larger spread is not necessarily better. The metrics reference page defines when two values compare.
 """
 
 from __future__ import annotations
