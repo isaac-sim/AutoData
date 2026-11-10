@@ -59,14 +59,30 @@ suites: ``e2e``, ``interfaces``, ``core``, ``utils``, ``retargeting``, and ``met
 check rebuilds the cuRobo image from the checkout while retaining Docker's layer cache.
 The ``Run tests (GPU, repo Docker)`` status combines Docker, native, lockfile, and lint results.
 
-Changes to installation, CI, source, or tests also trigger a fresh native uv installation with
-cuRobo and the same correctness suites. This includes real simulator subprocesses. The native
-status passes without a GPU run when no relevant files changed. Main-branch pushes always run
-native verification. Nightly Docker testing also runs the larger success-rate benchmarks.
+Changes to source, tests, dependencies, submodules, scripts (including skill scripts), Docker,
+workflows, or Python/test configuration also trigger a fresh native uv installation with cuRobo
+and the same correctness suites, including real simulator subprocesses. The filter checks the
+full pull request. Docs-only changes skip native GPU testing; trusted Docker testing still runs.
+Main-branch pushes and manual runs always require native verification. Nightly Docker testing
+also runs the larger success-rate benchmarks.
 
-Self-hosted GPU jobs run only for branches in the repository. Installation-changing fork pull
-requests must be tested through a maintainer-controlled branch in the repository before the
-native status can pass.
+Self-hosted GPU jobs run only for branches in the repository. Fork pull requests affecting the
+filtered paths cannot pass the required native check. These changes must proceed through a
+maintainer-controlled branch and pull request in the repository. A separate successful run
+does not unblock the original fork pull request.
+
+Native setup keeps the current dependency cache and at most one other cache, selected by its
+most recent successful setup. Keys include the lockfile, uv/Python/CUDA versions, and GPU
+architecture. A shared filesystem lock covers pruning, installation, and successful-use
+markers, including cache hits. Simulator tests run after that lock is released. A failed or
+cancelled setup preserves the last successful fallback and leaves its partial cache unmarked
+for the next setup to retry or evict. Installed packages are copied so cache eviction cannot
+remove files from an environment that is still running tests.
+
+The managed root is ``autodata-native-uv-cache`` beside the repository workspace. Only valid
+key directories beneath its ``keys/`` directory are pruned. The separate
+``autodata-uv-cache`` root is unmanaged and requires administrator cleanup after all jobs
+using it have finished. No global uv or Docker caches are pruned.
 
 To run the correctness suites in an installed native environment with cuRobo:
 

@@ -27,6 +27,7 @@ jobs:
       # This path is in the fresh container, outside the persistent checkout.
       UV_PROJECT_ENVIRONMENT: /opt/autodata-venv
       UV_PYTHON_INSTALL_DIR: /opt/autodata-python
+      NATIVE_CACHE_ROOT: ${{ github.workspace }}/../autodata-native-uv-cache
       NATIVE_TEMP_SUBDIR: autodata-native-${{ github.run_id }}-${{ github.run_attempt }}
       UV_HTTP_TIMEOUT: "300"
       CUDA_HOME: /usr/local/cuda-12.8
@@ -41,7 +42,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            git git-lfs ca-certificates curl cmake build-essential ffmpeg \
+            git git-lfs ca-certificates curl cmake build-essential ffmpeg util-linux \
             libegl1 libgl1 libglu1-mesa libglib2.0-0t64 libglx0 libxi6 libxrandr2 libxt6 libsm6 libvulkan1
 
       - name: Checkout (recursive submodules and LFS)
@@ -67,11 +68,11 @@ jobs:
           echo "TORCH_CUDA_ARCH_LIST=${arch}+PTX" >> "${GITHUB_ENV}"
           lock_hash=$(sha256sum uv.lock | cut -d ' ' -f1)
           cache_key="uv0.12.21-python3.12-cuda12.8.1-${arch//;/_}-${lock_hash}"
-          echo "UV_CACHE_DIR=${GITHUB_WORKSPACE}/../autodata-uv-cache/${cache_key}" >> "${GITHUB_ENV}"
+          echo "NATIVE_CACHE_KEY=${cache_key}" >> "${GITHUB_ENV}"
           echo "cuRobo build cache: ${cache_key}"
 
       - name: Install the locked environment
-        run: uv sync --locked --group curobo
+        run: ./scripts/ci/sync_native.sh
 
       - name: Verify CUDA and cuRobo
         run: |

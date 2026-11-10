@@ -72,7 +72,7 @@ jobs:
       - name: Check the lock
         run: |
           uv lock --locked
-          uv run --locked --only-group dev pytest autodata_tests/utils/test_uv_lock.py
+          uv run --locked --only-group dev pytest autodata_tests/utils/test_uv_lock.py autodata_tests/utils/test_native_ci.py
 
   native_changes:
     name: Detect native installation changes
@@ -126,13 +126,18 @@ jobs:
           CHANGES_RESULT: ${{ needs.native_changes.result }}
           NATIVE_REQUIRED: ${{ needs.native_changes.outputs.native }}
           NATIVE_RESULT: ${{ needs.native_tests.result }}
+          TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           test "${CHANGES_RESULT}" = success
           case "${NATIVE_REQUIRED}" in
             true)
               if [ "${NATIVE_RESULT}" != success ]; then
                 echo "Native installation tests must succeed; result: ${NATIVE_RESULT}."
-                echo "Installation changes from forks must be tested in a maintainer-controlled repository branch."
+                if [ "${TRUSTED}" = false ] && [ "${NATIVE_RESULT}" = skipped ]; then
+                  echo "Source/test, dependency/submodule, script, Docker, workflow, or Python/test configuration changes require native GPU testing."
+                  echo "Fork changes must proceed through a maintainer-controlled branch and PR in this repository."
+                  echo "A separate successful run does not unblock the original fork PR."
+                fi
                 exit 1
               fi
               ;;
