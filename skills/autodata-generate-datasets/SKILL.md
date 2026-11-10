@@ -29,8 +29,9 @@ kernels, generic host setup (NVIDIA Container Toolkit install), or non-Isaac dat
 ## Prerequisites (state these before starting)
 
 AutoData runs on a Linux host with an NVIDIA GPU, inside its Docker dev container or in the repo's uv
-environment. In the container, the repo is mounted at `/workspaces/autodata`; use `/isaac-sim/python.sh` for Python
-commands rather than host aliases. In the uv environment (Linux x86_64 only), use `uv run --no-sync python` from the repo root.
+environment. Both install the repository's `uv.lock`. In the container, the repo is mounted at
+`/workspaces/autodata`; `python` uses the locked environment at `/opt/autodata/.venv`.
+In the native uv environment (Linux x86_64 only), use `uv run --no-sync python` from the repo root.
 If neither is available, tell the user to start the container or create the environment first:
 
 ```bash
@@ -82,7 +83,10 @@ Start from the shipped examples in `autodata_examples/` (`tasks/`, `embodiments/
 
 ### Step 3 — Generate
 
-Use the bundled helper for generation; it invokes `generate_dataset.py` with the container's interpreter, the active environment's `python`, or the repo's `.venv`. Required helper flags are `--alg`, `--task`, `--embodiment`, and `--input`.
+Use the bundled helper for generation. It respects `VIRTUAL_ENV` or `CONDA_PREFIX`, including the container's
+default `VIRTUAL_ENV=/opt/autodata/.venv`. On the host without an active environment, it prefers the repo's
+`.venv` over ambient Python. The replay helper uses the same selection.
+Required generation flags are `--alg`, `--task`, `--embodiment`, and `--input`.
 Use `--env-name`, `--output`, `--trials`, and `--num-envs` for a reproducible run. Full direct-CLI
 flag reference is in `references/cli-reference.md`.
 
@@ -109,11 +113,11 @@ automatically (see its `--help`).
 
 ### Step 4 — Validate
 
-Confirm the generated HDF5 is well-formed before using it for training (in the uv environment, replace
-`/isaac-sim/python.sh` with `uv run --no-sync python`):
+Confirm the generated HDF5 is well-formed before using it for training. In the native uv environment,
+prefix `python` with `uv run --no-sync`:
 
 ```bash
-HDF5_USE_FILE_LOCKING=FALSE /isaac-sim/python.sh scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5
+HDF5_USE_FILE_LOCKING=FALSE python scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5
 ```
 
 The script exits non-zero if any file is invalid, so an agent can gate on the result.

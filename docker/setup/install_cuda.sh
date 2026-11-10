@@ -4,8 +4,6 @@
 
 set -euo pipefail
 
-CUROBO_GIT_COMMIT="ebb71702f3f70e767f40fd8e050674af0288abe8"
-
 echo ">>> Installing CUDA 12.8 toolkit (needed to compile cuRobo's CUDA kernels)"
 
 # Map the base OS to NVIDIA's CUDA apt repo name.
@@ -45,13 +43,8 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 
 # Make the CUDA runtime libs discoverable system-wide (via the linker cache) instead of relying on
-# LD_LIBRARY_PATH. Covers both the build below and cuRobo at runtime.
+# LD_LIBRARY_PATH. Covers both cuRobo compilation and execution.
 echo "${CUDA_HOME:-/usr/local/cuda-12.8}/lib64" > /etc/ld.so.conf.d/cuda-12-8.conf
 ldconfig
 
-echo ">>> Building cuRobo @ ${CUROBO_GIT_COMMIT} for TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}"
-# --no-build-isolation so the build uses the image's already-installed torch.
-/isaac-sim/python.sh -m pip install --no-build-isolation \
-    "nvidia-curobo @ git+https://github.com/NVlabs/curobo.git@${CUROBO_GIT_COMMIT}"
-
-echo ">>> cuRobo install complete"
+echo ">>> CUDA toolkit install complete"

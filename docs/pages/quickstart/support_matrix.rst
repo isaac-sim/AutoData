@@ -33,7 +33,8 @@ Isaac Lab or Isaac Lab-Arena revisions.
    * - Disk
      - Minimum: 100 GB SSD. Recommended: 500 GB SSD
    * - Docker installation
-     - Docker Engine with the NVIDIA Container Toolkit; recommended AutoData installation
+     - Docker Engine with the NVIDIA Container Toolkit; recommended AutoData installation.
+       Uses the repository's ``uv.lock`` with the ``sim`` and ``dev`` groups.
    * - uv installation
      - Optional: Linux x86_64, uv >= 0.12.21, CMake, and a C++ compiler; ``uv sync --locked`` installs
        the repository's ``uv.lock``. See :doc:`installation`.
@@ -41,16 +42,16 @@ Isaac Lab or Isaac Lab-Arena revisions.
      - Optional: Python 3.12, conda, uv >= 0.12.21, CMake, and a C++ compiler;
        ``conda_installer.sh`` installs Arena's locked environment. See :doc:`installation`.
    * - Isaac Sim
-     - ``nvcr.io/nvidia/isaac-sim:6.1.0`` (Docker) or ``isaacsim==6.1.0.0`` (uv, conda, or pip)
+     - ``isaacsim==6.1.0.0``; Docker uses ``nvcr.io/nvidia/isaac-sim:6.1.0`` as its base image.
    * - Isaac Lab
-     - 3.0.0 at commit ``28a386f063e41c04c07f50e63eefb83fd8408fbe``
+     - 3.0.0 at commit ``91a0906f93802eb859192dcb0bca879f891e92d6``
    * - Isaac Lab-Arena
-     - 0.3.1 at commit ``481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7``
+     - 0.3.0 at commit ``c7edf3a9d5d8276565208f72422f8f8a0806d6cf``
    * - Python and PyTorch
      - Python 3.12 and PyTorch 2.11.0 with CUDA 12.8
    * - NumPy, Warp, and Newton
      - NumPy 2.3.1, Warp 1.16.0, and Newton 1.5.2; see
-       :autodata_code_link:`<docker/runtime-constraints.txt>`
+       :autodata_code_link:`<uv.lock>`
    * - Git and Git LFS
      - Git with recursive submodule support and Git LFS
    * - cuRobo and SkillGen

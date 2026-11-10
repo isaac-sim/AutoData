@@ -77,6 +77,10 @@ The first run builds the default development image, then drops you into a shell 
 in the mounted repo. This build process may take up to 30 minutes. Subsequent runs reuse the versioned
 image and are fast.
 
+Docker installs the repository's ``uv.lock`` with the same ``sim`` and ``dev`` groups as the native
+installation. Its Python environment lives at ``/opt/autodata/.venv``, outside the repository bind
+mount. A host ``.venv`` does not replace the container environment.
+
 For **SkillGen** workflows, use the cuRobo image instead. cuRobo compiles CUDA kernels for
 your GPU architecture (auto-detected via ``nvidia-smi``), so this build is slower and kept in
 a separate versioned image tag that coexists with the default one:
@@ -85,8 +89,8 @@ a separate versioned image tag that coexists with the default one:
 
 .. note::
 
-   Inside the container the repo is mounted at ``/workspaces/autodata`` and ``python`` /
-   ``pytest`` are aliased to Isaac Sim's interpreter (``/isaac-sim/python.sh``). Run simulation
+   Inside the container the repo is mounted at ``/workspaces/autodata``. ``python`` and
+   ``pytest`` use the locked environment at ``/opt/autodata/.venv``. Run simulation
    commands in these docs from that directory inside the container. Host commands are marked
    explicitly.
 
@@ -129,6 +133,23 @@ running container. Finish its work, stop the matching container with
 ``docker stop autodata-sim-6.1.0`` or ``docker stop autodata-sim-6.1.0-curobo``, and rerun the
 launcher. The launcher reports an error if a running container still uses the previous image.
 
+If startup reports that ``_isaac_sim`` selects a binary Isaac Sim installation, inspect it from
+the repository root on the host:
+
+.. code-block:: bash
+
+   ls -ld submodules/IsaacLab-Arena/submodules/IsaacLab/_isaac_sim
+   readlink submodules/IsaacLab-Arena/submodules/IsaacLab/_isaac_sim
+
+After confirming it is an unwanted symlink, remove only that link and rerun the launcher:
+
+.. code-block:: bash
+
+   test -L submodules/IsaacLab-Arena/submodules/IsaacLab/_isaac_sim && \
+       unlink submodules/IsaacLab-Arena/submodules/IsaacLab/_isaac_sim
+
+This leaves the target installation intact and does not remove a real directory.
+
 Source edits are live through the repository bind mount. Dependency changes require rebuilding.
 The checked-in example datasets are under ``./datasets/`` relative to the repository. The separate
 ``/datasets`` mount comes from the host directory selected by ``-d``; it is not the repository's
@@ -140,9 +161,9 @@ Optional Native uv Installation
 
 AutoData is a `uv <https://docs.astral.sh/uv/>`__ project. ``uv sync`` installs Isaac Sim **6.1.0.0** (the pip
 version of Sim 6.1.0), PyTorch **2.11.0+cu128**, Isaac Lab, Arena, and AutoData with its test tools into ``.venv``
-at the repository root. The versions come from the repository's ``uv.lock``, which keeps Arena's locked version of
-every package they share. Lab, Arena, and AutoData are editable installations from the checkout, and uv provides
-Python 3.12.
+at the repository root. Docker uses the same lockfile in its container environment. The repository's
+``uv.lock`` keeps Arena's locked version of every package they share. Lab, Arena, and AutoData are editable
+installations from the checkout, and uv provides Python 3.12.
 
 The uv installation supports Linux x86_64. On the host, install
 `uv <https://docs.astral.sh/uv/getting-started/installation/>`__ **0.12.21 or newer**, Git, CMake, and a C++
@@ -172,8 +193,8 @@ Docker-only ``/workspaces/autodata`` path. After updating the checkout and its s
 Review and accept the Isaac Sim EULA on first launch. For unattended launches after accepting it, set
 the two variables shown above.
 
-``uv pip check`` reports the discrepancies listed for the conda installation below, except
-``openpi-client``, which this environment does not install. Arena's ``packaging`` override also
+For both Docker and native uv, ``uv pip check`` reports the discrepancies listed for the conda installation
+below, except ``openpi-client``, which these environments do not install. Arena's ``packaging`` override also
 leaves ``virtualenv`` (used by ``pre-commit``) and ``vcs-versioning`` (used to build cuRobo) below the
 ``packaging`` version they declare. Both work with the locked version.
 

@@ -4,8 +4,8 @@ Release Notes
 Arena 0.3 / Isaac Lab 3.0 Upgrade
 -----------------------------------
 
-This checkout pins Arena 0.3.1 at ``481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7`` and its nested
-Isaac Lab commit ``28a386f063e41c04c07f50e63eefb83fd8408fbe`` (v3.0.0-EA plus 3 commits),
+This checkout pins Arena 0.3.0 at ``c7edf3a9d5d8276565208f72422f8f8a0806d6cf`` and its nested
+Isaac Lab commit ``91a0906f93802eb859192dcb0bca879f891e92d6``,
 with Isaac Sim 6.1.0 Docker images. See the
 :doc:`support matrix <../quickstart/support_matrix>` for the complete version set.
 
@@ -16,8 +16,8 @@ with Isaac Sim 6.1.0 Docker images. See the
 * Annotation signal lengths now match action lengths. Generation and annotation preserve nonzero
   exit status when they fail.
 * GR1 generation shares the USD-to-URDF conversion across its independent IK controllers.
-* Docker constrains runtime dependencies, checks package consistency, and supports the pinned
-  cuRobo release with Warp 1.16.
+* Docker and native uv installations use the repository's ``uv.lock``, including the optional
+  cuRobo group with Warp 1.16.
 * The conda installer uses Arena's locked Sim 6.1.0.0/Lab/PyTorch packages, supports named
   environments with ``-n``, and includes AutoData's test tools. It checks prerequisites before
   creating an environment and refuses to replace an existing environment with ``-c``.

@@ -24,7 +24,7 @@ TEST_PATH="${TEST_PATH:-autodata_tests/}"
 # filter and runs everything collected under TEST_PATH. Note: use `-` (not `:-`)
 # so an explicitly empty value from a caller is honored rather than defaulted.
 PYTEST_MARK="${PYTEST_MARK-}"
-# Set to "true" to force an image rebuild (used by the nightly workflow).
+# Set to "true" to rebuild the image using Docker's layer cache.
 FORCE_REBUILD="${FORCE_REBUILD:-false}"
 # Per-subprocess wall-clock timeout (seconds) for the data-generation child.
 # run_docker.sh gives the container a fresh environment, so this is forwarded
@@ -56,15 +56,15 @@ fi
 # Build the in-container command. `env VAR=...` forwards config into the
 # container (run_docker.sh passes trailing args through verbatim, and the values
 # are inherited by the data-generation subprocess pytest spawns). Call
-# /isaac-sim/python.sh -m pytest explicitly so it does not depend on the
-# in-container `pytest` alias expanding. XDG_CACHE_HOME/WARP_CACHE_PATH keep those
+# the image's Python explicitly so it does not depend on shell aliases.
+# XDG_CACHE_HOME/WARP_CACHE_PATH keep those
 # caches container-local; Arena uses the writable bind mount configured above.
 PYTEST_ARGS=(
     env
     "AUTODATA_SUBPROCESS_TIMEOUT=${SUBPROCESS_TIMEOUT}"
     "XDG_CACHE_HOME=${CONTAINER_CACHE_DIR}"
     "WARP_CACHE_PATH=${CONTAINER_CACHE_DIR}/warp"
-    /isaac-sim/python.sh -m pytest -sv --durations=0
+    python -m pytest -sv --durations=0
 )
 if [ -n "${RESULTS_DIR}" ]; then
     # Pre-create on the host so the container can write into the bind-mounted dir.

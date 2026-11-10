@@ -18,16 +18,7 @@ if [[ ! -f "$dataset_file" ]]; then
   exit 1
 fi
 
-if [[ -x /isaac-sim/python.sh ]]; then
-  python_cmd=(/isaac-sim/python.sh)
-elif python -c 'import importlib.util, sys; sys.exit(importlib.util.find_spec("isaaclab_arena") is None)' 2>/dev/null; then
-  python_cmd=(python)
-elif [[ -x .venv/bin/python ]]; then
-  python_cmd=(.venv/bin/python)
-else
-  echo "ERROR: Isaac Lab-Arena was not found. Start ./docker/run_docker.sh, or run uv sync --locked." >&2
-  exit 1
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/python_environment.sh"
 
 exec "${python_cmd[@]}" submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
     --viz kit \

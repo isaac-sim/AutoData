@@ -15,13 +15,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The Docker image installs AutoData[dev] with pip on top of Isaac Sim's Python.
 dev = [
     "pytest",
     "debugpy",
 ]
 
-# pip ignores dependency groups, so they do not change the Docker image.
 [dependency-groups]
 sim = [
     "isaaclab-arena",

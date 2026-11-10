@@ -10,13 +10,16 @@ ARG WORKDIR=/workspaces/autodata
 ENV WORKDIR=${WORKDIR}
 WORKDIR "${WORKDIR}"
 
-ENV TERM=xterm
-# Tolerate transient package-index failures on shared CI runners. These settings
-# are inherited by every pip invocation, including those run by isaaclab.sh.
-ENV PIP_RETRIES=10 \
-    PIP_DEFAULT_TIMEOUT=120
-# Path to the (nested) Isaac Lab checkout inside the Arena submodule.
-ENV ISAACLAB_PATH=${WORKDIR}/submodules/IsaacLab-Arena/submodules/IsaacLab
+ARG UV_VERSION=0.12.21
+ENV TERM=xterm \
+    UV_HTTP_TIMEOUT=120 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/autodata/.venv \
+    UV_PYTHON_INSTALL_DIR=/opt/autodata/python \
+    VIRTUAL_ENV=/opt/autodata/.venv \
+    CUDA_HOME=/usr/local/cuda-12.8
+ENV ISAACLAB_PATH=${WORKDIR}/submodules/IsaacLab-Arena/submodules/IsaacLab \
+    PATH=${VIRTUAL_ENV}/bin:${CUDA_HOME}/bin:${PATH}
 
 # Hide conflicting Vulkan files, if needed.
 RUN if [ -e "/usr/share/vulkan" ] && [ -e "/etc/vulkan" ]; then \
@@ -34,37 +37,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       sudo \
       jq \
       ffmpeg \
-      python3-pip \
+      curl \
+      ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-#######################################
-# Install IsaacLab & IsaacLab - Arena
-#######################################
-# Install Lab before copying Arena so Arena changes can reuse the Lab layer.
-COPY submodules/IsaacLab-Arena/submodules/IsaacLab ${ISAACLAB_PATH}
+RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" \
+    | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh
 
-# --- IsaacLab ---
-# Symlink Isaac Sim to IsaacLab.
-RUN ln -s /isaac-sim/ ${ISAACLAB_PATH}/_isaac_sim
-# The non-root runtime user (created by the entrypoint) needs to write Kit logs/caches under /isaac-sim.
-RUN chmod 777 -R /isaac-sim/kit/ && chmod a+x /isaac-sim
-# Lab 3.0 owns dependency pins in its root pyproject.toml and registers its
-# packages through this installer, including the visualizers and Pink IK.
-RUN ${ISAACLAB_PATH}/isaaclab.sh -i
-
-# --- IsaacLab - Arena ---
-COPY docker/runtime-constraints.txt /opt/autodata/runtime-constraints.txt
-# Lab's installer can resolve NumPy/TensorDict versions incompatible with Isaac Sim.
-# Apply the runtime pins to all remaining build-time pip installations.
-ARG PIP_CONSTRAINT=/opt/autodata/runtime-constraints.txt
-RUN /isaac-sim/python.sh -m pip install numpy==2.3.1 tensordict
+# Install the locked dependencies before application sources to preserve build caching.
+COPY pyproject.toml uv.lock ${WORKDIR}/
 COPY submodules/IsaacLab-Arena ${WORKDIR}/submodules/IsaacLab-Arena
-RUN /isaac-sim/python.sh -m pip install -e ${WORKDIR}/submodules/IsaacLab-Arena
-# Complete the dependencies omitted from Isaac Sim's bundled package metadata.
-RUN /isaac-sim/python.sh -m pip install --extra-index-url https://pypi.nvidia.com \
-      usd-validation-nvidia==1.22.0 "pyjwt[crypto]==2.15.1" "aiobotocore[boto3]==2.25.1" \
-      rerun-sdk==0.31.4 ipython==9.10.1 psutil==5.9.8 \
-    && /isaac-sim/python.sh -m pip check
+# Kit writes beneath its installation; set permissions in the layer that creates each file.
+RUN --mount=type=cache,id=autodata-uv,target=/root/.cache/uv,sharing=locked \
+    uv sync --locked --no-install-project \
+    && find /opt/autodata ! -type l ! -group isaac-sim \
+      -exec chgrp isaac-sim {} + -exec chmod g+rwX {} +
 
 #####################
 # cuRobo (optional)
@@ -75,36 +62,42 @@ ARG TORCH_CUDA_ARCH_LIST=8.0+PTX
 # Limit concurrent compiler processes on shared GPU hosts.
 ARG MAX_JOBS=4
 
-ENV CUDA_HOME=/usr/local/cuda-12.8
-ENV PATH=/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}
 ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
-COPY docker/setup/install_curobo.sh /tmp/install_curobo.sh
-RUN if [ "$INSTALL_CUROBO" = "true" ]; then \
-      /tmp/install_curobo.sh; \
-    else \
-      echo "Skipping cuRobo install (INSTALL_CUROBO=false. Use run_docker.sh -c to include it)"; \
-    fi && rm -f /tmp/install_curobo.sh
+COPY docker/setup/install_cuda.sh /tmp/install_cuda.sh
+RUN --mount=type=cache,id=autodata-uv,target=/root/.cache/uv,sharing=locked \
+    set -e; if [ "$INSTALL_CUROBO" = "true" ]; then \
+      /tmp/install_cuda.sh; \
+      uv cache clean nvidia-curobo; \
+      uv sync --locked --no-install-project --group curobo; \
+      find /opt/autodata ! -type l ! -group isaac-sim \
+        -exec chgrp isaac-sim {} + -exec chmod g+rwX {} +; \
+    fi; rm -f /tmp/install_cuda.sh
 
 ##################
 # AutoData
 ##################
 # Keep application changes after cuRobo so they do not rebuild its CUDA kernels.
-COPY pyproject.toml README.md sitecustomize.py ${WORKDIR}/
+COPY README.md sitecustomize.py ${WORKDIR}/
 COPY autodata_core ${WORKDIR}/autodata_core
 COPY autodata_interfaces ${WORKDIR}/autodata_interfaces
+COPY autodata_metrics ${WORKDIR}/autodata_metrics
+COPY autodata_retargeting ${WORKDIR}/autodata_retargeting
 COPY autodata_utils ${WORKDIR}/autodata_utils
 COPY autodata_examples ${WORKDIR}/autodata_examples
 COPY autodata_tests ${WORKDIR}/autodata_tests
-RUN /isaac-sim/python.sh -m pip install -e "${WORKDIR}[dev]"
-RUN /isaac-sim/python.sh -m pip install pre-commit
-RUN /isaac-sim/python.sh -m pip check
+RUN --mount=type=cache,id=autodata-uv,target=/root/.cache/uv,sharing=locked \
+    set -e; if [ "$INSTALL_CUROBO" = "true" ]; then \
+      uv sync --locked --group curobo; \
+    else \
+      uv sync --locked; \
+    fi; \
+    find /opt/autodata ! -type l ! -group isaac-sim \
+      -exec chgrp isaac-sim {} + -exec chmod g+rwX {} +
 
 # Set aliases for the shell
-RUN echo 'export PATH="/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}"' >> /etc/bash.bashrc \
- && echo "alias python='/isaac-sim/python.sh'" >> /etc/bash.bashrc \
- && echo "alias pip3='/isaac-sim/python.sh -m pip'" >> /etc/bash.bashrc \
- && echo "alias pytest='/isaac-sim/python.sh -m pytest'" >> /etc/bash.bashrc \
- && echo "alias pre-commit='/isaac-sim/python.sh -m pre_commit'" >> /etc/bash.bashrc \
+RUN echo 'export VIRTUAL_ENV=/opt/autodata/.venv' >> /etc/bash.bashrc \
+ && echo 'export PATH="${VIRTUAL_ENV}/bin:${CUDA_HOME}/bin:${PATH}"' >> /etc/bash.bashrc \
+ && echo "alias pip3='uv pip'" >> /etc/bash.bashrc \
  && echo "alias ll='ls -alF --color=auto'" >> /etc/bash.bashrc \
  && echo "PS1='[AutoData] \[\e[0;32m\]\u \[\e[0;34m\]\w\[\e[0m\] \$ '" >> /etc/bash.bashrc \
  && cp /etc/bash.bashrc /root/.bashrc
@@ -112,4 +105,7 @@ RUN echo 'export PATH="/isaac-sim/kit/python/bin:${CUDA_HOME}/bin:${PATH}"' >> /
 # Set the entrypoint
 COPY docker/setup/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+# Host bytecode can contain source paths that are unavailable in the container.
+ENV PYTHONPYCACHEPREFIX=/tmp/autodata-pycache
 ENTRYPOINT ["/entrypoint.sh"]
+HEALTHCHECK NONE

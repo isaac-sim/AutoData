@@ -78,7 +78,8 @@ def ci_launcher(tmp_path):
         assert source.is_dir()
         assert source.stat().st_uid == os.getuid()
         (source / "arena-cache-write-check").write_text("writable")
-        assert "/isaac-sim/python.sh" in args and "pytest" in args
+        command = args[args.index("env") :]
+        assert command[4:7] == ["python", "-m", "pytest"]
         return source
 
     return run, runner_temp

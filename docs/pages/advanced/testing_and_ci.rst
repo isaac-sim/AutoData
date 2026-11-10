@@ -50,6 +50,33 @@ Common invocations:
    The SkillGen end-to-end tests require cuRobo: the cuRobo image (``./docker/run_docker.sh -c``)
    or the uv ``curobo`` group described in :doc:`../quickstart/installation`.
 
+
+Continuous Integration
+----------------------
+
+Pull requests run lint, documentation, and lockfile checks. GPU checks run the six correctness
+suites: ``e2e``, ``interfaces``, ``core``, ``utils``, ``retargeting``, and ``metrics``. The Docker
+check rebuilds the cuRobo image from the checkout while retaining Docker's layer cache.
+The ``Run tests (GPU, repo Docker)`` status combines Docker, native, lockfile, and lint results.
+
+Changes to installation, CI, source, or tests also trigger a fresh native uv installation with
+cuRobo and the same correctness suites. This includes real simulator subprocesses. The native
+status passes without a GPU run when no relevant files changed. Main-branch pushes always run
+native verification. Nightly Docker testing also runs the larger success-rate benchmarks.
+
+Self-hosted GPU jobs run only for branches in the repository. Installation-changing fork pull
+requests must be tested through a maintainer-controlled branch in the repository before the
+native status can pass.
+
+To run the correctness suites in an installed native environment with cuRobo:
+
+.. code-block:: bash
+
+   uv run --no-sync pytest -sv \
+       autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/ \
+       autodata_tests/utils/ autodata_tests/retargeting/ autodata_tests/metrics/
+
+
 Debugging Isaac Sim Runs
 ------------------------
 

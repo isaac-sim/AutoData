@@ -89,7 +89,7 @@ docker login nvcr.io
 
 The first launch builds the development image and opens a shell in the repository at
 `/workspaces/autodata`. Subsequent launches reuse the image. Use `./docker/run_docker.sh -c` to include cuRobo
-for SkillGen workflows.
+for SkillGen workflows. Docker and the native installation use the same repository `uv.lock`.
 
 For the native installation, skip Docker and install the locked environment at the repository root instead:
 
@@ -97,9 +97,9 @@ For the native installation, skip Docker and install the locked environment at t
 uv sync --locked
 ```
 
-This checkout uses Isaac Sim 6.1.0, Arena 0.3.1 at commit
-`481f5ae5f19df7bc5d24a17240fc0d96ac81eaf7`, and its nested Isaac Lab at commit
-`28a386f063e41c04c07f50e63eefb83fd8408fbe` (v3.0.0-EA plus 3 commits). After updating an existing clone, run
+This checkout uses Isaac Sim 6.1.0, Arena 0.3.0 at commit
+`c7edf3a9d5d8276565208f72422f8f8a0806d6cf`, and its nested Isaac Lab at commit
+`91a0906f93802eb859192dcb0bca879f891e92d6`. After updating an existing clone, run
 `git submodule update --init --recursive` and rebuild with `./docker/run_docker.sh -c -r`, or rerun
 `uv sync --locked` for the native installation.
 Commands, environment profiles, and source dataset metadata use Lab 3.0's `IsaacContrib-*`

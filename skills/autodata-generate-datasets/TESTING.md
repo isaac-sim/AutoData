@@ -19,7 +19,8 @@ AutoData needs real hardware and infrastructure:
 - For SkillGen tasks: the **cuRobo** container variant (`./docker/run_docker.sh -c`) or the uv `curobo` group.
 
 The first container build can take ~30 minutes. Generation commands run **inside** the
-container, where the repo is mounted at `/workspaces/autodata`, or with `uv run --locked` from the repo root.
+container, where the repo is mounted at `/workspaces/autodata`, or with `uv run --no-sync` from the repo root.
+Both installations use the repository's `uv.lock`.
 
 ## Recorded live acceptance run
 
@@ -55,7 +56,7 @@ To verify end-to-end generation:
 
 1. Provision a Linux + NVIDIA GPU host and clone AutoData with submodules + LFS.
 2. Start the container: `./docker/run_docker.sh` (or `-c` for SkillGen). Natively, run `uv sync --locked` and
-   prefix the commands below with `uv run --locked`.
+   prefix the commands below with `uv run --no-sync`.
 3. Run the full helper invocation for the `pos-mimicgen-franka` case:
 
    ```bash
@@ -69,8 +70,8 @@ To verify end-to-end generation:
        --trials 10 --num-envs 10 --viz none
    ```
 
-4. Confirm the output HDF5 passes `HDF5_USE_FILE_LOCKING=FALSE /isaac-sim/python.sh scripts/validate_dataset.py <output>`
-   (`uv run --locked python` instead of `/isaac-sim/python.sh` natively).
+4. Confirm the output HDF5 passes `HDF5_USE_FILE_LOCKING=FALSE python scripts/validate_dataset.py <output>`
+   (prefix `python` with `uv run --no-sync` natively).
 5. Repeat with and without the skill to fill the `BENCHMARK.md` result table (task completion
    rate, algorithm/container correctness, token consumption, wall-clock time).
 

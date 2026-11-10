@@ -4,7 +4,7 @@
 
 set -e
 
-DOCKER_IMAGE_NAME='autodata'
+DOCKER_IMAGE_NAME="${AUTODATA_DOCKER_IMAGE_NAME:-autodata}"
 DOCKER_VERSION_TAG='sim-6.1.0'
 # Override with BASE_IMAGE when testing against a different compatible Isaac Sim release.
 BASE_IMAGE="${BASE_IMAGE:-nvcr.io/nvidia/isaac-sim:6.1.0}"
@@ -163,6 +163,7 @@ DOCKER_RUN_ARGS=(
     "${SSH_DOCKER_ARGS[@]}"
     "--env" "DISPLAY=${DISPLAY:-}"
     "--env" "ACCEPT_EULA=Y"
+    "--env" "OMNI_KIT_ACCEPT_EULA=YES"
     "--env" "PRIVACY_CONSENT=Y"
     "--env" "ISAACLAB_PATH=${ISAACLAB_PATH}"
     # Make AutoData's sitecustomize compatibility hook visible to direct upstream script entrypoints.

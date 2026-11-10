@@ -1,0 +1,108 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Native uv tests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Fresh uv setup and correctness tests (GPU)
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 120
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu24.04
+      options: --gpus all --ipc=host
+      env:
+        NVIDIA_DRIVER_CAPABILITIES: all
+    defaults:
+      run:
+        shell: bash
+        working-directory: native-${{ github.run_id }}-${{ github.run_attempt }}
+    env:
+      # This path is in the fresh container, outside the persistent checkout.
+      UV_PROJECT_ENVIRONMENT: /opt/autodata-venv
+      UV_PYTHON_INSTALL_DIR: /opt/autodata-python
+      NATIVE_TEMP_SUBDIR: autodata-native-${{ github.run_id }}-${{ github.run_attempt }}
+      UV_HTTP_TIMEOUT: "300"
+      CUDA_HOME: /usr/local/cuda-12.8
+      MAX_JOBS: "4"
+      OMNI_KIT_ACCEPT_EULA: "YES"
+      ACCEPT_EULA: "Y"
+      AUTODATA_SUBPROCESS_TIMEOUT: "1200"
+
+    steps:
+      - name: Install system prerequisites
+        working-directory: ${{ runner.temp }}
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git git-lfs ca-certificates curl cmake build-essential ffmpeg \
+            libegl1 libgl1 libglu1-mesa libglib2.0-0t64 libglx0 libxi6 libxrandr2 libxt6 libsm6 libvulkan1
+
+      - name: Checkout (recursive submodules and LFS)
+        uses: actions/checkout@v5
+        with:
+          path: native-${{ github.run_id }}-${{ github.run_attempt }}
+          submodules: recursive
+          lfs: true
+          persist-credentials: false
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/0.12.21/install.sh | env UV_INSTALL_DIR="${RUNNER_TEMP}/${NATIVE_TEMP_SUBDIR}/uv" UV_NO_MODIFY_PATH=1 sh
+          echo "${RUNNER_TEMP}/${NATIVE_TEMP_SUBDIR}/uv" >> "${GITHUB_PATH}"
+          echo "${CUDA_HOME}/bin" >> "${GITHUB_PATH}"
+
+      - name: Select CUDA build cache
+        run: |
+          nvidia-smi
+          nvcc --version
+          arch=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | sort -u | paste -sd ';' -)
+          test -n "${arch}"
+          echo "TORCH_CUDA_ARCH_LIST=${arch}+PTX" >> "${GITHUB_ENV}"
+          lock_hash=$(sha256sum uv.lock | cut -d ' ' -f1)
+          cache_key="uv0.12.21-python3.12-cuda12.8.1-${arch//;/_}-${lock_hash}"
+          echo "UV_CACHE_DIR=${GITHUB_WORKSPACE}/../autodata-uv-cache/${cache_key}" >> "${GITHUB_ENV}"
+          echo "cuRobo build cache: ${cache_key}"
+
+      - name: Install the locked environment
+        run: uv sync --locked --group curobo
+
+      - name: Verify CUDA and cuRobo
+        run: |
+          uv run --no-sync python - <<'PY'
+          import sys
+          import torch
+          import curobo.geom.sdf.world
+
+          print(f"Python: {sys.version} ({sys.executable})")
+          print(f"Torch: {torch.__version__}, CUDA: {torch.version.cuda}")
+          assert torch.cuda.is_available(), "CUDA is unavailable"
+          PY
+
+      - name: Run correctness suites including simulator subprocesses
+        run: |
+          uv run --no-sync pytest -sv --durations=20 --junitxml="${RUNNER_TEMP}/${NATIVE_TEMP_SUBDIR}/results/junit.xml" \
+            autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/ \
+            autodata_tests/utils/ autodata_tests/retargeting/ autodata_tests/metrics/
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-test-results
+          path: ${{ runner.temp }}/${{ env.NATIVE_TEMP_SUBDIR }}/results/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Clean up native checkout and temporary files
+        if: always()
+        working-directory: ${{ runner.temp }}
+        env:
+          NATIVE_CHECKOUT: ${{ github.workspace }}/native-${{ github.run_id }}-${{ github.run_attempt }}
+        run: rm -rf -- "${NATIVE_CHECKOUT}" "${RUNNER_TEMP}/${NATIVE_TEMP_SUBDIR}"

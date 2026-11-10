@@ -34,19 +34,18 @@ touch "/home/$DOCKER_RUN_USER_NAME/.sudo_as_admin_successful"
 cp /etc/bash.bashrc "/home/$DOCKER_RUN_USER_NAME/.bashrc"
 chown "$DOCKER_RUN_USER_NAME:$DOCKER_RUN_GROUP_NAME" "/home/$DOCKER_RUN_USER_NAME/.bashrc"
 
-# The repo is bind-mounted over $WORKDIR at runtime, which hides the _isaac_sim symlink baked into
-# the image. Recreate it (force, in case the host carries a stale symlink from a local conda setup)
-# so Isaac Lab finds Isaac Sim at /isaac-sim.
+# A binary Sim link makes Isaac Lab reject the locked wheel environment.
 ISAACLAB_DIR="$WORKDIR/submodules/IsaacLab-Arena/submodules/IsaacLab"
-if [ -d "$ISAACLAB_DIR" ]; then
-    ln -sfn /isaac-sim "$ISAACLAB_DIR/_isaac_sim"
+if [ -e "$ISAACLAB_DIR/_isaac_sim" ] || [ -L "$ISAACLAB_DIR/_isaac_sim" ]; then
+    echo "error: $ISAACLAB_DIR/_isaac_sim selects a binary Isaac Sim installation." >&2
+    echo "Remove the link from the host checkout before using the locked Docker environment." >&2
+    exit 1
 fi
 
-# Run the passed command as the dev user (bash -i so the python/pytest aliases expand), or drop into
-# an interactive shell.
+# Run the command as the dev user with the image's shell environment.
 if [ $# -ge 1 ]; then
     # Quote each argument before passing it to the interactive shell so shell
-    # aliases work without splitting paths, marker expressions, or Python code.
+    # preserves paths, marker expressions, and Python code.
     printf -v AUTODATA_COMMAND '%q ' "$@"
     exec sudo --preserve-env -u "$DOCKER_RUN_USER_NAME" \
         -- env HOME="/home/$DOCKER_RUN_USER_NAME" bash -ic "${AUTODATA_COMMAND}"
