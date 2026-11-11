@@ -77,9 +77,12 @@ The first run builds the default development image, then drops you into a shell 
 in the mounted repo. This build process may take up to 30 minutes. Subsequent runs reuse the versioned
 image and are fast.
 
-Docker installs the repository's ``uv.lock`` with the same ``sim`` and ``dev`` groups as the native
-installation. Its Python environment lives at ``/opt/autodata/.venv``, outside the repository bind
-mount. A host ``.venv`` does not replace the container environment.
+Docker uses the base image's Isaac Sim and bundled Python. Other dependencies come from the repository's
+``uv.lock``, with the same ``sim`` and ``dev`` groups as the native installation. Docker excludes the Sim
+wheels and extension-cache packages to avoid installing a second simulator. Its Python environment lives at
+``/opt/autodata/.venv``, outside the repository bind mount. A host ``.venv`` does not replace it.
+Inside Docker, ``uv run`` does not sync dependencies. Rebuild the image to update them rather than running
+``uv sync``, which would install the native Sim wheels.
 
 For **SkillGen** workflows, use the cuRobo image instead. cuRobo compiles CUDA kernels for
 your GPU architecture (auto-detected via ``nvidia-smi``), so this build is slower and kept in
@@ -90,9 +93,10 @@ a separate versioned image tag that coexists with the default one:
 .. note::
 
    Inside the container the repo is mounted at ``/workspaces/autodata``. ``python`` and
-   ``pytest`` use the locked environment at ``/opt/autodata/.venv``. Run simulation
-   commands in these docs from that directory inside the container. Host commands are marked
-   explicitly.
+   ``pytest`` use the locked environment at ``/opt/autodata/.venv`` with Sim from ``/isaac-sim``.
+   The image configures Sim's module and library paths for both shell commands and ``docker exec``.
+   Run simulation commands in these docs from that directory inside the container, or through the launcher.
+   Host commands are marked explicitly.
 
 Useful flags of ``./docker/run_docker.sh``:
 

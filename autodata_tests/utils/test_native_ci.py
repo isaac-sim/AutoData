@@ -56,15 +56,16 @@ def native_setup(tmp_path):
         release = tmp_path / f"release-{len(processes)}"
         if not hold:
             release.touch()
+        environment = os.environ.copy()
+        environment.pop("UV_CACHE_DIR", None)
         process = subprocess.Popen(
             ["bash", "-euo", "pipefail", "-c", _step("native.yml", "test", "Install the locked environment")],
             cwd=ROOT,
-            env=os.environ
+            env=environment
             | {
                 "PATH": f"{commands}:{os.environ['PATH']}",
                 "NATIVE_CACHE_ROOT": str(root),
                 "NATIVE_CACHE_KEY": key,
-                "UV_CACHE_DIR": str(root / "keys" / key),
                 "TEST_STARTED": str(started),
                 "TEST_RELEASE": str(release),
                 "TEST_EXIT": str(exit_code),

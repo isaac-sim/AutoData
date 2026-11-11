@@ -42,7 +42,7 @@ Isaac Lab or Isaac Lab-Arena revisions.
      - Optional: Python 3.12, conda, uv >= 0.12.21, CMake, and a C++ compiler;
        ``conda_installer.sh`` installs Arena's locked environment. See :doc:`installation`.
    * - Isaac Sim
-     - ``isaacsim==6.1.0.0``; Docker uses ``nvcr.io/nvidia/isaac-sim:6.1.0`` as its base image.
+     - ``isaacsim==6.1.0.0`` for native installs; Docker reuses Sim from ``nvcr.io/nvidia/isaac-sim:6.1.0``.
    * - Isaac Lab
      - 3.0.0 at commit ``91a0906f93802eb859192dcb0bca879f891e92d6``
    * - Isaac Lab-Arena

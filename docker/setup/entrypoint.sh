@@ -34,7 +34,7 @@ touch "/home/$DOCKER_RUN_USER_NAME/.sudo_as_admin_successful"
 cp /etc/bash.bashrc "/home/$DOCKER_RUN_USER_NAME/.bashrc"
 chown "$DOCKER_RUN_USER_NAME:$DOCKER_RUN_GROUP_NAME" "/home/$DOCKER_RUN_USER_NAME/.bashrc"
 
-# A binary Sim link makes Isaac Lab reject the locked wheel environment.
+# Isaac Lab rejects a binary Sim link with an active virtual environment.
 ISAACLAB_DIR="$WORKDIR/submodules/IsaacLab-Arena/submodules/IsaacLab"
 if [ -e "$ISAACLAB_DIR/_isaac_sim" ] || [ -L "$ISAACLAB_DIR/_isaac_sim" ]; then
     echo "error: $ISAACLAB_DIR/_isaac_sim selects a binary Isaac Sim installation." >&2

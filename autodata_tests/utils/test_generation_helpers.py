@@ -33,7 +33,7 @@ def test_helpers_select_environment_and_forward_arguments(tmp_path, helper, sele
         "ambient": tmp_path / "ambient",
     }
     for name, path in environments.items():
-        venv.EnvBuilder(with_pip=False).create(path)
+        venv.EnvBuilder(with_pip=False, symlinks=True).create(path)
         if name != "virtual" or selection != "incomplete":
             site_packages = path / f"lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages"
             (site_packages / "isaaclab_arena.py").write_text("")

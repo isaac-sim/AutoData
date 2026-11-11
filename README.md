@@ -89,7 +89,8 @@ docker login nvcr.io
 
 The first launch builds the development image and opens a shell in the repository at
 `/workspaces/autodata`. Subsequent launches reuse the image. Use `./docker/run_docker.sh -c` to include cuRobo
-for SkillGen workflows. Docker and the native installation use the same repository `uv.lock`.
+for SkillGen workflows. Docker reuses the base image's Isaac Sim; other dependencies use the same repository
+`uv.lock` as the native installation.
 
 For the native installation, skip Docker and install the locked environment at the repository root instead:
 

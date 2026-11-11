@@ -11,11 +11,12 @@ ENV WORKDIR=${WORKDIR}
 WORKDIR "${WORKDIR}"
 
 ARG UV_VERSION=0.12.21
+ARG UV_PYTHON=/isaac-sim/kit/python/bin/python3
 ENV TERM=xterm \
     UV_HTTP_TIMEOUT=120 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/autodata/.venv \
-    UV_PYTHON_INSTALL_DIR=/opt/autodata/python \
+    UV_PYTHON_PREFERENCE=only-system \
     VIRTUAL_ENV=/opt/autodata/.venv \
     CUDA_HOME=/usr/local/cuda-12.8
 ENV ISAACLAB_PATH=${WORKDIR}/submodules/IsaacLab-Arena/submodules/IsaacLab \
@@ -47,9 +48,9 @@ RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" \
 # Install the locked dependencies before application sources to preserve build caching.
 COPY pyproject.toml uv.lock ${WORKDIR}/
 COPY submodules/IsaacLab-Arena ${WORKDIR}/submodules/IsaacLab-Arena
-# Kit writes beneath its installation; set permissions in the layer that creates each file.
+COPY docker/setup/sync_dependencies.sh /opt/autodata/sync_dependencies.sh
 RUN --mount=type=cache,id=autodata-uv,target=/root/.cache/uv,sharing=locked \
-    uv sync --locked --no-install-project \
+    bash /opt/autodata/sync_dependencies.sh --no-install-project \
     && find /opt/autodata ! -type l ! -group isaac-sim \
       -exec chgrp isaac-sim {} + -exec chmod g+rwX {} +
 
@@ -68,7 +69,7 @@ RUN --mount=type=cache,id=autodata-uv,target=/root/.cache/uv,sharing=locked \
     set -e; if [ "$INSTALL_CUROBO" = "true" ]; then \
       /tmp/install_cuda.sh; \
       uv cache clean nvidia-curobo; \
-      uv sync --locked --no-install-project --group curobo; \
+      bash /opt/autodata/sync_dependencies.sh --no-install-project --group curobo; \
       find /opt/autodata ! -type l ! -group isaac-sim \
         -exec chgrp isaac-sim {} + -exec chmod g+rwX {} +; \
     fi; rm -f /tmp/install_cuda.sh
@@ -87,14 +88,20 @@ COPY autodata_examples ${WORKDIR}/autodata_examples
 COPY autodata_tests ${WORKDIR}/autodata_tests
 RUN --mount=type=cache,id=autodata-uv,target=/root/.cache/uv,sharing=locked \
     set -e; if [ "$INSTALL_CUROBO" = "true" ]; then \
-      uv sync --locked --group curobo; \
+      bash /opt/autodata/sync_dependencies.sh --group curobo; \
     else \
-      uv sync --locked; \
+      bash /opt/autodata/sync_dependencies.sh; \
     fi; \
     find /opt/autodata ! -type l ! -group isaac-sim \
       -exec chgrp isaac-sim {} + -exec chmod g+rwX {} +
 
 # Set aliases for the shell
+COPY docker/setup/configure_python.sh /opt/autodata/configure_python.sh
+RUN bash /opt/autodata/configure_python.sh
+ENV ISAAC_PATH=/isaac-sim \
+    CARB_APP_PATH=/isaac-sim/kit \
+    EXP_PATH=/isaac-sim/apps \
+    LD_PRELOAD=/isaac-sim/kit/libcarb.so
 RUN echo 'export VIRTUAL_ENV=/opt/autodata/.venv' >> /etc/bash.bashrc \
  && echo 'export PATH="${VIRTUAL_ENV}/bin:${CUDA_HOME}/bin:${PATH}"' >> /etc/bash.bashrc \
  && echo "alias pip3='uv pip'" >> /etc/bash.bashrc \
@@ -107,5 +114,7 @@ COPY docker/setup/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 # Host bytecode can contain source paths that are unavailable in the container.
 ENV PYTHONPYCACHEPREFIX=/tmp/autodata-pycache
+# uv run must not install the native Sim wheels over the image's simulator.
+ENV UV_NO_SYNC=1
 ENTRYPOINT ["/entrypoint.sh"]
 HEALTHCHECK NONE
