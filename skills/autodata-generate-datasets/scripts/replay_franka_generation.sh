@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Replay a generated Franka dataset in Isaac Sim.
-# Run this script from inside the AutoData container.
+# Run this script from the repo root, inside the AutoData container or with the repo's uv environment.
 
 set -euo pipefail
 
@@ -18,12 +18,9 @@ if [[ ! -f "$dataset_file" ]]; then
   exit 1
 fi
 
-if [[ ! -x /isaac-sim/python.sh ]]; then
-  echo "ERROR: Isaac Sim Python was not found. Start ./docker/run_docker.sh first." >&2
-  exit 1
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/python_environment.sh"
 
-exec /isaac-sim/python.sh submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
+exec "${python_cmd[@]}" submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
     --viz kit \
     --task IsaacContrib-Stack-Cube-Franka-IK-Rel \
     --num_envs 1 \

@@ -7,7 +7,8 @@ without modifying the host Python installation. The repository is bind-mounted i
 so edits on the host are live inside it.
 
 This checkout uses Isaac Sim 6.1.0, Isaac Lab 3.0.0, and Arena 0.3.0.
-Use the pinned Docker environment or the optional conda installation below for the workflows on this site.
+Use the pinned Docker environment or one of the optional native installations below for the workflows on this
+site.
 
 Before installing, review the :doc:`support_matrix` for the complete supported software stack,
 hardware requirements, optional cuRobo and XR dependencies, and resource guidance.
@@ -76,6 +77,13 @@ The first run builds the default development image, then drops you into a shell 
 in the mounted repo. This build process may take up to 30 minutes. Subsequent runs reuse the versioned
 image and are fast.
 
+Docker uses the base image's Isaac Sim and bundled Python. Other dependencies come from the repository's
+``uv.lock``, with the same ``sim`` and ``dev`` groups as the native installation. Docker excludes the Sim
+wheels and extension-cache packages to avoid installing a second simulator. Its Python environment lives at
+``/opt/autodata/.venv``, outside the repository bind mount. A host ``.venv`` does not replace it.
+Inside Docker, ``uv run`` does not sync dependencies. Rebuild the image to update them rather than running
+``uv sync``, which would install the native Sim wheels.
+
 For **SkillGen** workflows, use the cuRobo image instead. cuRobo compiles CUDA kernels for
 your GPU architecture (auto-detected via ``nvidia-smi``), so this build is slower and kept in
 a separate versioned image tag that coexists with the default one:
@@ -84,10 +92,11 @@ a separate versioned image tag that coexists with the default one:
 
 .. note::
 
-   Inside the container the repo is mounted at ``/workspaces/autodata`` and ``python`` /
-   ``pytest`` are aliased to Isaac Sim's interpreter (``/isaac-sim/python.sh``). Run simulation
-   commands in these docs from that directory inside the container. Host commands are marked
-   explicitly.
+   Inside the container the repo is mounted at ``/workspaces/autodata``. ``python`` and
+   ``pytest`` use the locked environment at ``/opt/autodata/.venv`` with Sim from ``/isaac-sim``.
+   The image configures Sim's module and library paths for both shell commands and ``docker exec``.
+   Run simulation commands in these docs from that directory inside the container, or through the launcher.
+   Host commands are marked explicitly.
 
 Useful flags of ``./docker/run_docker.sh``:
 
@@ -128,10 +137,95 @@ running container. Finish its work, stop the matching container with
 ``docker stop autodata-sim-6.1.0`` or ``docker stop autodata-sim-6.1.0-curobo``, and rerun the
 launcher. The launcher reports an error if a running container still uses the previous image.
 
+If startup reports that ``_isaac_sim`` selects a binary Isaac Sim installation, inspect it from
+the repository root on the host:
+
+.. code-block:: bash
+
+   ls -ld submodules/IsaacLab-Arena/submodules/IsaacLab/_isaac_sim
+   readlink submodules/IsaacLab-Arena/submodules/IsaacLab/_isaac_sim
+
+After confirming it is an unwanted symlink, remove only that link and rerun the launcher:
+
+.. code-block:: bash
+
+   test -L submodules/IsaacLab-Arena/submodules/IsaacLab/_isaac_sim && \
+       unlink submodules/IsaacLab-Arena/submodules/IsaacLab/_isaac_sim
+
+This leaves the target installation intact and does not remove a real directory.
+
 Source edits are live through the repository bind mount. Dependency changes require rebuilding.
 The checked-in example datasets are under ``./datasets/`` relative to the repository. The separate
 ``/datasets`` mount comes from the host directory selected by ``-d``; it is not the repository's
 dataset directory.
+
+
+Optional Native uv Installation
+-------------------------------
+
+AutoData is a `uv <https://docs.astral.sh/uv/>`__ project. ``uv sync`` installs Isaac Sim **6.1.0.0** (the pip
+version of Sim 6.1.0), PyTorch **2.11.0+cu128**, Isaac Lab, Arena, and AutoData with its test tools into ``.venv``
+at the repository root. Docker uses the same lockfile in its container environment. The repository's
+``uv.lock`` keeps Arena's locked version of every package they share. Lab, Arena, and AutoData are editable
+installations from the checkout, and uv provides Python 3.12.
+
+The uv installation supports Linux x86_64. On the host, install
+`uv <https://docs.astral.sh/uv/getting-started/installation/>`__ **0.12.21 or newer**, Git, CMake, and a C++
+compiler. The environment needs about 35 GB of disk space. On Ubuntu:
+
+.. code-block:: bash
+
+   sudo apt-get install build-essential cmake git git-lfs
+
+After cloning the repository and pulling the LFS datasets, run this command at the repository root:
+
+.. code-block:: bash
+
+   uv sync --locked
+
+Run workflow commands from the repository root, starting each one with ``uv run --locked``. For example:
+
+.. code-block:: bash
+
+   export OMNI_KIT_ACCEPT_EULA=YES ACCEPT_EULA=Y
+   uv run --locked python scripts/generate_dataset.py --help
+
+``--locked`` stops with an error instead of changing ``uv.lock``. Substitute the repository root for the
+Docker-only ``/workspaces/autodata`` path. After updating the checkout and its submodules, run
+``uv sync --locked`` again.
+
+Review and accept the Isaac Sim EULA on first launch. For unattended launches after accepting it, set
+the two variables shown above.
+
+For both Docker and native uv, ``uv pip check`` reports the discrepancies listed for the conda installation
+below, except ``openpi-client``, which these environments do not install. Arena's ``packaging`` override also
+leaves ``virtualenv`` (used by ``pre-commit``) and ``vcs-versioning`` (used to build cuRobo) below the
+``packaging`` version they declare. Both work with the locked version.
+
+
+.. _installation-uv-curobo:
+
+Optional cuRobo for uv
+^^^^^^^^^^^^^^^^^^^^^^
+
+SkillGen additionally needs cuRobo and a **CUDA Toolkit 12.8** installation containing ``nvcc``. cuRobo
+compiles CUDA kernels for the GPU's compute capability against the environment's PyTorch. Install the toolkit
+using NVIDIA's `CUDA installation guide <https://docs.nvidia.com/cuda/cuda-installation-guide-linux/>`__, then run
+the following at the repository root. Adjust ``CUDA_HOME`` if your toolkit is installed elsewhere:
+
+.. code-block:: bash
+
+   export CUDA_HOME=/usr/local/cuda-12.8
+   export PATH="$CUDA_HOME/bin:$PATH"
+   export TORCH_CUDA_ARCH_LIST="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1)+PTX"
+   export MAX_JOBS=4
+   uv cache clean nvidia-curobo
+   uv sync --locked --group curobo --reinstall-package nvidia-curobo
+
+uv reuses a cached or installed cuRobo build regardless of the GPU or PyTorch version. Cleaning the cache and
+reinstalling the package makes the sync rebuild it, so run these commands again after changing the GPU or the
+PyTorch version in ``uv.lock``. To keep cuRobo, pass ``--group curobo`` to later ``uv sync`` commands.
+``uv run`` keeps it either way.
 
 
 Optional Conda Installation
@@ -258,8 +352,9 @@ See :autodata_code_link:`<docs/README.md>` for local build instructions.
 Verifying the Installation
 --------------------------
 
-Run these commands from the repository root in the activated conda environment, or from
-``/workspaces/autodata`` inside the container. The full suite includes SkillGen tests and requires cuRobo.
+Run these commands from the repository root in the activated conda environment, or start them with
+``uv run --locked`` in the uv environment. Inside the container, run them from ``/workspaces/autodata``.
+The full suite includes SkillGen tests and requires cuRobo.
 
 Run the fast unit tests (a few seconds, no Isaac Sim launch):
 

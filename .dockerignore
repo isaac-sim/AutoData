@@ -16,6 +16,7 @@ submodules/IsaacLab-Arena/submodules/**
 **/*.egg-info
 **/.pytest_cache
 **/.cache
+**/.venv
 **/_isaac_sim
 **/.vscode
 **/logs

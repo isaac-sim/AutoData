@@ -11,9 +11,10 @@
 
 import os
 import sys
+import tomllib
 
-# TODO: Get this programmatically from setup.py (AUTODATA_VERSION_NUMBER).
-AUTODATA_VERSION_NUMBER = "0.1"
+with open(os.path.join(os.path.dirname(__file__), "..", "pyproject.toml"), "rb") as pyproject:
+    AUTODATA_VERSION_NUMBER = tomllib.load(pyproject)["project"]["version"]
 
 # -- Project information -----------------------------------------------------
 

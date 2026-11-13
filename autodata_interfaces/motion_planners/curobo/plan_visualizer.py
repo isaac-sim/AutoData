@@ -150,8 +150,8 @@ class PlanVisualizer:
             self._rerun_process = rr.spawn()
         except Exception as exc:
             raise RuntimeError(
-                "Failed to spawn the Rerun viewer. Ensure the `rerun` executable is installed "
-                "and available on PATH; Isaac Sim installs it under /isaac-sim/kit/python/bin."
+                "Failed to spawn the Rerun viewer. Ensure the `rerun` executable from the rerun-sdk "
+                "package is on PATH, for example in the Python environment's bin directory."
             ) from exc
 
         # Set up coordinate system

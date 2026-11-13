@@ -24,7 +24,8 @@ Requirements at a Glance
    * - Requirement
      - What is needed
    * - Container
-     - The cuRobo development image started with ``./docker/run_docker.sh -c``.
+     - The cuRobo development image started with ``./docker/run_docker.sh -c``, or the native uv
+       environment with cuRobo installed (see :ref:`installation-uv-curobo`).
    * - GPU memory
      - At least 24 GB VRAM is recommended for 1–2 environments; use a 48 GB GPU for approximately
        5 environments.
@@ -60,6 +61,10 @@ rebuild it from the host:
 
 Use ``-R`` instead of ``-r`` only when a cached build remains incompatible. See
 :ref:`troubleshooting-curobo` for missing-module and CUDA-kernel errors.
+
+In the native uv environment, install cuRobo with :ref:`installation-uv-curobo` instead. Run the
+commands in the following steps from the repository root, starting each Python command with
+``uv run --locked``.
 
 2. Verify cuRobo and the Source Dataset
 ---------------------------------------

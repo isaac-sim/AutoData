@@ -7,6 +7,8 @@ import signal
 import subprocess
 import sys
 
+from autodata_tests.utils.constants import TestPaths
+
 _SUBPROCESS_TIMEOUT_SEC = int(os.environ.get("AUTODATA_SUBPROCESS_TIMEOUT", "1200"))
 
 
@@ -27,8 +29,9 @@ def run_subprocess(cmd: list[str], env: dict | None = None, timeout_sec: int | N
     """
     if timeout_sec is None:
         timeout_sec = _SUBPROCESS_TIMEOUT_SEC
-    if env is None:
-        env = os.environ.copy()
+    env = dict(os.environ if env is None else env)
+    # Native child processes import callbacks from the uninstalled test package.
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [TestPaths.repo_root, env.get("PYTHONPATH")]))
 
     print(f"Running command (timeout={timeout_sec}s): {' '.join(cmd)}", flush=True)
 

@@ -16,8 +16,8 @@ task's motion requirements.
      available in the current release; do not select `skillgen` for that combination.
    - No -> continue.
 2. **Do transitions between skill segments need collision-aware motion planning?**
-   - Yes -> `skillgen` (single-arm Franka only in the current release). Requires the **cuRobo** container
-     (`./docker/run_docker.sh -c`). SkillGen depends on a motion-planner interface; the CLI
+   - Yes -> `skillgen` (single-arm Franka only in the current release). Requires cuRobo: the **cuRobo** container
+     (`./docker/run_docker.sh -c`) or the uv `curobo` group. SkillGen depends on a motion-planner interface; the CLI
      wires in the upstream Arena `CuroboPlanner`.
    - No -> `mimicgen` (single-arm MimicGen). Default container. Example: Franka cube stacking.
 
@@ -29,11 +29,13 @@ task's motion requirements.
 | `dexmimicgen` | Multi / bimanual | No | default | `gr1_pick_place.yaml` / `gr1_ik_abs.yaml`; `g1_pick_place.yaml` / `g1_ik_abs.yaml` |
 | `skillgen` | Single-arm Franka (current release) | Yes (cuRobo) | `-c` (cuRobo) | `franka_bin_stack_skillgen.yaml` / `franka_ik_rel_skillgen.yaml` |
 
-## Container reminder
+## Environment reminder
 
 - Default container: `./docker/run_docker.sh` — covers `mimicgen` and `dexmimicgen`.
 - cuRobo container: `./docker/run_docker.sh -c` — **required** for `skillgen`. cuRobo compiles
   CUDA kernels for the detected GPU arch, so the first `-c` build is slower and kept as a
   separate image tag.
+- uv environment: `uv sync --locked` covers `mimicgen` and `dexmimicgen`. `skillgen` also needs
+  the uv `curobo` group described in the installation guide.
 
-Choosing `skillgen` without the `-c` container is the most common failure mode.
+Choosing `skillgen` without cuRobo is the most common failure mode.

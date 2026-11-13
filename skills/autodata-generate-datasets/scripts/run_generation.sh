@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # run_generation.sh — assemble and run an AutoData generate_dataset.py invocation,
-# then validate the output. Run this INSIDE the AutoData container, from the repo root
-# (/workspaces/autodata). For SkillGen, start the container with `-c` (cuRobo) first.
+# then validate the output. Run this from the repo root, inside the AutoData container or with the
+# repo's uv environment. SkillGen needs cuRobo: the `-c` container or the uv `curobo` group.
 #
 # Usage:
 #   skills/autodata-generate-datasets/scripts/run_generation.sh \
@@ -92,20 +92,16 @@ if ! submodule_status=$(git submodule status -- submodules/IsaacLab-Arena); then
 fi
 if [[ -z "$submodule_status" ]] || grep -qE '^[+-U]' <<<"$submodule_status"; then
   echo "ERROR: IsaacLab-Arena is not at the commit pinned by this repository." >&2
-  echo "       Run git submodule update --init --recursive, then restart the container." >&2
+  echo "       Run git submodule update --init --recursive, then restart the container or rerun uv sync --locked." >&2
   exit 1
 fi
 
 
 if [[ "$ALG" == "skillgen" ]]; then
-  echo "NOTE: SkillGen requires the cuRobo container (./docker/run_docker.sh -c)." >&2
+  echo "NOTE: SkillGen requires cuRobo (./docker/run_docker.sh -c, or uv sync --group curobo)." >&2
 fi
 
-if [[ ! -x /isaac-sim/python.sh ]]; then
-  echo "ERROR: Isaac Sim Python was not found. Start ./docker/run_docker.sh first." >&2
-  exit 1
-fi
-python_cmd=(/isaac-sim/python.sh)
+source "$(dirname "${BASH_SOURCE[0]}")/python_environment.sh"
 
 cmd=("${python_cmd[@]}" scripts/generate_dataset.py --alg "$ALG" --input_file "$INPUT")
 [[ -n "$VIZ" ]]         && cmd+=(--viz "$VIZ")

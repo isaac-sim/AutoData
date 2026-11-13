@@ -82,6 +82,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  test_native:
+    name: Native uv install (GPU)
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/native.yml
+
   publish_docs:
     name: Publish docs (GitHub Pages)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')

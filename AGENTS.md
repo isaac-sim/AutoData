@@ -4,9 +4,14 @@ This file provides guidance to AI coding agents (Claude Code, OpenAI Codex, etc.
 
 ## Environment
 
-All scripts and commands from this repo must be run inside a Docker container started with
-`./docker/run_docker.sh` (or `./docker/run_docker.sh -c` for cuRobo). Users must start the container manually; if
-no container started by the appropriate command exists, prompt the user to start it.
+Run all scripts and commands from this repo in one of these environments:
+
+- The Docker container started with `./docker/run_docker.sh` (or `./docker/run_docker.sh -c` for cuRobo). Users must
+  start the container manually; if no container started by the appropriate command exists, prompt the user to start
+  it.
+- The repo's uv environment on the host, created by the user with `uv sync --locked` (with `--group curobo` for
+  SkillGen). Run commands from the repo root as `uv run --no-sync ...`. If `.venv` does not exist, prompt the user to
+  run `uv sync --locked`.
 
 ## Common Commands
 
@@ -39,5 +44,8 @@ pre-commit run --all-files
 
 - Do not change or modify anything in the submodules. All git-related operations in submodules are read-only: do not commit or push code or create branches in a submodule.
 - Don't mutate the `autodata` conda env. No `pip install/uninstall`, `conda install/remove`, or version upgrades. If a dependency is missing, surface the exact command and let the user run it.
+- Don't change `uv.lock` or the uv environment. No `uv sync`, `uv add`, `uv remove`, `uv lock --upgrade`, or
+  `uv pip install`; `uv run --no-sync` changes neither. If a dependency is missing, surface the
+  exact command and let the user run it.
 - Don't re-run, modify, or work around `conda_installer.sh`. No env recreate/rename/delete, no channel or conda config changes. Installer issues get reported, not patched in-flight.
 - Don't change any existing design docs or diagrams in /docs, that is only for human created files. If you need to add any new diagrams or designs, add them to the /agentic_design directory.

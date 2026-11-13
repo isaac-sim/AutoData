@@ -13,13 +13,14 @@ with-skill/without-skill benchmark remains unmeasured; `BENCHMARK.md` intentiona
 AutoData needs real hardware and infrastructure:
 
 - **Linux host** with an **NVIDIA GPU** and a driver meeting the Isaac Sim requirements.
-- **Docker** + the **NVIDIA Container Toolkit**.
+- **Docker** + the **NVIDIA Container Toolkit**, or the repo's uv environment (`uv sync --locked`).
 - An **NGC account** (`docker login nvcr.io`) to pull the Isaac Sim base image.
 - **Git LFS** to pull the example datasets.
-- For SkillGen tasks: the **cuRobo** container variant (`./docker/run_docker.sh -c`).
+- For SkillGen tasks: the **cuRobo** container variant (`./docker/run_docker.sh -c`) or the uv `curobo` group.
 
-The first container build can take ~30 minutes. All generation commands run **inside** the
-container, where the repo is mounted at `/workspaces/autodata`.
+The first container build can take ~30 minutes. Generation commands run **inside** the
+container, where the repo is mounted at `/workspaces/autodata`, or with `uv run --no-sync` from the repo root.
+Both installations use the repository's `uv.lock`.
 
 ## Recorded live acceptance run
 
@@ -54,7 +55,8 @@ Suggested prompts (from `evals/evals.json`):
 To verify end-to-end generation:
 
 1. Provision a Linux + NVIDIA GPU host and clone AutoData with submodules + LFS.
-2. Start the container: `./docker/run_docker.sh` (or `-c` for SkillGen).
+2. Start the container: `./docker/run_docker.sh` (or `-c` for SkillGen). Natively, run `uv sync --locked` and
+   prefix the commands below with `uv run --no-sync`.
 3. Run the full helper invocation for the `pos-mimicgen-franka` case:
 
    ```bash
@@ -68,7 +70,8 @@ To verify end-to-end generation:
        --trials 10 --num-envs 10 --viz none
    ```
 
-4. Confirm the output HDF5 passes `HDF5_USE_FILE_LOCKING=FALSE /isaac-sim/python.sh scripts/validate_dataset.py <output>`.
+4. Confirm the output HDF5 passes `HDF5_USE_FILE_LOCKING=FALSE python scripts/validate_dataset.py <output>`
+   (prefix `python` with `uv run --no-sync` natively).
 5. Repeat with and without the skill to fill the `BENCHMARK.md` result table (task completion
    rate, algorithm/container correctness, token consumption, wall-clock time).
 

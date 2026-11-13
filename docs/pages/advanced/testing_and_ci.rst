@@ -4,7 +4,8 @@ Testing and CI
 Test Suite
 ----------
 
-The test suite lives in ``autodata_tests/`` and runs inside the dev container. It is
+The test suite lives in ``autodata_tests/`` and runs inside the dev container, or in the native uv
+environment with ``uv run --locked pytest``. It is
 organized in tiers of increasing cost:
 
 .. list-table::
@@ -46,8 +47,51 @@ Common invocations:
 
 .. note::
 
-   The SkillGen end-to-end tests require the cuRobo image
-   (``./docker/run_docker.sh -c``).
+   The SkillGen end-to-end tests require cuRobo: the cuRobo image (``./docker/run_docker.sh -c``)
+   or the uv ``curobo`` group described in :doc:`../quickstart/installation`.
+
+
+Continuous Integration
+----------------------
+
+Pull requests run lint, documentation, and lockfile checks. GPU checks run the six correctness
+suites: ``e2e``, ``interfaces``, ``core``, ``utils``, ``retargeting``, and ``metrics``. The Docker
+check rebuilds the cuRobo image from the checkout while retaining Docker's layer cache.
+The ``Run tests (GPU, repo Docker)`` status combines Docker, native, lockfile, and lint results.
+
+Changes to source, tests, dependencies, submodules, scripts (including skill scripts), Docker,
+workflows, or Python/test configuration also trigger a fresh native uv installation with cuRobo
+and the same correctness suites, including real simulator subprocesses. The filter checks the
+full pull request. Docs-only changes skip native GPU testing; trusted Docker testing still runs.
+Main-branch pushes and manual runs always require native verification. Nightly Docker testing
+also runs the larger success-rate benchmarks.
+
+Self-hosted GPU jobs run only for branches in the repository. Fork pull requests affecting the
+filtered paths cannot pass the required native check. These changes must proceed through a
+maintainer-controlled branch and pull request in the repository. A separate successful run
+does not unblock the original fork pull request.
+
+Native setup keeps the current dependency cache and at most one other cache, selected by its
+most recent successful setup. Keys include the lockfile, uv/Python/CUDA versions, and GPU
+architecture. A shared filesystem lock covers pruning, installation, and successful-use
+markers, including cache hits. Simulator tests run after that lock is released. A failed or
+cancelled setup preserves the last successful fallback and leaves its partial cache unmarked
+for the next setup to retry or evict. Installed packages are copied so cache eviction cannot
+remove files from an environment that is still running tests.
+
+The managed root is ``autodata-native-uv-cache`` beside the repository workspace. Only valid
+key directories beneath its ``keys/`` directory are pruned. The separate
+``autodata-uv-cache`` root is unmanaged and requires administrator cleanup after all jobs
+using it have finished. No global uv or Docker caches are pruned.
+
+To run the correctness suites in an installed native environment with cuRobo:
+
+.. code-block:: bash
+
+   uv run --no-sync pytest -sv \
+       autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/ \
+       autodata_tests/utils/ autodata_tests/retargeting/ autodata_tests/metrics/
+
 
 Debugging Isaac Sim Runs
 ------------------------
@@ -81,7 +125,8 @@ Linting
 -------
 
 Pre-commit hooks enforce the style guide (black, flake8, isort, pyupgrade, codespell, and
-RST checks). Run them inside the development container before committing:
+RST checks). Run them before committing, inside the development container or with
+``uv run --locked pre-commit run --all-files`` in the uv environment:
 
 .. code-block:: bash
 

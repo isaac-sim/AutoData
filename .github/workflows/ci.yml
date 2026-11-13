@@ -7,6 +7,7 @@ on:
   pull_request:
   push:
     branches: ["main"]
+  workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
 concurrency:
@@ -15,6 +16,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
 
@@ -49,8 +51,105 @@ jobs:
           pip install --no-cache-dir pre-commit==4.6.0
           pre-commit run --all-files --show-diff-on-failure --verbose
 
-  run_tests:
-    name: Run tests (GPU, repo Docker)
+  uv_lock:
+    name: uv lock
+    # Needs no GPU, so unlike the GPU job it also runs for fork PRs.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout (recursive submodules)
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/0.12.21/install.sh | env UV_INSTALL_DIR="${RUNNER_TEMP}/uv" UV_NO_MODIFY_PATH=1 sh
+          echo "${RUNNER_TEMP}/uv" >> "${GITHUB_PATH}"
+
+      - name: Check the lock
+        run: |
+          uv lock --locked
+          uv run --locked --only-group dev pytest autodata_tests/utils/test_uv_lock.py autodata_tests/utils/test_native_ci.py
+
+  native_changes:
+    name: Detect native installation changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      native: ${{ github.event_name != 'pull_request' || steps.filter.outputs.native == 'true' }}
+    steps:
+      # The PR files API compares the full PR, including earlier commits.
+      - uses: dorny/paths-filter@v3
+        if: github.event_name == 'pull_request'
+        id: filter
+        with:
+          filters: |
+            native:
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'uv.toml'
+              - '.python-version'
+              - '.gitmodules'
+              - 'submodules/**'
+              - '.dockerignore'
+              - 'docker/**'
+              - '.github/workflows/**'
+              - 'scripts/**'
+              - 'skills/**/scripts/**'
+              - 'sitecustomize.py'
+              - 'autodata_*/**'
+              - 'conftest.py'
+              - 'pytest.ini'
+              - 'setup.cfg'
+
+  native_tests:
+    name: Native installation
+    needs: [native_changes, pre_commit]
+    if: >-
+      needs.native_changes.outputs.native == 'true' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/native.yml
+
+  native_check:
+    name: Native installation check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    needs: [native_changes, native_tests]
+    if: always()
+    steps:
+      - name: Check native installation result
+        env:
+          CHANGES_RESULT: ${{ needs.native_changes.result }}
+          NATIVE_REQUIRED: ${{ needs.native_changes.outputs.native }}
+          NATIVE_RESULT: ${{ needs.native_tests.result }}
+          TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          test "${CHANGES_RESULT}" = success
+          case "${NATIVE_REQUIRED}" in
+            true)
+              if [ "${NATIVE_RESULT}" != success ]; then
+                echo "Native installation tests must succeed; result: ${NATIVE_RESULT}."
+                if [ "${TRUSTED}" = false ] && [ "${NATIVE_RESULT}" = skipped ]; then
+                  echo "Source/test, dependency/submodule, script, Docker, workflow, or Python/test configuration changes require native GPU testing."
+                  echo "Fork changes must proceed through a maintainer-controlled branch and PR in this repository."
+                  echo "A separate successful run does not unblock the original fork PR."
+                fi
+                exit 1
+              fi
+              ;;
+            false)
+              test "${NATIVE_RESULT}" = skipped
+              echo "No native installation changes."
+              ;;
+            *) exit 1 ;;
+          esac
+
+  docker_tests:
+    name: Docker correctness tests (GPU)
     runs-on: [self-hosted, gpu]
     timeout-minutes: 120
     needs: [pre_commit]
@@ -62,6 +161,7 @@ jobs:
     # trials each) are heavy and run in the nightly instead. No marker filter, so
     # both subprocess and unit tests run.
     env:
+      FORCE_REBUILD: "true"
       TEST_PATH: "autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/ autodata_tests/utils/ autodata_tests/retargeting/ autodata_tests/metrics/"
 
     steps:
@@ -96,6 +196,31 @@ jobs:
         run: |
           mkdir -p "${DOCKER_CONFIG}"
           ./scripts/ci/run_tests.sh
+
+  run_tests:
+    # Preserve the required check name while gating both installation paths.
+    name: Run tests (GPU, repo Docker)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    needs: [pre_commit, uv_lock, native_check, docker_tests]
+    if: always()
+    steps:
+      - name: Check all required test results
+        env:
+          PRE_COMMIT_RESULT: ${{ needs.pre_commit.result }}
+          LOCK_RESULT: ${{ needs.uv_lock.result }}
+          NATIVE_RESULT: ${{ needs.native_check.result }}
+          DOCKER_RESULT: ${{ needs.docker_tests.result }}
+          TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          test "${PRE_COMMIT_RESULT}" = success
+          test "${LOCK_RESULT}" = success
+          test "${NATIVE_RESULT}" = success
+          if [ "${TRUSTED}" = true ]; then
+            test "${DOCKER_RESULT}" = success
+          else
+            test "${DOCKER_RESULT}" = skipped
+          fi
 
   build_docs:
     name: Build docs
