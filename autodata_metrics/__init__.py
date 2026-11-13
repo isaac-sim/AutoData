@@ -7,7 +7,7 @@ Producers record evidence; :func:`build_report` computes every registered metric
 Importing this package registers the built-in metrics.
 """
 
-from autodata_metrics import validity, viability
+from autodata_metrics import diversity, validity, viability
 from autodata_metrics.evidence import Episode, Evidence
 from autodata_metrics.registry import (
     AREAS,
