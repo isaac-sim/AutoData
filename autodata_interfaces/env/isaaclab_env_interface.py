@@ -192,6 +192,11 @@ def apply_env_profile(env_cfg: Any, profile: EnvironmentProfile, env_name: str) 
             "which does not exist on the base env or the profile's scene additions."
         )
 
+    if profile.domain_randomization is not None:
+        from autodata_domain_randomization import apply_domain_randomization
+
+        apply_domain_randomization(env_cfg, env_name, profile.domain_randomization, env_cfg.scene.num_envs)
+
 
 def setup_env_config(
     env_name: str,
@@ -243,6 +248,10 @@ def setup_env_config(
             action_cfg.class_type = PinkInverseKinematicsActionSharedUrdf
 
     if env_profile is not None:
+        dr = env_profile.domain_randomization
+        assert (
+            enable_cameras or dr is None or not any(camera.enabled for camera in dr.cameras)
+        ), "Camera DR requires --enable_cameras."
         apply_env_profile(env_cfg, env_profile, env_name)
 
     # Extract success checking function
