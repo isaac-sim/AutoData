@@ -3,8 +3,8 @@
 
 """Declarative environment-profile schema for base-task variants.
 
-An :class:`EnvironmentProfile` describes scene changes, event-term changes, and the
-motion-planner profile of a task variant. It is overlaid on the parsed env config before
+An :class:`EnvironmentProfile` describes scene changes, event-term changes, optional domain
+randomization, and the motion-planner profile of a task variant. It is overlaid on the parsed env config before
 ``gym.make`` by :func:`~autodata_interfaces.env.isaaclab_env_interface.apply_env_profile`;
 this module holds only the schema and its validation and does not import ``isaaclab``.
 """
@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import yaml
 from dataclasses import dataclass, field, fields
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from autodata_domain_randomization.configs import DomainRandomizationCfg
 
 _EVENT_MODES = {"startup", "reset", "interval"}
 
@@ -125,6 +128,7 @@ class EnvironmentProfile:
         scene: Scene changes (:class:`SceneSpec`).
         events: Event-term changes (:class:`EventsSpec`).
         actions: Parameter overrides for existing action terms.
+        domain_randomization: Optional randomization settings applied after scene and event changes.
         planner: Name of the motion-planner profile tuned for this scene (key into
             :meth:`CuroboPlannerCfg.from_profile`), or None to fall back to task-name matching.
     """
@@ -137,6 +141,7 @@ class EnvironmentProfile:
     planner: str | None = None
     actions: dict[str, dict[str, Any]] = field(default_factory=dict)
     """Action-term parameter overrides, applied before the action manager is built."""
+    domain_randomization: DomainRandomizationCfg | None = None
 
     @classmethod
     def from_yaml(cls, path: str) -> EnvironmentProfile:
@@ -175,6 +180,10 @@ class EnvironmentProfile:
                   func: "<module.path>:<function>"
                   mode: reset                   # optional
                   params: {...}                 # *_cfg/*_cfgs values name scene assets
+            domain_randomization:              # optional; only supplied settings are applied; cameras require --enable_cameras
+              cameras:
+                - asset_name: <camera_sensor_name>
+                  focal_length_scale_range: [0.96, 1.04]
         """
         with open(path) as f:
             data = yaml.safe_load(f)
@@ -217,6 +226,7 @@ class EnvironmentProfile:
             events=events,
             planner=data.get("planner"),
             actions=data.get("actions", {}),
+            domain_randomization=_parse_domain_randomization(data),
         )
 
     def referenced_asset_names(self) -> set[str]:
@@ -237,7 +247,7 @@ def validate_profile_dict(data: dict[str, Any]) -> None:
     assert isinstance(data, dict), f"Expected top-level dict, got {type(data).__name__}"
 
     required_keys = {"name", "base_env"}
-    optional_keys = {"description", "planner", "scene", "events", "actions"}
+    optional_keys = {"description", "planner", "scene", "events", "actions", "domain_randomization"}
     keys = set(data)
     missing = required_keys - keys
     assert not missing, f"Missing required top-level keys: {sorted(missing)}"
@@ -254,12 +264,21 @@ def validate_profile_dict(data: dict[str, Any]) -> None:
 
     _validate_scene_dict(data.get("scene", {}))
     _validate_events_dict(data.get("events", {}))
+    _parse_domain_randomization(data)
     actions = data.get("actions", {})
     assert isinstance(actions, dict), "'actions' must map action term names to parameter overrides."
     assert all(
         isinstance(name, str) and isinstance(params, dict) and all(isinstance(key, str) for key in params)
         for name, params in actions.items()
     ), "Each action override must map a term name to a parameter dict with string keys."
+
+
+def _parse_domain_randomization(data: dict[str, Any]) -> DomainRandomizationCfg | None:
+    if "domain_randomization" not in data:
+        return None
+    from autodata_domain_randomization.configs import DomainRandomizationCfg
+
+    return DomainRandomizationCfg.from_dict(data["domain_randomization"])
 
 
 def _validate_scene_dict(scene: dict[str, Any]) -> None:

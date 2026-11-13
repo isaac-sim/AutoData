@@ -16,6 +16,9 @@ organized in tiers of increasing cost:
    * - ``interfaces/``, ``core/``, ``utils/``
      - Fast unit tests for the pure-Python layers (task descriptors, embodiment adapters,
        datastream, selection strategies, ...). No Isaac Sim launch; run in seconds.
+   * - ``domain_randomization/``
+     - Unit tests for randomizing lighting, materials, camera calibration, object poses,
+       robot root poses, and robot joint positions on reset. Isaac Sim is not launched.
    * - ``e2e/``
      - Recording and annotation checks, plus data-generation runs for MimicGen, DexMimicGen,
        and SkillGen in single- and multi-env variants. Marked ``with_subprocess``: they

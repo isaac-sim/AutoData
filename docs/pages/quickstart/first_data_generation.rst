@@ -129,3 +129,4 @@ Next Steps
 * Record and annotate your own demonstrations: :doc:`../workflows/franka_cube_stack_mimicgen/index`.
 * Generate for a humanoid with two end-effectors: :doc:`../workflows/humanoid_dexmimicgen/index`.
 * Use motion-planned transit for collision-aware generation: :doc:`../workflows/skillgen/index`.
+* Vary lighting, materials, camera calibration, and reset poses: :doc:`../concepts/domain_randomization`.

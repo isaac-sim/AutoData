@@ -85,7 +85,7 @@ parser.add_argument(
     default=None,
     help=(
         "Optional environment profile YAML overlaid on the base task before env creation "
-        "(scene additions, reset randomization, motion-planner profile)."
+        "(scene additions, reset/domain randomization, motion-planner profile)."
     ),
 )
 parser.add_argument("--generation_num_trials", type=int, default=None, help="Number of demos to generate.")

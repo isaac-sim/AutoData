@@ -25,6 +25,7 @@ setup(
     packages=find_packages(
         include=[
             "autodata_core*",
+            "autodata_domain_randomization*",
             "autodata_interfaces*",
             "autodata_metrics*",
             "autodata_utils*",

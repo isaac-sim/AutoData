@@ -91,6 +91,7 @@ RUN if [ "$INSTALL_CUROBO" = "true" ]; then \
 # Keep application changes after cuRobo so they do not rebuild its CUDA kernels.
 COPY setup.py pyproject.toml README.md sitecustomize.py ${WORKDIR}/
 COPY autodata_core ${WORKDIR}/autodata_core
+COPY autodata_domain_randomization ${WORKDIR}/autodata_domain_randomization
 COPY autodata_interfaces ${WORKDIR}/autodata_interfaces
 COPY autodata_utils ${WORKDIR}/autodata_utils
 COPY autodata_examples ${WORKDIR}/autodata_examples

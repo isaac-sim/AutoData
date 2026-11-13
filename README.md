@@ -54,6 +54,7 @@ the amount of manual collection needed to produce datasets for policy training.
   reusable YAML files.
 - **Adaptable environments** — Apply environment profiles to create task variants without defining a new simulation
   environment.
+- **Domain randomization** — Vary visual properties and reset poses through environment profiles.
 - **End-to-end dataset tools** — Record, annotate, generate, validate, and replay HDF5 demonstrations.
 
 ## Quick Start
@@ -141,16 +142,17 @@ for an explanation of each step and instructions for replaying the result.
 
 ```text
 AutoData/
-├── autodata_core/              # Data generation algorithms and execution
-├── autodata_interfaces/        # Task, embodiment, datastream, and planner interfaces
-├── autodata_utils/             # Shared utilities
-├── autodata_examples/          # Example task, embodiment, and environment-profile configs
-├── autodata_tests/             # Unit, end-to-end, and performance tests
-├── scripts/                    # Dataset generation, annotation, and validation tools
-├── datasets/                   # Example and test datasets stored with Git LFS
-├── docker/                     # Reproducible development containers
-├── docs/                       # Sphinx documentation
-└── submodules/                 # Isaac Lab-Arena and Isaac Lab
+├── autodata_core/                  # Data generation algorithms and execution
+├── autodata_domain_randomization/  # Domain-randomization configs and reset events
+├── autodata_interfaces/            # Task, embodiment, datastream, and planner interfaces
+├── autodata_utils/                 # Shared utilities
+├── autodata_examples/              # Example task, embodiment, and environment-profile configs
+├── autodata_tests/                 # Unit, end-to-end, and performance tests
+├── scripts/                        # Dataset generation, annotation, and validation tools
+├── datasets/                       # Example and test datasets stored with Git LFS
+├── docker/                         # Reproducible development containers
+├── docs/                           # Sphinx documentation
+└── submodules/                     # Isaac Lab-Arena and Isaac Lab
 ```
 
 ## Contributing

@@ -240,3 +240,15 @@ def test_shipped_bin_stack_profile_parses():
     assert set(profile.scene.rigid_objects.override) == {"cube_1", "cube_2", "cube_3"}
     assert profile.events.remove == ["randomize_cube_positions"]
     assert set(profile.events.add) == {"reset_blue_bin_pose", "reset_cube_1_pose", "reset_cube_pose"}
+
+
+def test_domain_randomization_is_optional_and_omitted_subsections_stay_disabled():
+    assert EnvironmentProfile.from_dict(_minimal_valid()).domain_randomization is None
+    data = {**_minimal_valid(), "domain_randomization": {"cameras": [{"asset_name": "cam"}]}}
+    snapshot = copy.deepcopy(data)
+    profile = EnvironmentProfile.from_dict(data)
+    cfg = profile.domain_randomization
+    assert cfg.cameras[0].enabled and cfg.cameras[0].asset_name == "cam"
+    assert cfg.lighting is None and cfg.robot_root is None and cfg.robot_joints is None
+    assert not cfg.poses and not cfg.material_colors and not cfg.material_scalars
+    assert data == snapshot
