@@ -20,17 +20,17 @@ Automatic Annotation (Recommended)
 The rope environment publishes a ``grasp`` observation. With ``--auto``, annotation uses its
 first rising edge as the boundary between grasping and manipulating the rope.
 
-Start the dev container, then run the command for your backend:
+Prepare a terminal for your chosen runtime, then run the command for your physics backend:
 
-:docker_run_default:
+.. autodata-runtime::
 
 .. tabs::
 
    .. group-tab:: Newton
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/annotate_demos.py \
+         scripts/annotate_demos.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
              --viz none \
@@ -49,9 +49,9 @@ Start the dev container, then run the command for your backend:
 
    .. group-tab:: PhysX
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/annotate_demos.py \
+         scripts/annotate_demos.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
              --viz none \
@@ -76,9 +76,9 @@ To mark the boundary yourself, omit ``--auto`` and use ``--viz kit``:
 
    .. group-tab:: Newton
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/annotate_demos.py \
+         scripts/annotate_demos.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
              --viz kit \
@@ -96,9 +96,9 @@ To mark the boundary yourself, omit ``--auto`` and use ``--viz kit``:
 
    .. group-tab:: PhysX
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/annotate_demos.py \
+         scripts/annotate_demos.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
              --viz kit \
@@ -148,14 +148,14 @@ Check the annotated dataset:
 
    .. group-tab:: Newton
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py ./datasets/dataset_franka_rope_newton_annotated.hdf5
+         scripts/validate_dataset.py ./datasets/dataset_franka_rope_newton_annotated.hdf5
 
    .. group-tab:: PhysX
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py ./datasets/dataset_franka_rope_physx_annotated.hdf5
+         scripts/validate_dataset.py ./datasets/dataset_franka_rope_physx_annotated.hdf5
 
 Continue to :doc:`step_3_generate_dataset`.

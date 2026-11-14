@@ -8,8 +8,8 @@ Franka SkillGen Preflight
 =========================
 
 Complete this preflight before annotating demonstrations or starting a long SkillGen generation
-run. It verifies the cuRobo image, GPU build, source dataset, Nucleus asset download, and one complete
-end-to-end generation run. Repeat it after changing GPUs or rebuilding the development image.
+run. It verifies the cuRobo installation, GPU build, source dataset, Nucleus asset download, and one complete
+end-to-end generation run. Repeat it after changing GPUs or rebuilding cuRobo for your runtime.
 
 This page assumes the base :doc:`AutoData installation <../../quickstart/installation>` is complete
 and the host satisfies the :doc:`support matrix <../../quickstart/support_matrix>`.
@@ -23,7 +23,7 @@ Requirements at a Glance
 
    * - Requirement
      - What is needed
-   * - Container
+   * - Runtime
      - The cuRobo development image started with ``./docker/run_docker.sh -c``, or the native uv
        environment with cuRobo installed (see :ref:`installation-uv-curobo`).
    * - GPU memory
@@ -40,41 +40,51 @@ Requirements at a Glance
      - Optional. Use ``--viz none`` for headless generation. A display is required for manual
        annotation, Kit visualization, and the Rerun plan viewer.
 
-1. Start the cuRobo Container
+.. _start-the-curobo-container:
+
+1. Prepare the cuRobo Runtime
 -----------------------------
 
-On the **host**, confirm which GPU will run SkillGen and start the cuRobo image:
+On the **host**, from the repository root, confirm which GPU will run SkillGen and download
+the source data:
 
 .. code-block:: bash
 
    nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv
    git lfs pull
-   ./docker/run_docker.sh -c
 
-The first build compiles cuRobo for the compute capability reported by ``nvidia-smi`` and can take
-considerably longer than starting the base container. If the image was built for a different GPU,
-rebuild it from the host:
+Prepare a terminal for your chosen runtime. Native uv requires the
+:ref:`cuRobo installation steps <installation-uv-curobo>` to be complete:
 
-.. code-block:: bash
+.. autodata-runtime::
+   :curobo:
 
-   ./docker/run_docker.sh -c -r
+.. note::
 
-Use ``-R`` instead of ``-r`` only when a cached build remains incompatible. See
-:ref:`troubleshooting-curobo` for missing-module and CUDA-kernel errors.
+   **Docker image builds:** the first build compiles cuRobo for the compute capability reported
+   by ``nvidia-smi`` and can take considerably longer than starting the base container. If the
+   image was built for a different GPU, rebuild it from the host:
 
-In the native uv environment, install cuRobo with :ref:`installation-uv-curobo` instead. Run the
-commands in the following steps from the repository root, starting each Python command with
-``uv run --locked``.
+   .. code-block:: bash
+
+      ./docker/run_docker.sh -c -r
+
+   Use ``-R`` instead of ``-r`` only when a cached build remains incompatible.
+
+See :ref:`troubleshooting-curobo` for missing-module and CUDA-kernel errors.
 
 2. Verify cuRobo and the Source Dataset
 ---------------------------------------
 
-Run these checks inside the **cuRobo container**:
+Run these checks from the repository root in your chosen cuRobo-enabled runtime:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python -c "import curobo, torch; print(curobo.__file__); print(torch.cuda.get_device_name(0))"
-   python scripts/validate_dataset.py ./datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5
+   -c "import curobo, torch; print(curobo.__file__); print(torch.cuda.get_device_name(0))"
+
+.. autodata-python::
+
+   scripts/validate_dataset.py ./datasets/annotated_datasets/dataset_franka_skillgen_annotated.hdf5
 
 The first command must print the installed cuRobo path and expected GPU. The validator must report
 the source dataset as ``VALID``. If it reports ``file signature not found`` or the file is an LFS
@@ -83,11 +93,11 @@ pointer, follow :ref:`troubleshooting-lfs`.
 3. Run One End-to-End Planning Check
 ------------------------------------
 
-Still inside the **cuRobo container**, generate one successful cube-stacking demonstration:
+In the same runtime, generate one successful cube-stacking demonstration:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/generate_dataset.py \
+   scripts/generate_dataset.py \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --alg skillgen \
        --task_descriptor autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
@@ -102,9 +112,9 @@ Still inside the **cuRobo container**, generate one successful cube-stacking dem
 This check exercises the Nucleus URDF download, cuRobo initialization, collision-world update,
 motion planning, execution, and HDF5 recording. Validate the result:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/validate_dataset.py ./datasets/generated_dataset_skillgen_preflight.hdf5
+   scripts/validate_dataset.py ./datasets/generated_dataset_skillgen_preflight.hdf5
 
 The preflight passes when generation records one successful demonstration and the validator reports
 the output as ``VALID``. A Nucleus download failure is a setup problem; follow

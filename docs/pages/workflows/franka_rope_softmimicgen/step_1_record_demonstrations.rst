@@ -18,9 +18,10 @@ Recording with a SpaceMouse (Recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Set up the SpaceMouse on the host using the device setup instructions in
-:doc:`../franka_cube_stack_mimicgen/step_1_record_demonstrations`, then start the dev container:
+:doc:`../franka_cube_stack_mimicgen/step_1_record_demonstrations`, then prepare a terminal for
+your chosen runtime:
 
-:docker_run_default:
+.. autodata-runtime::
 
 Run the recording command for your backend:
 
@@ -28,9 +29,9 @@ Run the recording command for your backend:
 
    .. group-tab:: Newton
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
+         submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
              --task Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
              --external_callback autodata_examples.envs.register_environments \
@@ -49,9 +50,9 @@ Run the recording command for your backend:
 
    .. group-tab:: PhysX
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
+         submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
              --task Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
              --external_callback autodata_examples.envs.register_environments \
@@ -122,14 +123,14 @@ Check that the recorded file contains the successful episodes:
 
    .. group-tab:: Newton
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py ./datasets/dataset_franka_rope_newton.hdf5
+         scripts/validate_dataset.py ./datasets/dataset_franka_rope_newton.hdf5
 
    .. group-tab:: PhysX
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py ./datasets/dataset_franka_rope_physx.hdf5
+         scripts/validate_dataset.py ./datasets/dataset_franka_rope_physx.hdf5
 
 Continue to :doc:`step_2_annotate_demonstrations`.

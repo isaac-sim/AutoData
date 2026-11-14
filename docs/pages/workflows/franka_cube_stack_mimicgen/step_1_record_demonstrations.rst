@@ -27,7 +27,7 @@ Recording with a SpaceMouse (Recommended)
 Isaac Lab supports the **SpaceMouse Wireless** and **SpaceMouse Compact** from
 `3Dconnexion <https://3dconnexion.com/>`_.
 
-**Set up the device (outside the dev container):**
+**Set up the device on the host:**
 
 #. Plug the SpaceMouse into the host machine.
 
@@ -48,15 +48,15 @@ Isaac Lab supports the **SpaceMouse Wireless** and **SpaceMouse Compact** from
    ``cat /sys/class/hidraw/hidraw<N>/device/uevent`` (for each ``<N>`` that was listed).
    Then ``sudo chmod 666 /dev/hidrawN`` on the one whose ``HID_NAME`` is the SpaceMouse.
 
-**Start the dev container:**
+**Prepare a terminal for your chosen runtime:**
 
-:docker_run_default:
+.. autodata-runtime::
 
 **Run the recording script**:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
+   submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
       --viz kit \
       --task IsaacContrib-Stack-Cube-Franka-IK-Rel \
       --teleop_device spacemouse \
@@ -106,15 +106,15 @@ Recording with a Keyboard (Optional)
 
 A keyboard can be used as an alternative if no SpaceMouse is available. No extra device setup is required.
 
-**Start the dev container:**
+**Prepare a terminal for your chosen runtime:**
 
-:docker_run_default:
+.. autodata-runtime::
 
 **Run the recording script**:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
+   submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
       --task IsaacContrib-Stack-Cube-Franka-IK-Rel \
       --viz kit \
       --teleop_device keyboard \
@@ -142,8 +142,8 @@ Expected Output
 
 Verify the ``datasets/dataset_franka.hdf5`` file contains the recorded episodes using:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/validate_dataset.py datasets/dataset_franka.hdf5
+   scripts/validate_dataset.py datasets/dataset_franka.hdf5
 
 Continue to :doc:`step_2_annotate_demonstrations`.

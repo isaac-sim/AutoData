@@ -251,11 +251,16 @@ Step 4: Reuse or annotate source demonstrations
 -----------------------------------------------
 
 The Franka cube stacking source demonstrations recorded in Isaac Lab Mimic are already in the
-correct HDF5 format. Annotate the raw dataset directly with AutoData:
+correct HDF5 format. Complete :doc:`../quickstart/installation` for your chosen runtime, then
+prepare a terminal:
 
-.. code-block:: bash
+.. autodata-runtime::
 
-   python scripts/annotate_demos.py \
+Annotate the raw dataset directly with AutoData:
+
+.. autodata-python::
+
+   scripts/annotate_demos.py \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz none \
        --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
@@ -271,9 +276,9 @@ Step 5: Run a small generation test
 Run the migrated Franka cube stacking example in AutoData using the task and embodiment descriptors
 created in Steps 2 and 3:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/generate_dataset.py \
+   scripts/generate_dataset.py \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz kit \
        --num_envs 10 \

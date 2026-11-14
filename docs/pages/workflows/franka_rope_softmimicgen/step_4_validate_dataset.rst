@@ -4,6 +4,8 @@
 Step 4: Validate the Generated Dataset
 --------------------------------------
 
+Run these commands from the repository root in the runtime used for generation.
+
 Structural Validation
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -13,15 +15,15 @@ Check the generated HDF5 file and summarize its contents:
 
    .. group-tab:: Newton
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py ./datasets/generated_dataset_softmimicgen_franka_rope_newton.hdf5
+         scripts/validate_dataset.py ./datasets/generated_dataset_softmimicgen_franka_rope_newton.hdf5
 
    .. group-tab:: PhysX
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py ./datasets/generated_dataset_softmimicgen_franka_rope_physx.hdf5
+         scripts/validate_dataset.py ./datasets/generated_dataset_softmimicgen_franka_rope_physx.hdf5
 
 If you only ran small-scale generation, use the corresponding ``_small.hdf5`` file instead.
 The validator prints the episode count, environment metadata, and any structural issues.
@@ -43,9 +45,9 @@ generate the dataset, and keep the Arena registration callback:
 
    .. group-tab:: Newton
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
+         submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
              --task Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
              --external_callback autodata_examples.envs.register_environments \
@@ -57,9 +59,9 @@ generate the dataset, and keep the Arena registration callback:
 
    .. group-tab:: PhysX
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
+         submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
              --task Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
              --external_callback autodata_examples.envs.register_environments \

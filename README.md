@@ -58,16 +58,15 @@ the amount of manual collection needed to produce datasets for policy training.
 
 ## Quick Start
 
+Choose **one** installation method: [Docker (recommended)](#docker-installation-recommended) or
+[native uv](#native-uv-installation). Docker runs AutoData in a container; native uv runs it on the host
+without Docker. Complete the shared prerequisites and clone steps, then follow only your chosen method.
+
 ### Prerequisites
 
 - Linux with an NVIDIA GPU and driver that meet the
   [Isaac Sim requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)
 - Git and [Git LFS](https://git-lfs.com/)
-- For the recommended Docker installation: [Docker](https://docs.docker.com/engine/install/), the
-  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
-  and an [NGC](https://catalog.ngc.nvidia.com/) account for the Isaac Sim container image
-- For the native installation instead: Linux x86_64,
-  [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.12.21 or newer, CMake, and a C++ compiler
 
 ### Installation
 
@@ -80,7 +79,13 @@ git lfs install
 git lfs pull
 ```
 
-Log in to NGC and launch the development container:
+#### Docker installation (recommended)
+
+This method requires [Docker](https://docs.docker.com/engine/install/), the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+and an [NGC](https://catalog.ngc.nvidia.com/) account for the Isaac Sim container image.
+
+From the repository root **on the host**, log in to NGC and launch the development container:
 
 ```bash
 docker login nvcr.io
@@ -92,31 +97,44 @@ The first launch builds the development image and opens a shell in the repositor
 for SkillGen workflows. Docker reuses the base image's Isaac Sim; other dependencies use the same repository
 `uv.lock` as the native installation.
 
-For the native installation, skip Docker and install the locked environment at the repository root instead:
+#### Native uv installation
+
+This method does **not** require Docker. On Linux x86_64, install
+[uv](https://docs.astral.sh/uv/getting-started/installation/) **0.12.21 or newer**, CMake, and a C++ compiler.
+From the repository root **on the host**, install the locked environment:
 
 ```bash
 uv sync --locked
 ```
 
+For cuRobo/SkillGen and additional native prerequisites, see the
+[native uv installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html?autodata-runtime=uv#optional-native-uv-installation).
+
+#### Updating an existing checkout
+
 This checkout uses Isaac Sim 6.1.0, Arena 0.3.0 at commit
 `c7edf3a9d5d8276565208f72422f8f8a0806d6cf`, and its nested Isaac Lab at commit
-`91a0906f93802eb859192dcb0bca879f891e92d6`. After updating an existing clone, run
-`git submodule update --init --recursive` and rebuild with `./docker/run_docker.sh -c -r`, or rerun
-`uv sync --locked` for the native installation.
+`91a0906f93802eb859192dcb0bca879f891e92d6`. After updating the checkout, run
+`git submodule update --init --recursive`, then update only your chosen runtime:
+
+- **Docker:** rebuild with `./docker/run_docker.sh -r`, or `./docker/run_docker.sh -c -r` for SkillGen.
+- **Native uv:** run `uv sync --locked`; include `--group curobo` if you use SkillGen.
+
 Commands, environment profiles, and source dataset metadata use Lab 3.0's `IsaacContrib-*`
 task names directly. For example, Franka recording uses
 `--task IsaacContrib-Stack-Cube-Franka-IK-Rel`.
 
-The [installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html) covers the
-[native uv installation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-native-uv-installation)
-including cuRobo, a
-[conda installation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-conda-installation)
-with `./conda_installer.sh -c -i`, and additional container options.
+The [installation guide](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html) also covers
+additional container options and the optional
+[conda installation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html#optional-conda-installation).
 
 ### Generate Your First Dataset
 
-Inside the container, generate ten Franka cube-stacking demonstrations from the pre-annotated dataset. In the uv
-environment, start each Python command with `uv run --locked`:
+Generate ten Franka cube-stacking demonstrations from the pre-annotated dataset. Expand the commands for
+**your chosen runtime** and run them from the repository root.
+
+<details>
+<summary>Docker — inside the development container</summary>
 
 ```bash
 python scripts/generate_dataset.py \
@@ -131,14 +149,41 @@ python scripts/generate_dataset.py \
     --output_file ./datasets/generated_dataset_franka_quickstart.hdf5
 ```
 
-Validate the generated dataset:
+Validate the generated dataset in the same container:
 
 ```bash
 python scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5
 ```
 
-See [Your First Data Generation](https://isaac-sim.github.io/AutoData/main/pages/quickstart/first_data_generation.html)
-for an explanation of each step and instructions for replaying the result.
+[Continue with the Docker quickstart and replay instructions](https://isaac-sim.github.io/AutoData/main/pages/quickstart/first_data_generation.html?autodata-runtime=docker).
+
+</details>
+
+<details>
+<summary>Native uv — on the host</summary>
+
+```bash
+uv run --locked python scripts/generate_dataset.py \
+    --viz kit \
+    --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
+    --alg mimicgen \
+    --generation_num_trials 10 \
+    --num_envs 10 \
+    --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
+    --embodiment autodata_examples/embodiments/franka_ik_rel.yaml \
+    --input_file ./datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
+    --output_file ./datasets/generated_dataset_franka_quickstart.hdf5
+```
+
+Validate the generated dataset on the host:
+
+```bash
+uv run --locked python scripts/validate_dataset.py ./datasets/generated_dataset_franka_quickstart.hdf5
+```
+
+[Continue with the native uv quickstart and replay instructions](https://isaac-sim.github.io/AutoData/main/pages/quickstart/first_data_generation.html?autodata-runtime=uv).
+
+</details>
 
 ## Example Workflows
 

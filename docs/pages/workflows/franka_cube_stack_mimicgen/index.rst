@@ -53,9 +53,9 @@ pre-annotated dataset that ships with the repository.
 Prerequisites
 ^^^^^^^^^^^^^
 
-Start the dev container (see :doc:`../../quickstart/installation`):
+Complete :doc:`../../quickstart/installation` for your chosen runtime, then prepare a terminal:
 
-:docker_run_default:
+.. autodata-runtime::
 
 Workflow Steps
 ^^^^^^^^^^^^^^

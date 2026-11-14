@@ -20,15 +20,15 @@ Automatic annotation is recommended for the Franka cube-stacking task because th
 Automatic Annotation (Recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Start the dev container:**
+**Prepare a terminal for your chosen runtime:**
 
-:docker_run_default:
+.. autodata-runtime::
 
 **Run the annotation script in automatic mode:**
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/annotate_demos.py \
+   scripts/annotate_demos.py \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz none \
        --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
@@ -54,15 +54,15 @@ and marking boundaries with the keyboard.
   Manual annotation is not required for this workflow if
   automatic annotation is used.
 
-**Start the dev container:**
+**Prepare a terminal for your chosen runtime:**
 
-:docker_run_default:
+.. autodata-runtime::
 
 **Run the annotation script in manual mode:**
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/annotate_demos.py \
+   scripts/annotate_demos.py \
       --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
       --viz kit \
       --task_descriptor autodata_examples/tasks/franka_cube_stack.yaml \
@@ -103,8 +103,8 @@ Expected Output
 
 Verify the ``datasets/dataset_franka_annotated.hdf5`` file contains the annotated episodes using:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/validate_dataset.py datasets/dataset_franka_annotated.hdf5
+   scripts/validate_dataset.py datasets/dataset_franka_annotated.hdf5
 
 Continue to :doc:`step_3_generate_dataset`.

@@ -22,9 +22,9 @@ skipped automatically.
 Manual Annotation
 ^^^^^^^^^^^^^^^^^
 
-**Start the dev container:**
+**Prepare a terminal for your chosen runtime:**
 
-:docker_run_default:
+.. autodata-runtime::
 
 **Run the annotation script:**
 
@@ -32,9 +32,9 @@ Manual Annotation
 
    .. group-tab:: GR-1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/annotate_demos.py \
+         scripts/annotate_demos.py \
             --env_name IsaacContrib-PickPlace-GR1T2-Abs \
             --viz kit \
             --device cpu \
@@ -45,9 +45,9 @@ Manual Annotation
 
    .. group-tab:: G1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/annotate_demos.py \
+         scripts/annotate_demos.py \
             --env_name IsaacContrib-PickPlace-Locomanipulation-G1-Abs \
             --viz kit \
             --device cpu \
@@ -110,14 +110,14 @@ Verify the annotated dataset contains the annotated episodes:
 
    .. group-tab:: GR-1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py ./datasets/dataset_gr1_annotated.hdf5
+         scripts/validate_dataset.py ./datasets/dataset_gr1_annotated.hdf5
 
    .. group-tab:: G1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py ./datasets/dataset_g1_annotated.hdf5
+         scripts/validate_dataset.py ./datasets/dataset_g1_annotated.hdf5
 
 Continue to :doc:`step_3_generate_dataset`.
