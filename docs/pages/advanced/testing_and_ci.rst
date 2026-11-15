@@ -49,8 +49,6 @@ One end-to-end generation test, streaming Isaac Sim output live:
    The SkillGen end-to-end tests require cuRobo: the cuRobo image (``./docker/run_docker.sh -c``)
    or the native setup described in :ref:`installation-uv-curobo`.
 
-Prepare the cuRobo runtime before running suites that include SkillGen:
-
 .. autodata-runtime::
    :curobo:
 

@@ -20,9 +20,9 @@ Automatic Annotation (Recommended)
 The rope environment publishes a ``grasp`` observation. With ``--auto``, annotation uses its
 first rising edge as the boundary between grasping and manipulating the rope.
 
-Prepare a terminal for your chosen runtime, then run the command for your physics backend:
-
 .. autodata-runtime::
+
+Run the command for your physics backend:
 
 .. tabs::
 

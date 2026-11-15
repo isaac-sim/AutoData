@@ -15,8 +15,6 @@ trajectory is rigidly transformed to the new object poses and replayed.
 The commands below use the pre-annotated source dataset that ships with the repository. If you ran
 Steps 1–2, point ``--input_file`` at your own ``dataset_franka_annotated.hdf5`` instead.
 
-Prepare a terminal for your chosen runtime:
-
 .. autodata-runtime::
 
 

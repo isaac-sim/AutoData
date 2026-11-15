@@ -251,8 +251,7 @@ Step 4: Reuse or annotate source demonstrations
 -----------------------------------------------
 
 The Franka cube stacking source demonstrations recorded in Isaac Lab Mimic are already in the
-correct HDF5 format. Complete :doc:`../quickstart/installation` for your chosen runtime, then
-prepare a terminal:
+correct HDF5 format. Complete :doc:`../quickstart/installation` for your chosen runtime.
 
 .. autodata-runtime::
 

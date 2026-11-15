@@ -48,8 +48,6 @@ Isaac Lab supports the **SpaceMouse Wireless** and **SpaceMouse Compact** from
    ``cat /sys/class/hidraw/hidraw<N>/device/uevent`` (for each ``<N>`` that was listed).
    Then ``sudo chmod 666 /dev/hidrawN`` on the one whose ``HID_NAME`` is the SpaceMouse.
 
-**Prepare a terminal for your chosen runtime:**
-
 .. autodata-runtime::
 
 **Run the recording script**:
@@ -105,8 +103,6 @@ Recording with a Keyboard (Optional)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A keyboard can be used as an alternative if no SpaceMouse is available. No extra device setup is required.
-
-**Prepare a terminal for your chosen runtime:**
 
 .. autodata-runtime::
 

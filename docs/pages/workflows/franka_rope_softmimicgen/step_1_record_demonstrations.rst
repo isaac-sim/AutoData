@@ -18,8 +18,7 @@ Recording with a SpaceMouse (Recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Set up the SpaceMouse on the host using the device setup instructions in
-:doc:`../franka_cube_stack_mimicgen/step_1_record_demonstrations`, then prepare a terminal for
-your chosen runtime:
+:doc:`../franka_cube_stack_mimicgen/step_1_record_demonstrations`.
 
 .. autodata-runtime::
 

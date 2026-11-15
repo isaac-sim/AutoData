@@ -104,16 +104,15 @@ class AutoDataRuntimeDirective(SphinxDirective):
     def run(self) -> list[nodes.Node]:
         curobo = "curobo" in self.options
         docker = (
-            "From the repository root on the host, open or reattach to the development container:\n\n"
+            "From the host repository root, open or reattach to the container:\n\n"
             + _shell_block("./docker/run_docker.sh" + (" -c" if curobo else ""))
-            + "\n\nRun the following commands in its shell at ``/workspaces/autodata``."
+            + "\n\nContinue in the container at ``/workspaces/autodata``."
         )
         installation = "installation-uv-curobo" if curobo else "installation-uv"
+        label = "uv environment with cuRobo" if curobo else "uv environment"
         uv = (
-            f"Use a host terminal at the repository root with the :ref:`native uv environment <{installation}>`"
-            + (" and cuRobo" if curobo else "")
-            + " already installed. No container or environment activation is needed. "
-            "The Native uv commands below select the project's environment."
+            f"Use your installed :ref:`{label} <{installation}>` from the host repository root. "
+            "No activation is needed."
         )
         return self.parse_text_to_nodes(_runtime_tabs(docker, uv))
 

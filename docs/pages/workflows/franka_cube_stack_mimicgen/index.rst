@@ -53,7 +53,7 @@ pre-annotated dataset that ships with the repository.
 Prerequisites
 ^^^^^^^^^^^^^
 
-Complete :doc:`../../quickstart/installation` for your chosen runtime, then prepare a terminal:
+Complete :doc:`../../quickstart/installation` for your chosen runtime.
 
 .. autodata-runtime::
 

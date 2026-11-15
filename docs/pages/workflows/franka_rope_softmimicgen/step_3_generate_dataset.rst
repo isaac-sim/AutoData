@@ -40,8 +40,6 @@ Use the source dataset that matches your physics backend:
 Small-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^^
 
-Prepare a terminal for your chosen runtime:
-
 .. autodata-runtime::
 
 Start with two parallel environments in a Kit window to inspect the generated motions:

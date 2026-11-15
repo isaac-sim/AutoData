@@ -119,7 +119,7 @@ skip directly to :doc:`step_3_generate_dataset` using the pre-annotated dataset 
 Prerequisites
 ^^^^^^^^^^^^^
 
-Complete :doc:`../../quickstart/installation` for your chosen runtime, then prepare a terminal:
+Complete :doc:`../../quickstart/installation` for your chosen runtime.
 
 .. autodata-runtime::
 

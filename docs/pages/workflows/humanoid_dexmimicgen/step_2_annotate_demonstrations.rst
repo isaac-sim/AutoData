@@ -22,8 +22,6 @@ skipped automatically.
 Manual Annotation
 ^^^^^^^^^^^^^^^^^
 
-**Prepare a terminal for your chosen runtime:**
-
 .. autodata-runtime::
 
 **Run the annotation script:**

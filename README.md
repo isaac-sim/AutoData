@@ -59,8 +59,7 @@ the amount of manual collection needed to produce datasets for policy training.
 ## Quick Start
 
 Choose **one** installation method: [Docker (recommended)](#docker-installation-recommended) or
-[native uv](#native-uv-installation). Docker runs AutoData in a container; native uv runs it on the host
-without Docker. Complete the shared prerequisites and clone steps, then follow only your chosen method.
+[native uv](#native-uv-installation). Both start with the shared prerequisites and clone steps below.
 
 ### Prerequisites
 

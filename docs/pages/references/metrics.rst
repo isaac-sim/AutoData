@@ -6,8 +6,6 @@ file, of the generation run that produced it. Metrics are computed from recorded
 simulator. Generate, annotate or retarget with ``--record_metric_inputs`` to record what they read;
 without it, most metrics report that their inputs are missing.
 
-Run the report from the repository root in your installed runtime:
-
 .. autodata-runtime::
 
 .. autodata-python::

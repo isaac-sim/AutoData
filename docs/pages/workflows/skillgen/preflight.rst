@@ -53,9 +53,6 @@ the source data:
    nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv
    git lfs pull
 
-Prepare a terminal for your chosen runtime. Native uv requires the
-:ref:`cuRobo installation steps <installation-uv-curobo>` to be complete:
-
 .. autodata-runtime::
    :curobo:
 

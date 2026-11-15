@@ -20,8 +20,6 @@ Automatic annotation is recommended for the Franka cube-stacking task because th
 Automatic Annotation (Recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Prepare a terminal for your chosen runtime:**
-
 .. autodata-runtime::
 
 **Run the annotation script in automatic mode:**
@@ -53,8 +51,6 @@ and marking boundaries with the keyboard.
 
   Manual annotation is not required for this workflow if
   automatic annotation is used.
-
-**Prepare a terminal for your chosen runtime:**
 
 .. autodata-runtime::
 

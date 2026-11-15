@@ -86,8 +86,7 @@ pre-annotated source dataset described in :doc:`step_3_generate_dataset`.
 Prerequisites
 ^^^^^^^^^^^^^
 
-Complete :doc:`../../quickstart/installation`, including downloading the Git LFS assets, and
-prepare a terminal for your chosen runtime:
+Complete :doc:`../../quickstart/installation`, including downloading the Git LFS assets.
 
 .. autodata-runtime::
 

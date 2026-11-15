@@ -27,8 +27,6 @@ The commands below use the pre-annotated source dataset that ships with the repo
 Steps 1–2, point ``--input_file`` at your own ``dataset_gr1_annotated.hdf5`` /
 ``dataset_g1_annotated.hdf5`` instead.
 
-Prepare a terminal for your chosen runtime:
-
 .. autodata-runtime::
 
 
