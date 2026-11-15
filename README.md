@@ -118,6 +118,8 @@ This checkout uses Isaac Sim 6.1.0, Arena 0.3.0 at commit
 
 - **Docker:** rebuild with `./docker/run_docker.sh -r`, or `./docker/run_docker.sh -c -r` for SkillGen.
 - **Native uv:** run `uv sync --locked`; include `--group curobo` if you use SkillGen.
+  SkillGen users must [rebuild cuRobo](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html?autodata-runtime=uv#installation-uv-curobo)
+  after changing their GPU or the locked PyTorch version.
 
 Commands, environment profiles, and source dataset metadata use Lab 3.0's `IsaacContrib-*`
 task names directly. For example, Franka recording uses
