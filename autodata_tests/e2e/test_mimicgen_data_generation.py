@@ -11,7 +11,7 @@ from autodata_tests.utils.subprocess import run_subprocess
 from autodata_tests.utils.utils import assert_ok_metrics, assert_recorded_run, assert_valid_dataset
 
 HEADLESS = True
-GENERATION_NUM_TRIALS = 1
+GENERATION_NUM_TRIALS = 2
 # Metrics a MimicGen run recorded with --record_metric_inputs must compute; no camera, so no image checks.
 METRICS = {
     "generation_success_rate",
@@ -23,6 +23,8 @@ METRICS = {
     "action_saturation",
     "motion_smoothness",
     "joint_limit_ratio",
+    "start_layout_spread",
+    "workspace_spread",
 }
 
 
