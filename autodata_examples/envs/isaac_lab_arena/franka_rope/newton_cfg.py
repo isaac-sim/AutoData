@@ -124,7 +124,8 @@ def rope_newton_physics_cfg() -> NewtonCfg:
                         r"/World/envs/env_[^/]+/Robot/.*panda_hand",
                         r"/World/envs/env_[^/]+/Robot/.*panda_(left|right)finger",
                     ],
-                    mode="lagged",
+                    # Solve rope contact against the rigid solver's updated pose.
+                    mode="staggered",
                     collide_interval=1,
                     collision_pipeline=NewtonCollisionPipelineCfg(enable_rigid_soft_full_surface_contact=True),
                 ),

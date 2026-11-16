@@ -23,6 +23,8 @@ from isaaclab_arena.utils.physics_backend import PhysicsBackend
 from isaaclab_arena.utils.pose import Pose
 from isaaclab_physx.renderers import IsaacRtxRendererCfg, IsaacRtxRendererGlobalSettingsCfg
 
+from autodata_interfaces.env.isaaclab_diff_ik_body_offset_patch import DifferentialInverseKinematicsActionOffset
+
 from . import mdp
 
 _FRANKA_ROPE_INIT_JOINT_POS: dict[str, float] = {
@@ -157,6 +159,7 @@ class FrankaRopeIKEmbodiment(FrankaIKEmbodiment):
             arm_mode=arm_mode,
         )
         self.scene_config.robot.init_state.joint_pos = dict(_FRANKA_ROPE_INIT_JOINT_POS)
+        self.action_config.arm_action.class_type = DifferentialInverseKinematicsActionOffset
         self.observation_config = FrankaRopeObservationsCfg()
         self.observation_config.policy.concatenate_terms = concatenate_observation_terms
         self.camera_config = FrankaRopeCameraCfg()

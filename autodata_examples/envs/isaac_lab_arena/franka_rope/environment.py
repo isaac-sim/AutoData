@@ -41,7 +41,8 @@ def _configure_franka_rope_env(env_cfg: Any) -> Any:
     env_cfg.sim.dt = 0.01
     env_cfg.sim.render_interval = 2
     env_cfg.num_rerenders_on_reset = 1
-    if isinstance(env_cfg.sim.physics, NewtonCfg):
+    is_newton = isinstance(env_cfg.sim.physics, NewtonCfg)
+    if is_newton:
         from isaaclab_newton.sim.schemas import MujocoCollisionCfg
 
         from .newton_cfg import rope_newton_physics_cfg, spawn_rope_table_newton
@@ -65,12 +66,14 @@ def _configure_franka_rope_env(env_cfg: Any) -> Any:
     env_cfg.teleop_devices = DevicesCfg(
         devices={
             "keyboard": Se3KeyboardCfg(
-                pos_sensitivity=0.05,
-                rot_sensitivity=0.2,
+                pos_sensitivity=0.01 if is_newton else 0.05,
+                rot_sensitivity=0.05 if is_newton else 0.2,
             ),
             "spacemouse": Se3SpaceMouseCfg(
-                pos_sensitivity=0.2,
-                rot_sensitivity=0.5,
+                # At action scale 0.5, full deflection requests 1 cm / 0.05 rad
+                # per control step. The old 10 cm increments overwhelm contact.
+                pos_sensitivity=0.02 if is_newton else 0.2,
+                rot_sensitivity=0.1 if is_newton else 0.5,
             ),
         },
     )
