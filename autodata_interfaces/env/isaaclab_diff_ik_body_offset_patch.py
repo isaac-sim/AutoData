@@ -9,8 +9,8 @@ from isaaclab.envs.mdp.actions.task_space_actions import DifferentialInverseKine
 from isaaclab.utils import math as math_utils
 
 
-# TODO: Remove this file and the override in FrankaRopeIKEmbodiment after Arena's Lab pin
-# includes https://github.com/isaac-sim/IsaacLab/pull/7989 (2f1983ca7247).
+# TODO 11/16/2026 @peterd: Patch for override in FrankaRopeIKEmbodiment.
+# Remove once Arena's Lab pin includes https://github.com/isaac-sim/IsaacLab/pull/7989 (2f1983ca7247).
 class DifferentialInverseKinematicsActionOffset(DifferentialInverseKinematicsAction):
     """Apply the upstream tool-offset correction without changing the Lab installation."""
 
