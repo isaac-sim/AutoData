@@ -66,14 +66,13 @@ def _configure_franka_rope_env(env_cfg: Any) -> Any:
     env_cfg.teleop_devices = DevicesCfg(
         devices={
             "keyboard": Se3KeyboardCfg(
-                pos_sensitivity=0.01 if is_newton else 0.05,
-                rot_sensitivity=0.05 if is_newton else 0.2,
+                pos_sensitivity=0.05,
+                rot_sensitivity=0.2,
             ),
             "spacemouse": Se3SpaceMouseCfg(
-                # At action scale 0.5, full deflection requests 1 cm / 0.05 rad
-                # per control step. The old 10 cm increments overwhelm contact.
-                pos_sensitivity=0.02 if is_newton else 0.2,
-                rot_sensitivity=0.1 if is_newton else 0.5,
+                # Use smaller relative pose targets for precise rope and table contact.
+                pos_sensitivity=0.1 if is_newton else 0.2,
+                rot_sensitivity=0.2 if is_newton else 0.5,
             ),
         },
     )

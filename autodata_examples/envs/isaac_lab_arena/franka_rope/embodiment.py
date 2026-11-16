@@ -167,7 +167,7 @@ class FrankaRopeIKEmbodiment(FrankaIKEmbodiment):
         self.reward_config = None
 
     def _configure_physics_backend(self, backend: PhysicsBackend) -> None:
-        """Apply Newton gravity compensation and mesh contact settings to the Franka."""
+        """Apply Newton control, gravity compensation, and mesh contact settings to the Franka."""
         if backend is PhysicsBackend.NEWTON:
             from isaaclab_newton.renderers import NewtonWarpRendererCfg
             from isaaclab_newton.sim.schemas import (
@@ -178,6 +178,8 @@ class FrankaRopeIKEmbodiment(FrankaIKEmbodiment):
 
             from .newton_cfg import spawn_rope_franka_newton
 
+            # Limit joint-motion amplification near singularities during sustained contact.
+            self.action_config.arm_action.controller.ik_params = {"lambda_val": 0.05}
             spawn = self.scene_config.robot.spawn
             # Match the shared high-PD Franka's PhysX-only disable_gravity setting.
             spawn.rigid_props = MujocoRigidBodyCfg(gravcomp=1.0)

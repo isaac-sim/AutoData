@@ -136,7 +136,8 @@ def rope_newton_physics_cfg() -> NewtonCfg:
             # Resolve contacts around the narrow rope, with enough friction to carry it.
             soft_contact_ke=1.0e5,
             soft_contact_kd=10.0,
-            soft_contact_mu=10.0,
+            # Limit tangential forces when the gripper presses into the rope.
+            soft_contact_mu=3.0,
         ),
         num_substeps=10,
     )
