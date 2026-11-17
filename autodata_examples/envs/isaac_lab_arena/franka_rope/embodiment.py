@@ -176,8 +176,11 @@ class FrankaRopeIKEmbodiment(FrankaIKEmbodiment):
                 NewtonSDFCollisionPropertiesCfg,
             )
 
+            from autodata_interfaces.env.isaaclab_newton_frame_transformer_patch import FrameTransformerResetPatch
+
             from .newton_cfg import spawn_rope_franka_newton
 
+            self.scene_config.ee_frame.class_type = FrameTransformerResetPatch
             # Limit joint-motion amplification near singularities during sustained contact.
             self.action_config.arm_action.controller.ik_params = {"lambda_val": 0.05}
             spawn = self.scene_config.robot.spawn
