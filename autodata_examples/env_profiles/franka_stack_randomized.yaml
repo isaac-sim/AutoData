@@ -1,0 +1,17 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Overlay for IsaacContrib-Stack-Cube-Franka-IK-Rel.
+# Apply with --env_profile during generation or camera re-rendering.
+name: franka_stack_randomized
+base_env: IsaacContrib-Stack-Cube-Franka-IK-Rel
+description: Randomized cube reset poses.
+
+domain_randomization:
+  # This task uses dome lighting, which does not support lighting DR.
+  poses:
+    - event_name: randomize_cube_positions
+      position_xyz_min: [0.40, -0.20, 0.0203]
+      position_xyz_max: [0.70, 0.20, 0.0203]
+      rpy_min: [0.0, 0.0, -0.7854]
+      rpy_max: [0.0, 0.0, 0.7854]

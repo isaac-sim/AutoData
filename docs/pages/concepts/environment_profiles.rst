@@ -123,8 +123,15 @@ subtly wrong scene:
   the profile's additions — checked at apply time instead of failing later inside the env.
 
 Changes are applied in order: scene additions, scene overrides, then events (remove →
-override → add), then domain randomization. Added events may reference added assets,
-and randomization settings may override those events.
+override → add), then domain randomization. Added events may reference added assets.
+
+.. important::
+
+   An enabled ``domain_randomization.poses`` entry replaces the **entire** ``pose_range`` of
+   its named event, including ranges set by ``events.override`` or ``events.add`` in this
+   profile. Domain randomization is applied last, so its pose ranges take precedence.
+   Individual axes are not merged with the earlier range; other event parameters are preserved.
+   See :doc:`domain_randomization` for the configuration details.
 
 .. note::
 

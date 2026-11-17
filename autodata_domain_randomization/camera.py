@@ -1,0 +1,254 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Isaac Lab event functions for episodic camera intrinsics/extrinsics randomization."""
+
+from __future__ import annotations
+
+import math
+import torch
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from isaaclab.envs import ManagerBasedEnv
+    from isaaclab.managers import SceneEntityCfg
+    from isaaclab.sensors import Camera
+
+
+def randomize_camera(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    focal_length_scale_range: tuple[float, float],
+    position_xyz_min: tuple[float, float, float],
+    position_xyz_max: tuple[float, float, float],
+    rotation_rpy_min_deg: tuple[float, float, float],
+    rotation_rpy_max_deg: tuple[float, float, float],
+) -> dict[int, dict[str, tuple[float, ...]]]:
+    """Perturb one camera's calibration once per environment reset.
+
+    Both perturbations are drawn per environment and applied relative to the *nominal* values on
+    the sensor config rather than to the previous episode's values, so repeated resets never
+    accumulate drift. The draws use Torch's process RNG so Isaac Lab's environment seed controls
+    reproducibility.
+
+    Extrinsics are written as the camera prim's local transform w.r.t. the link it is mounted on,
+    which is the same quantity :class:`~isaaclab.sensors.CameraCfg.OffsetCfg` sets at spawn; the
+    camera therefore keeps tracking its parent link. Translation is sampled in the parent-link
+    frame and rotation in the camera optical frame, matching how a mount tolerance and a hand-eye
+    calibration residual are respectively specified.
+
+    Only the focal length of the intrinsic matrix is randomized. Calibrated OpenCV pinhole cameras
+    retain their measured principal point and separate x/y focal lengths. Ordinary aperture-based
+    cameras retain Isaac Lab's square pixels and centered principal point.
+
+    Args:
+        env: Isaac Lab manager-based environment.
+        env_ids: Environments whose cameras should be re-sampled.
+        asset_cfg: Scene entity identifying the camera sensor.
+        focal_length_scale_range: Uniform multiplier range applied to the nominal focal length.
+        position_xyz_min: Lower bound of the mount-translation offset [m], in the parent-link frame.
+        position_xyz_max: Upper bound of the mount-translation offset [m], in the parent-link frame.
+        rotation_rpy_min_deg: Lower bound of the rotation offset [deg] about the camera optical
+            frame's x (right), y (down), and z (forward) axes.
+        rotation_rpy_max_deg: Upper bound of the rotation offset [deg] about the same axes.
+
+    Returns:
+        The calibration applied to each randomized environment, keyed by environment index, with
+        ``focal_length_px``, ``position_xyz`` [m], and ``rotation_xyzw`` in the sensor's offset
+        convention. Isaac Lab's event manager discards event-term return values; this is here so a
+        caller driving the term directly -- a dataset re-render, say -- can record what it applied.
+    """
+    sensor = env.scene[asset_cfg.name]
+    selected_env_ids = [int(env_id) for env_id in env_ids.tolist()]
+    if not selected_env_ids:
+        return {}
+    extrinsics = _randomize_extrinsics(
+        env,
+        selected_env_ids,
+        sensor,
+        position_xyz_min,
+        position_xyz_max,
+        rotation_rpy_min_deg,
+        rotation_rpy_max_deg,
+    )
+    focal_lengths = _randomize_intrinsics(env, selected_env_ids, sensor, focal_length_scale_range)
+    if env.cfg.sim.use_fabric:
+        _sync_camera_mounts_to_fabric(env, selected_env_ids, sensor)
+    return {env_id: {"focal_length_px": (focal_lengths[env_id],), **extrinsics[env_id]} for env_id in selected_env_ids}
+
+
+def _randomize_extrinsics(
+    env: ManagerBasedEnv,
+    env_ids: list[int],
+    sensor: Camera,
+    position_xyz_min: tuple[float, float, float],
+    position_xyz_max: tuple[float, float, float],
+    rotation_rpy_min_deg: tuple[float, float, float],
+    rotation_rpy_max_deg: tuple[float, float, float],
+) -> dict[int, dict[str, tuple[float, ...]]]:
+    from isaaclab.sim.utils import standardize_xform_ops
+
+    offset = sensor.cfg.offset
+    nominal_position = tuple(float(component) for component in offset.pos)
+    nominal_rotation = _convert_rotation(tuple(offset.rot), offset.convention, "ros")
+    camera_prims = _find_camera_prims_by_env(env, env_ids, sensor)
+
+    applied = {}
+    for env_id in env_ids:
+        position_offset = _sample_uniform_vector(position_xyz_min, position_xyz_max, env.device)
+        rotation_offset_deg = _sample_uniform_vector(rotation_rpy_min_deg, rotation_rpy_max_deg, env.device)
+        position = tuple(nominal + sampled for nominal, sampled in zip(nominal_position, position_offset))
+        rotation = _quat_multiply(nominal_rotation, _quat_from_rpy_deg(rotation_offset_deg))
+        standardize_xform_ops(
+            camera_prims[env_id],
+            translation=position,
+            orientation=_convert_rotation(rotation, "ros", "opengl"),
+        )
+        applied[env_id] = {
+            "position_xyz": position,
+            "rotation_xyzw": _convert_rotation(rotation, "ros", offset.convention),
+        }
+    return applied
+
+
+def _randomize_intrinsics(
+    env: ManagerBasedEnv,
+    env_ids: list[int],
+    sensor: Camera,
+    focal_length_scale_range: tuple[float, float],
+) -> dict[int, float]:
+    spawn_cfg = sensor.cfg.spawn
+    focal_length = getattr(spawn_cfg, "focal_length", None)
+    horizontal_aperture = getattr(spawn_cfg, "horizontal_aperture", None)
+    assert focal_length and horizontal_aperture, (
+        f"Camera {sensor.cfg.prim_path!r} must be spawned from a pinhole camera config with a focal "
+        "length and a horizontal aperture to randomize its intrinsics."
+    )
+
+    height, width = sensor.image_shape
+    nominal_focal_length_px = width * focal_length / horizontal_aperture
+    scales = torch.tensor(
+        [_sample_uniform(focal_length_scale_range, env.device) for _ in env_ids],
+        dtype=torch.float32,
+        device=env.device,
+    )
+
+    matrices = torch.zeros((len(env_ids), 3, 3), dtype=torch.float32, device=env.device)
+    matrices[:, 0, 0] = nominal_focal_length_px * scales
+    matrices[:, 1, 1] = nominal_focal_length_px * scales
+    matrices[:, 0, 2] = 0.5 * width
+    matrices[:, 1, 2] = 0.5 * height
+    matrices[:, 2, 2] = 1.0
+    prims = _find_camera_prims_by_env(env, env_ids, sensor)
+    nominal = [prims[env_id].GetCustomDataByKey("isaaclab_arena:nominal_opencv_intrinsics") for env_id in env_ids]
+    if any(value is not None for value in nominal):
+        assert all(value is not None for value in nominal), "Camera clones must share the same lens model"
+        for index, env_id in enumerate(env_ids):
+            fx, fy, cx, cy = nominal[index]
+            scale = float(scales[index])
+            matrices[index, 0, 0], matrices[index, 1, 1] = fx * scale, fy * scale
+            matrices[index, 0, 2], matrices[index, 1, 2] = cx, cy
+            prim = prims[env_id]
+            prefix = "omni:lensdistortion:opencvPinhole:"
+            prim.GetAttribute(prefix + "fx").Set(fx * scale)
+            prim.GetAttribute(prefix + "fy").Set(fy * scale)
+            prim.GetAttribute("focalLength").Set(focal_length * scale)
+        # set_intrinsic_matrices would discard cx/cy and average fx/fy. RTX reads
+        # the native lens attributes; publish the same K in the sensor metadata.
+        sensor._data.intrinsic_matrices.torch[env_ids] = matrices
+    else:
+        sensor.set_intrinsic_matrices(matrices, focal_length=focal_length, env_ids=env_ids)
+    return {env_id: float(matrices[index, 0, 0]) for index, env_id in enumerate(env_ids)}
+
+
+def _sync_camera_mounts_to_fabric(env: ManagerBasedEnv, env_ids: list[int], sensor: Camera) -> None:
+    """Publish local mounts to the live graphics hierarchy, preserving parent tracking.
+
+    USD camera edits alone can leave Fabric's cached mount unchanged. Update the local
+    matrix after both pose and lens edits; never derive world poses from USD because
+    moving robot links are driven by PhysX/Fabric rather than the USD rest pose.
+    """
+    import usdrt
+    from isaaclab.sim.utils.stage import get_current_stage_id
+    from pxr import UsdGeom
+
+    stage = usdrt.Usd.Stage.Attach(get_current_stage_id())
+    hierarchy = usdrt.hierarchy.IFabricHierarchy().get_fabric_hierarchy(
+        stage.GetFabricId(), stage.GetStageIdAsStageId()
+    )
+    for prim in _find_camera_prims_by_env(env, env_ids, sensor).values():
+        local = UsdGeom.Xformable(prim).GetLocalTransformation()
+        matrix = usdrt.Gf.Matrix4d(*[value for row in local for value in row])
+        hierarchy.set_local_xform(usdrt.Sdf.Path(str(prim.GetPath())), matrix)
+    hierarchy.update_world_xforms()
+
+
+def _find_camera_prims_by_env(env: ManagerBasedEnv, env_ids: list[int], sensor: Camera) -> dict[int, Any]:
+    """Map each selected environment index to its cloned camera prim."""
+    from isaaclab.sim.utils import find_matching_prims
+
+    prims = find_matching_prims(sensor.cfg.prim_path, stage=env.scene.stage)
+    prims_by_env = {}
+    for env_id in env_ids:
+        env_path = env.scene.env_prim_paths[env_id]
+        matches = [prim for prim in prims if str(prim.GetPath()).startswith(f"{env_path}/")]
+        assert (
+            len(matches) == 1
+        ), f"Expected exactly one camera prim under {env_path!r} for {sensor.cfg.prim_path!r}, found {len(matches)}."
+        prims_by_env[env_id] = matches[0]
+    return prims_by_env
+
+
+def _convert_rotation(
+    rotation_xyzw: tuple[float, float, float, float],
+    origin: str,
+    target: str,
+) -> tuple[float, float, float, float]:
+    """Convert camera orientation conventions without changing the physical mount."""
+    from isaaclab.utils.math import convert_camera_frame_orientation_convention
+
+    rotation = torch.tensor([rotation_xyzw], dtype=torch.float32)
+    converted = convert_camera_frame_orientation_convention(rotation, origin=origin, target=target)
+    return tuple(float(component) for component in converted[0])
+
+
+def _quat_from_rpy_deg(rpy_deg: tuple[float, float, float]) -> tuple[float, float, float, float]:
+    """Build an (x, y, z, w) quaternion from intrinsic x-y-z rotations [deg]."""
+    quat = (0.0, 0.0, 0.0, 1.0)
+    for axis, angle_deg in enumerate(rpy_deg):
+        half_angle = 0.5 * math.radians(angle_deg)
+        axis_quat = [0.0, 0.0, 0.0, math.cos(half_angle)]
+        axis_quat[axis] = math.sin(half_angle)
+        quat = _quat_multiply(quat, tuple(axis_quat))
+    return quat
+
+
+def _quat_multiply(
+    first_xyzw: tuple[float, float, float, float],
+    second_xyzw: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    """Compose two (x, y, z, w) quaternions, applying ``second_xyzw`` in the body frame."""
+    x_1, y_1, z_1, w_1 = first_xyzw
+    x_2, y_2, z_2, w_2 = second_xyzw
+    return (
+        w_1 * x_2 + x_1 * w_2 + y_1 * z_2 - z_1 * y_2,
+        w_1 * y_2 - x_1 * z_2 + y_1 * w_2 + z_1 * x_2,
+        w_1 * z_2 + x_1 * y_2 - y_1 * x_2 + z_1 * w_2,
+        w_1 * w_2 - x_1 * x_2 - y_1 * y_2 - z_1 * z_2,
+    )
+
+
+def _sample_uniform_vector(
+    minimum: tuple[float, float, float],
+    maximum: tuple[float, float, float],
+    device: str,
+) -> tuple[float, float, float]:
+    return tuple(_sample_uniform((low, high), device) for low, high in zip(minimum, maximum))
+
+
+def _sample_uniform(value_range: tuple[float, float], device: str) -> float:
+    low, high = value_range
+    if low == high:
+        return float(low)
+    return float(low + (high - low) * torch.rand((), device=device).item())
