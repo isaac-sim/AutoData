@@ -23,6 +23,8 @@ from isaaclab_arena.utils.physics_backend import PhysicsBackend
 from isaaclab_arena.utils.pose import Pose
 from isaaclab_physx.renderers import IsaacRtxRendererCfg, IsaacRtxRendererGlobalSettingsCfg
 
+from autodata_interfaces.env.isaaclab_diff_ik_body_offset_patch import DifferentialInverseKinematicsActionOffset
+
 from . import mdp
 
 _FRANKA_ROPE_INIT_JOINT_POS: dict[str, float] = {
@@ -157,6 +159,7 @@ class FrankaRopeIKEmbodiment(FrankaIKEmbodiment):
             arm_mode=arm_mode,
         )
         self.scene_config.robot.init_state.joint_pos = dict(_FRANKA_ROPE_INIT_JOINT_POS)
+        self.action_config.arm_action.class_type = DifferentialInverseKinematicsActionOffset
         self.observation_config = FrankaRopeObservationsCfg()
         self.observation_config.policy.concatenate_terms = concatenate_observation_terms
         self.camera_config = FrankaRopeCameraCfg()
@@ -164,7 +167,7 @@ class FrankaRopeIKEmbodiment(FrankaIKEmbodiment):
         self.reward_config = None
 
     def _configure_physics_backend(self, backend: PhysicsBackend) -> None:
-        """Apply Newton gravity compensation and mesh contact settings to the Franka."""
+        """Apply Newton control, gravity compensation, and mesh contact settings to the Franka."""
         if backend is PhysicsBackend.NEWTON:
             from isaaclab_newton.renderers import NewtonWarpRendererCfg
             from isaaclab_newton.sim.schemas import (
@@ -173,8 +176,13 @@ class FrankaRopeIKEmbodiment(FrankaIKEmbodiment):
                 NewtonSDFCollisionPropertiesCfg,
             )
 
+            from autodata_interfaces.env.isaaclab_newton_frame_transformer_patch import FrameTransformerResetPatch
+
             from .newton_cfg import spawn_rope_franka_newton
 
+            self.scene_config.ee_frame.class_type = FrameTransformerResetPatch
+            # Limit joint-motion amplification near singularities during sustained contact.
+            self.action_config.arm_action.controller.ik_params = {"lambda_val": 0.05}
             spawn = self.scene_config.robot.spawn
             # Match the shared high-PD Franka's PhysX-only disable_gravity setting.
             spawn.rigid_props = MujocoRigidBodyCfg(gravcomp=1.0)

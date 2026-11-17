@@ -41,7 +41,8 @@ def _configure_franka_rope_env(env_cfg: Any) -> Any:
     env_cfg.sim.dt = 0.01
     env_cfg.sim.render_interval = 2
     env_cfg.num_rerenders_on_reset = 1
-    if isinstance(env_cfg.sim.physics, NewtonCfg):
+    is_newton = isinstance(env_cfg.sim.physics, NewtonCfg)
+    if is_newton:
         from isaaclab_newton.sim.schemas import MujocoCollisionCfg
 
         from .newton_cfg import rope_newton_physics_cfg, spawn_rope_table_newton
@@ -69,8 +70,9 @@ def _configure_franka_rope_env(env_cfg: Any) -> Any:
                 rot_sensitivity=0.2,
             ),
             "spacemouse": Se3SpaceMouseCfg(
-                pos_sensitivity=0.2,
-                rot_sensitivity=0.5,
+                # Use smaller relative pose targets for precise rope and table contact.
+                pos_sensitivity=0.1 if is_newton else 0.2,
+                rot_sensitivity=0.2 if is_newton else 0.5,
             ),
         },
     )

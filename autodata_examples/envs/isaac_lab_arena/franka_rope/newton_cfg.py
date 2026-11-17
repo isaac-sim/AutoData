@@ -124,7 +124,8 @@ def rope_newton_physics_cfg() -> NewtonCfg:
                         r"/World/envs/env_[^/]+/Robot/.*panda_hand",
                         r"/World/envs/env_[^/]+/Robot/.*panda_(left|right)finger",
                     ],
-                    mode="lagged",
+                    # Solve rope contact against the rigid solver's updated pose.
+                    mode="staggered",
                     collide_interval=1,
                     collision_pipeline=NewtonCollisionPipelineCfg(enable_rigid_soft_full_surface_contact=True),
                 ),
@@ -135,7 +136,8 @@ def rope_newton_physics_cfg() -> NewtonCfg:
             # Resolve contacts around the narrow rope, with enough friction to carry it.
             soft_contact_ke=1.0e5,
             soft_contact_kd=10.0,
-            soft_contact_mu=10.0,
+            # Limit tangential forces when the gripper presses into the rope.
+            soft_contact_mu=3.0,
         ),
         num_substeps=10,
     )
