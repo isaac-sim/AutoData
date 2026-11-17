@@ -12,8 +12,6 @@ Complete the common prerequisites and cloning steps below, then follow only your
 The optional conda installation is described separately.
 
 This checkout uses Isaac Sim 6.1.0, Isaac Lab 3.0.0, and Arena 0.3.0.
-Use the pinned Docker environment or one of the optional native installations below for the workflows on this
-site.
 
 Before installing, review the :doc:`support_matrix` for the complete supported software stack,
 hardware requirements, optional cuRobo and XR dependencies, and resource guidance.
@@ -128,10 +126,13 @@ Useful flags of ``./docker/run_docker.sh``:
 For a missing Kit window or an X11 error, see :ref:`troubleshooting-display`.
 
 
-Updating an Existing Checkout
-------------------------------
+.. _updating-an-existing-checkout:
 
-After updating AutoData, synchronize the nested submodules and rebuild the image from the host:
+Updating a Docker Installation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+After updating AutoData, synchronize the nested submodules and rebuild the image from the repository root
+on the host, outside the development container:
 
 .. code-block:: bash
 
@@ -364,8 +365,8 @@ Verifying the Installation
 Select the installation method you used. Run its commands from the repository root: inside the container
 for Docker, or on the host for native uv. The full suite includes SkillGen tests and requires cuRobo.
 
-For the optional conda installation, use the plain Python commands in the activated environment without
-starting a container.
+For the optional conda installation, activate its environment and run the commands shown on the Docker tab
+from the repository root on the host.
 
 Run the fast unit tests (a few seconds, no Isaac Sim launch):
 

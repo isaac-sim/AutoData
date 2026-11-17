@@ -45,8 +45,8 @@ Requirements at a Glance
 1. Prepare the cuRobo Runtime
 -----------------------------
 
-On the **host**, from the repository root, confirm which GPU will run SkillGen and download
-the source data:
+From the repository root on the **host** (for Docker, outside the development container), confirm
+which GPU will run SkillGen and download the source data:
 
 .. code-block:: bash
 
@@ -60,7 +60,8 @@ the source data:
 
    **Docker image builds:** the first build compiles cuRobo for the compute capability reported
    by ``nvidia-smi`` and can take considerably longer than starting the base container. If the
-   image was built for a different GPU, rebuild it from the host:
+   image was built for a different GPU, leave the container and rebuild it from the repository root
+   on the host:
 
    .. code-block:: bash
 

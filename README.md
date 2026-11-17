@@ -84,7 +84,7 @@ This method requires [Docker](https://docs.docker.com/engine/install/), the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
 and an [NGC](https://catalog.ngc.nvidia.com/) account for the Isaac Sim container image.
 
-From the repository root **on the host**, log in to NGC and launch the development container:
+From the repository root **on the host**, outside any container, log in to NGC and launch the development container:
 
 ```bash
 docker login nvcr.io
@@ -116,7 +116,8 @@ This checkout uses Isaac Sim 6.1.0, Arena 0.3.0 at commit
 `91a0906f93802eb859192dcb0bca879f891e92d6`. After updating the checkout, run
 `git submodule update --init --recursive`, then update only your chosen runtime:
 
-- **Docker:** rebuild with `./docker/run_docker.sh -r`, or `./docker/run_docker.sh -c -r` for SkillGen.
+- **Docker:** exit the development container, then rebuild on the host with `./docker/run_docker.sh -r`, or
+  `./docker/run_docker.sh -c -r` for SkillGen.
 - **Native uv:** run `uv sync --locked`; include `--group curobo` if you use SkillGen.
   SkillGen users must [rebuild cuRobo](https://isaac-sim.github.io/AutoData/main/pages/quickstart/installation.html?autodata-runtime=uv#installation-uv-curobo)
   after changing their GPU or the locked PyTorch version.

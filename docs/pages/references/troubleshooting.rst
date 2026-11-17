@@ -74,7 +74,8 @@ area: runtime and teleoperation, dataset handling, then SkillGen.
 Display and X11
 ---------------
 
-Check the display on the **host** before starting a GUI workflow:
+Check the display on the **host** (for Docker, outside the development container) before starting
+a GUI workflow:
 
 .. code-block:: bash
 
@@ -302,8 +303,8 @@ from the repository root on the **host**:
 
    ./docker/run_docker.sh -c
 
-If the Docker image's cuRobo was built on a different GPU generation, query the active GPU and
-rebuild without the Docker cache on the **host**:
+If the Docker image's cuRobo was built on a different GPU generation, leave the container, then query
+the active GPU and rebuild without the Docker cache on the **host**:
 
 .. code-block:: bash
 

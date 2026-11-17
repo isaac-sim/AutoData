@@ -17,8 +17,8 @@ including the rope's deformable state.
 Recording with a SpaceMouse (Recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Set up the SpaceMouse on the host using the device setup instructions in
-:doc:`../franka_cube_stack_mimicgen/step_1_record_demonstrations`.
+Set up the SpaceMouse on the host (for Docker, outside the development container) using the device
+setup instructions in :doc:`../franka_cube_stack_mimicgen/step_1_record_demonstrations`.
 
 .. autodata-runtime::
 
