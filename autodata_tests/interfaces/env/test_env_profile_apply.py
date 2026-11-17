@@ -42,6 +42,29 @@ def test_profile_rejects_unknown_action_parameters():
         apply_env_profile(cfg, profile, "external-task")
 
 
+def test_profile_static_material_is_scoped_to_the_asset_spawn():
+    from isaaclab.sim import UsdFileCfg
+    from isaaclab.sim.spawners.materials.physics_materials_cfg import UsdPhysicsRigidBodyMaterialCfg
+
+    material = {"static_friction": 2.0, "dynamic_friction": 2.0, "restitution": 0.1}
+    profile = EnvironmentProfile.from_dict({
+        "name": "material",
+        "base_env": "external-task",
+        "scene": {"rigid_objects": {"override": {"beaker": {"physics_material": material}}}},
+    })
+    cfg = SimpleNamespace(
+        scene=SimpleNamespace(beaker=SimpleNamespace(spawn=UsdFileCfg(usd_path="beaker.usd"))),
+        events=SimpleNamespace(),
+    )
+
+    apply_env_profile(cfg, profile, "external-task")
+
+    assert isinstance(cfg.scene.beaker.spawn.physics_material, UsdPhysicsRigidBodyMaterialCfg)
+    for name, value in material.items():
+        assert getattr(cfg.scene.beaker.spawn.physics_material, name) == value
+    assert not vars(cfg.events)
+
+
 def _parse_base_cfg():
     return parse_env_cfg(BASE_ENV, device="cpu", num_envs=1)
 
@@ -70,21 +93,30 @@ def test_setup_humanoid_image_observations(env_name, enable_cameras, tmp_path):
     assert (env_cfg.observations.policy.robot_pov_cam is not None) == enable_cameras
     assert bool(env_cfg.image_obs_list) == enable_cameras
     assert env_cfg.observations.policy.concatenate_terms is False
+    if enable_cameras:
+        assert env_cfg.num_rerenders_on_reset >= 1
 
 
-def test_gr1_lazy_action_uses_shared_urdf(tmp_path):
+@pytest.mark.parametrize(
+    ("env_name", "action_term"),
+    [
+        ("IsaacContrib-PickPlace-GR1T2-Abs", "upper_body_ik"),
+        ("IsaacContrib-NutPour-GR1T2-Pink-IK-Abs", "gr1_action"),
+    ],
+)
+def test_gr1_lazy_action_uses_shared_urdf(tmp_path, env_name, action_term):
     """Adapt Lab's string-based action registration before the simulator instantiates it."""
     from autodata_interfaces.env.pink_ik_action import PinkInverseKinematicsActionSharedUrdf
 
     env_cfg, _ = setup_env_config(
-        env_name="IsaacContrib-PickPlace-GR1T2-Abs",
+        env_name=env_name,
         output_dir=str(tmp_path),
         output_file_name="generated",
         num_envs=100,
         device="cpu",
         generation_policy_params=GenerationPolicy(),
     )
-    assert env_cfg.actions.upper_body_ik.class_type is PinkInverseKinematicsActionSharedUrdf
+    assert getattr(env_cfg.actions, action_term).class_type is PinkInverseKinematicsActionSharedUrdf
 
 
 def test_apply_bin_stack_profile_overlays_scene_and_events():

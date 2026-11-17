@@ -7,10 +7,10 @@
 behavior diverges between Mimic, DexMimicGen, SkillGen, etc.
 Subclasses self-register at import time via :class:`_AlgorithmMeta`.
 
-The main behavioral hook is :meth:`GenerationAlgorithm.plan_subtask_trajectory`, called by
-``DataGenerator`` every time an EEF needs a new executable trajectory. Object-state adaptation is
-routed through :meth:`GenerationAlgorithm.transform_source_eef_poses`. Rigid algorithms use the
-default object-pose transform while SoftMimicGen overrides it with nodal TPS registration.
+Per-subtask algorithms customize :meth:`GenerationAlgorithm.plan_subtask_trajectory`.
+SkillGen adds planned transits, while SoftMimicGen adapts source poses using nodal registration.
+ScheduleGen implements :meth:`GenerationAlgorithm.generate_and_execute_episode` because all
+paths must be built before scheduling. Both hooks use the shared episode lifecycle.
 """
 
 from __future__ import annotations
@@ -18,15 +18,39 @@ from __future__ import annotations
 import time
 import torch
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from autodata_core.selection_strategy import make_selection_strategy
 
 if TYPE_CHECKING:
+    from isaaclab.managers import TerminationTermCfg
+
     from autodata_core.data_generator import DataGenerator, _EEFGenerationState
     from autodata_core.waypoint import Waypoint
     from autodata_interfaces.datastream.datastream import Datastream
     from autodata_interfaces.tasks.subtask_spec import Subtask
+
+
+@dataclass(frozen=True)
+class AlgorithmEpisodeResult:
+    """Result returned by an episode-level generation algorithm.
+
+    Args:
+        success: Whether the executed episode satisfied the task success term.
+        diagnostics: Stable scalar diagnostics suitable for generation sidecars.
+    """
+
+    success: bool
+    diagnostics: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        """Require a boolean outcome and uniquely named diagnostic entries."""
+        assert isinstance(self.success, bool), "success must be a bool"
+        assert isinstance(self.diagnostics, tuple), "diagnostics must be a tuple"
+        names = tuple(name for name, _ in self.diagnostics)
+        assert len(names) == len(set(names)), "diagnostic names must be unique"
+
 
 REGISTERED_ALGORITHMS: dict[str, type[GenerationAlgorithm]] = {}
 
@@ -35,6 +59,7 @@ def get_algorithm(name: str, **kwargs: Any) -> GenerationAlgorithm:
     """Construct the algorithm registered under ``name``, forwarding ``kwargs`` to its ``__init__``.
 
     Mimic and DexMimicGen take no kwargs. SkillGen requires ``motion_planners=`` (per-env dict).
+    ScheduleGen requires ``planning_contexts=`` (per-env arm and full-state planners).
     """
     if name not in REGISTERED_ALGORITHMS:
         raise KeyError(f"Unknown algorithm {name!r}. Registered: {sorted(REGISTERED_ALGORITHMS)}")
@@ -64,10 +89,41 @@ class GenerationAlgorithm(metaclass=_AlgorithmMeta):
     """
 
     name: str = ""
-    expected_eef_count: int | tuple[int, ...] = 1
+    expected_eef_count: int | tuple[int, ...] | None = 1
     requires_motion_planner: bool = False
     uses_subtask_start_signals: bool = False
     supports_coordination: bool = False
+    plans_complete_episode: bool = False
+
+    async def generate_and_execute_episode(
+        self,
+        *,
+        data_generator: DataGenerator,
+        env_id: int,
+        success_term: TerminationTermCfg,
+        env_action_queue: Any,
+        pause_subtask: bool,
+    ) -> AlgorithmEpisodeResult:
+        """Execute an episode-level algorithm after shared reset.
+
+        Per-subtask algorithms leave :attr:`plans_complete_episode` false and never enter this
+        method.
+
+        Args:
+            data_generator: Generator providing source data and environment interfaces.
+            env_id: Environment used for the attempt.
+            success_term: Task success condition.
+            env_action_queue: Queue consumed by the shared environment stepping loop.
+            pause_subtask: Whether the algorithm should pause at subtask boundaries.
+
+        Returns:
+            Attempt outcome and algorithm diagnostics.
+
+        Raises:
+            NotImplementedError: The algorithm does not plan complete episodes.
+        """
+
+        raise NotImplementedError(f"algorithm {self.name!r} does not plan complete episodes")
 
     def validate_setup(self, datastream: Datastream) -> None:
         """Validate source annotations against the composed datastream.

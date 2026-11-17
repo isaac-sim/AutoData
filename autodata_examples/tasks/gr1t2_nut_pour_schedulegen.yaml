@@ -1,0 +1,239 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: gr1t2_nut_pour_schedulegen
+description: GR1T2 pours nuts into a bowl, then places the bowl on the scale.
+algo: schedulegen
+attempt_diagnostics: autodata_examples.task_diagnostics:gr1t2_nut_pour_attempt_diagnostics
+
+generation_policy:
+  name: gr1t2_nut_pour_schedulegen
+  seed: 10
+  num_trials: 10
+  guarantee_success: true
+  max_num_failures: 25
+  keep_failed: true
+  use_skillgen: true
+  select_src_per_subtask: false
+  select_src_per_arm: false
+  source_selection_anchor: right.grasp_bowl
+  source_candidate_count: 3
+  transform_first_robot_pose: false
+  interpolate_from_last_target_pose: true
+  skill_passthrough_delay_steps: 8
+  skill_passthrough_interpolation_steps: 4
+  max_joint_step_rad: 0.1
+  final_hold_steps: 2
+  terminal_convergence_steps: 10
+
+subtasks:
+  left:
+    - name: grasp_beaker
+      object_ref: sorting_beaker
+      description: Grasp the beaker with the left hand.
+      subtask_start_signal: grasp_left
+      subtask_term_signal: grasp_left
+      subtask_term_offset_range: [0, 0]
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs: {nn_k: 3}
+      num_interpolation_steps: 5
+      segments:
+        - name: transit
+          kind: transit
+          provider: motion_planner
+          goal_segment_id: left.grasp_beaker.skill
+        - name: skill
+          kind: skill
+          provider: demonstration
+          events:
+            - event_type: attach
+              object_ref: sorting_beaker
+              point: source_annotation
+              annotation_key: beaker_grasp
+              attachment_frame: left_hand_pitch_link
+
+    - name: pour_and_clear
+      object_ref: sorting_bowl
+      description: Pour into the bowl and move the beaker safely clear.
+      subtask_start_signal: pour_left
+      subtask_term_signal: pour_clear_left
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs: {nn_k: 3}
+      num_interpolation_steps: 0
+      segments:
+        - name: transit
+          kind: transit
+          provider: motion_planner
+          goal_segment_id: left.pour_and_clear.skill
+        - name: skill
+          kind: skill
+          provider: demonstration
+
+    - name: release_beaker
+      object_ref: black_sorting_bin
+      description: Return the attached beaker to the bin and release it.
+      subtask_start_signal: beaker_release_start
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs: {nn_k: 3}
+      num_interpolation_steps: 0
+      segments:
+        - name: transit
+          kind: transit
+          provider: motion_planner
+          goal_segment_id: left.release_beaker.skill
+        - name: skill
+          kind: skill
+          provider: demonstration
+          demonstration_source_window:
+            anchor_annotation_key: beaker_release
+            post_event_sample_count: 2
+          world_contacts:
+            - object_ref: sorting_beaker
+              fixture_ref: black_sorting_bin
+          robot_contacts:
+            - object_ref: sorting_beaker
+              robot_link_names: &left_beaker_release_links
+                - L_index_intermediate_link
+                - L_index_proximal_link
+                - L_middle_intermediate_link
+                - L_middle_proximal_link
+                - L_pinky_intermediate_link
+                - L_pinky_proximal_link
+                - L_ring_intermediate_link
+                - L_ring_proximal_link
+                - L_thumb_distal_link
+                - L_thumb_proximal_base_link
+                - L_thumb_proximal_link
+                - left_hand_pitch_link
+              start_annotation_key: beaker_release
+          events:
+            - event_type: detach
+              object_ref: sorting_beaker
+              point: source_annotation
+              annotation_key: beaker_release
+        - name: open_hold
+          kind: hold
+          provider: scripted
+          duration_steps: 10
+          passthrough_preset: open
+          world_contacts:
+            - object_ref: sorting_beaker
+              fixture_ref: black_sorting_bin
+          robot_contacts:
+            - object_ref: sorting_beaker
+              robot_link_names: *left_beaker_release_links
+  right:
+    - name: grasp_bowl
+      object_ref: sorting_bowl
+      description: Grasp the bowl with the right hand after pouring finishes.
+      subtask_start_signal: grasp_right
+      subtask_term_signal: grasp_right
+      subtask_term_offset_range: [0, 0]
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs: {nn_k: 3}
+      num_interpolation_steps: 3
+      segments:
+        - name: transit
+          kind: transit
+          provider: motion_planner
+          goal_segment_id: right.grasp_bowl.skill
+        - name: skill
+          kind: skill
+          provider: demonstration
+          events:
+            - event_type: attach
+              object_ref: sorting_bowl
+              point: source_annotation
+              annotation_key: bowl_grasp
+              attachment_frame: right_hand_pitch_link
+
+    - name: place_bowl
+      object_ref: sorting_scale
+      description: Place and release the bowl on the scale.
+      subtask_start_signal: place_bowl_on_scale_right
+      algo_params:
+        subtask_start_offset_range: [0, 0]
+      selection_strategy: nearest_neighbor_object
+      selection_strategy_kwargs: {nn_k: 3}
+      num_interpolation_steps: 3
+      segments:
+        - name: transit
+          kind: transit
+          provider: motion_planner
+          goal_segment_id: right.place_bowl.skill
+        - name: skill
+          kind: skill
+          provider: demonstration
+          demonstration_source_window:
+            anchor_annotation_key: bowl_release
+            post_event_sample_count: 2
+          world_contacts:
+            - object_ref: sorting_bowl
+              fixture_ref: sorting_scale
+          robot_contacts:
+            - object_ref: sorting_bowl
+              robot_link_names: &right_bowl_release_links
+                - R_index_intermediate_link
+                - R_index_proximal_link
+                - R_middle_intermediate_link
+                - R_middle_proximal_link
+                - R_pinky_intermediate_link
+                - R_pinky_proximal_link
+                - R_ring_intermediate_link
+                - R_ring_proximal_link
+                - R_thumb_distal_link
+                - R_thumb_proximal_base_link
+                - R_thumb_proximal_link
+                - right_hand_pitch_link
+              start_annotation_key: bowl_release
+          events:
+            - event_type: detach
+              object_ref: sorting_bowl
+              point: source_annotation
+              annotation_key: bowl_release
+        - name: open_hold
+          kind: hold
+          provider: scripted
+          duration_steps: 10
+          passthrough_preset: open
+          world_contacts:
+            - object_ref: sorting_bowl
+              fixture_ref: sorting_scale
+          robot_contacts:
+            - object_ref: sorting_bowl
+              robot_link_names: *right_bowl_release_links
+        - name: clearance
+          kind: transit
+          provider: scripted
+          duration_steps: 10
+          passthrough_preset: open
+          cartesian_offset_m: [0.0, 0.0, 0.05]
+          world_contacts:
+            - object_ref: sorting_bowl
+              fixture_ref: sorting_scale
+          robot_contacts:
+            - object_ref: sorting_bowl
+              robot_link_names: *right_bowl_release_links
+              clear_at_end: true
+schedule:
+  strategy: waypoint_retiming
+  collision_margin_m: 0.0
+  time_limit_s: 15.0
+  constraints:
+    - type: precedence
+      before: left.pour_and_clear.skill.end
+      after: right.grasp_bowl.transit.start
+      min_lag_steps: 0
+    - type: non_preemptive
+      segments:
+        - left.release_beaker.transit
+        - left.release_beaker.skill
+        - left.release_beaker.open_hold
+    - type: non_preemptive
+      segments:
+        - right.grasp_bowl.transit
+        - right.grasp_bowl.skill
+        - right.place_bowl.transit
+        - right.place_bowl.skill
+        - right.place_bowl.open_hold
+        - right.place_bowl.clearance
