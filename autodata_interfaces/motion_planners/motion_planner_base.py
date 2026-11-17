@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     # Defer Isaac Lab imports to type-checking time so this module can be imported in
     # sim-free contexts (e.g. unit tests that exercise only config or version detection).
     from autodata_interfaces.datastream.datastream import Datastream
+    from autodata_interfaces.embodiments.embodiment_types import NamedJointTrajectory
 
 
 class MotionPlannerBase(ABC):
@@ -127,6 +128,13 @@ class MotionPlannerBase(ABC):
             pose = self.get_next_waypoint_ee_pose()
             planned_poses.append(pose)
         return planned_poses
+
+    def get_planned_joint_trajectory(self) -> NamedJointTrajectory | None:
+        """Return the complete joint path when the backend provides it.
+
+        Returns:
+            Joint names and sampled positions [rad, m], or None when unavailable.
+        """
 
     @abstractmethod
     def reset_plan(self) -> None:

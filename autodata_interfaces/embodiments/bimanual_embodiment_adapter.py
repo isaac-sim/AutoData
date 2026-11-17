@@ -14,14 +14,17 @@ bimanual (two arms with independent IK).
 
 from __future__ import annotations
 
+import math
 import torch
 from abc import abstractmethod
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
-from autodata_interfaces.embodiments.embodiment_types import PoseObsKeys
+from autodata_interfaces.embodiments.embodiment_types import ActionTargetFrame, NamedJointTrajectory, PoseObsKeys
 from autodata_utils import pose_math
 
 
@@ -35,11 +38,40 @@ class BimanualEefConfig:
         gripper_action_indices: Indices into the interleaved hand-joints
             slice of the env action vector. Length equals this EEF's gripper
             action dim.
+        joint_names: Positional passthrough joint names in local channel order.
+        passthrough_presets: Named positional passthrough values in the same local joint order.
     """
 
     name: str
     pose_obs_keys: PoseObsKeys
     gripper_action_indices: tuple[int, ...]
+    joint_names: tuple[str, ...] = ()
+    passthrough_presets: Mapping[str, tuple[float, ...]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Check local hand-joint ordering and freeze the named passthrough presets."""
+        assert not self.joint_names or len(self.joint_names) == len(
+            self.gripper_action_indices
+        ), "joint_names must align with gripper_action_indices"
+        assert len(set(self.joint_names)) == len(self.joint_names), "joint_names must be unique"
+        if self.passthrough_presets:
+            assert len(self.joint_names) == len(
+                self.gripper_action_indices
+            ), "passthrough presets require joint_names aligned with gripper_action_indices"
+
+        presets: dict[str, tuple[float, ...]] = {}
+        for preset_name, preset_values in self.passthrough_presets.items():
+            assert isinstance(preset_name, str) and preset_name, "passthrough preset names must be non-empty strings"
+            values = tuple(float(value) for value in preset_values)
+            assert len(values) == len(self.gripper_action_indices), (
+                f"passthrough preset {preset_name!r} must contain {len(self.gripper_action_indices)} values "
+                f"in joint_names order, got {len(values)}"
+            )
+            assert all(
+                math.isfinite(value) for value in values
+            ), f"passthrough preset {preset_name!r} values must be finite"
+            presets[preset_name] = values
+        object.__setattr__(self, "passthrough_presets", MappingProxyType(presets))
 
 
 @dataclass(kw_only=True)
@@ -81,6 +113,27 @@ class BimanualEmbodimentAdapter(EmbodimentAdapter):
 
     def get_eef_names(self) -> tuple[str, ...]:
         return (self.left.name, self.right.name)
+
+    def get_eef_joint_names(self, eef_name: str) -> tuple[str, ...]:
+        """Return the named hand joints commanded by one EEF passthrough channel."""
+
+        by_name = {eef.name: eef.joint_names for eef in (self.left, self.right)}
+        assert eef_name in by_name, f"unknown end-effector {eef_name!r}"
+        return by_name[eef_name]
+
+    def get_eef_passthrough_preset(self, eef_name: str, preset_name: str) -> tuple[float, ...]:
+        """Return a named hand preset in the EEF's configured joint order."""
+
+        by_name = {eef.name: eef for eef in (self.left, self.right)}
+        assert eef_name in by_name, f"unknown end-effector {eef_name!r}"
+        assert isinstance(preset_name, str) and preset_name, "preset_name must be a non-empty string"
+        presets = by_name[eef_name].passthrough_presets
+        if preset_name not in presets:
+            raise KeyError(
+                f"unknown passthrough preset {preset_name!r} for end-effector {eef_name!r}; "
+                f"available presets: {sorted(presets)}"
+            )
+        return presets[preset_name]
 
     def get_eef_poses(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
         assert self.env is not None, "Call bind_env(env) before reading state."
@@ -147,6 +200,7 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
     hand_joints_slice: tuple[int, int]
     canonicalize_quat: bool = True
     passthrough_channels: dict[str, tuple[int, int]] = field(default_factory=dict)
+    planning_model_action_term: str | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -184,6 +238,207 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
                     f"overlaps action region {occupied_range}"
                 )
             occupied_ranges.append(tuple(channel_slice))
+
+    def get_passthrough_actions(
+        self,
+        env_ids: Sequence[int] | None = None,
+    ) -> dict[str, torch.Tensor] | None:
+        """Recover positional hand commands from the live articulation state.
+
+        Args:
+            env_ids: Environment indices, or None for all environments.
+
+        Returns:
+            Hand-action tensors per end effector, or None if a required channel is unavailable.
+        """
+
+        eefs = (self.left, self.right)
+        if self.passthrough_channels or any(not eef.joint_names for eef in eefs):
+            return None
+        joint_names = tuple(self.get_joint_names())
+        missing = {name for eef in eefs for name in eef.joint_names} - set(joint_names)
+        assert not missing, f"passthrough joints are absent from the live articulation: {sorted(missing)}"
+        joint_index = {name: index for index, name in enumerate(joint_names)}
+        positions = self.get_joint_positions(env_ids)
+        return {eef.name: positions[:, [joint_index[name] for name in eef.joint_names]].clone() for eef in eefs}
+
+    def _planning_action_term(self) -> Any:
+        """Resolve the configured planning action from the bound environment."""
+        assert self.env is not None, "Call bind_env(env) before resolving the planning model."
+        terms = getattr(self.env.action_manager, "_terms", {})
+        assert (
+            self.planning_model_action_term in terms
+        ), f"unknown planning action term {self.planning_model_action_term!r}"
+        return terms[self.planning_model_action_term]
+
+    def get_action_target_frames(self) -> tuple[ActionTargetFrame, ...]:
+        """Match end effectors to the action's controlled frames.
+
+        Returns:
+            Ordered end-effector/frame pairs, or an empty tuple without a planning action.
+        """
+        if self.planning_model_action_term is None:
+            return ()
+        eef_names = self.get_eef_names()
+        frame_names = self._planning_action_term().get_action_target_frame_names()
+        assert len(frame_names) == len(eef_names), "planning action frame count must match the embodiment EEF count"
+        return tuple(ActionTargetFrame(eef, frame) for eef, frame in zip(eef_names, frame_names, strict=True))
+
+    def get_planning_model_path(self) -> Path | None:
+        """Locate the URDF exported for the live Pink controller.
+
+        Returns:
+            Existing URDF path, or None without a planning action.
+        """
+
+        if self.planning_model_action_term is None:
+            return None
+        controller = self._planning_action_term().cfg.controller
+        if controller.urdf_path:
+            path = Path(controller.urdf_path).expanduser()
+        else:
+            assert controller.usd_path and controller.urdf_output_dir
+            path = Path(controller.urdf_output_dir).expanduser() / "urdf" / f"{Path(controller.usd_path).stem}.urdf"
+        path = path.resolve()
+        assert path.is_file(), f"controller URDF file does not exist: {path}"
+        return path
+
+    def solve_joint_trajectory(
+        self,
+        target_eef_poses: Mapping[str, torch.Tensor],
+        joint_seed_trajectories: Mapping[str, NamedJointTrajectory],
+        initial_joint_positions: torch.Tensor,
+        position_tolerance_m: float,
+        rotation_tolerance_rad: float,
+        joint_state_is_valid: Callable[[tuple[str, ...], torch.Tensor, int], bool] | None = None,
+        env_id: int = 0,
+    ) -> NamedJointTrajectory | None:
+        """Solve synchronized targets through the configured planning action.
+
+        Args:
+            target_eef_poses: Target poses per end effector with shape (T, 4, 4) [m].
+            joint_seed_trajectories: Named planner joint proposals per end effector.
+            initial_joint_positions: Initial state in live articulation joint order [rad, m].
+            position_tolerance_m: Required tool-position accuracy [m].
+            rotation_tolerance_rad: Required tool-rotation accuracy [rad].
+            joint_state_is_valid: Optional feasibility check for each joint sample.
+            env_id: Environment controller to use.
+
+        Returns:
+            Named joint trajectory, or None without a planning action.
+        """
+        if self.planning_model_action_term is None:
+            return None
+        frames = self.get_action_target_frames()
+        assert set(target_eef_poses) == set(joint_seed_trajectories) == {frame.eef_name for frame in frames}
+        return self._planning_action_term().solve_joint_trajectory(
+            {frame.frame_name: target_eef_poses[frame.eef_name] for frame in frames},
+            {frame.frame_name: joint_seed_trajectories[frame.eef_name] for frame in frames},
+            NamedJointTrajectory(tuple(self.get_joint_names()), initial_joint_positions.unsqueeze(0)),
+            position_tolerance_m,
+            rotation_tolerance_rad,
+            joint_state_is_valid,
+            env_id,
+        )
+
+    def set_joint_posture_target(
+        self,
+        joint_names: tuple[str, ...],
+        joint_positions: torch.Tensor,
+        env_id: int = 0,
+    ) -> None:
+        """Set the planning action's posture reference.
+
+        Args:
+            joint_names: Names aligned with the position values.
+            joint_positions: Posture target with shape (J,) [rad, m].
+            env_id: Environment controller to update.
+        """
+        self._planning_action_term().set_joint_posture_target(joint_names, joint_positions, env_id)
+
+    def reset_joint_posture_target(self, env_id: int = 0) -> None:
+        """Restore the planning action's default posture reference.
+
+        Args:
+            env_id: Environment controller to update.
+        """
+        self._planning_action_term().reset_joint_posture_target(env_id)
+
+    def get_planning_root_pose(
+        self,
+        root_pose_source_frame_name: str,
+        env_ids: Sequence[int] | None = None,
+    ) -> torch.Tensor:
+        """Return the planning-root pose, using the live controller frame when available.
+
+        Args:
+            root_pose_source_frame_name: Robot frame used as the planning root.
+            env_ids: Environment indices, or None for all environments.
+
+        Returns:
+            Environment-relative root transforms with shape (N, 4, 4) [m].
+        """
+
+        if self.planning_model_action_term is None:
+            return super().get_planning_root_pose(root_pose_source_frame_name, env_ids)
+        action_term = self._planning_action_term()
+        assert action_term.cfg.controller.base_link_name == root_pose_source_frame_name
+        return action_term.get_base_link_pose(env_ids)
+
+    def passthrough_actions_to_joint_positions(
+        self,
+        passthrough_action_dict: dict[str, torch.Tensor],
+    ) -> dict[str, torch.Tensor]:
+        """Map hand-action channels to named articulation joint positions.
+
+        Args:
+            passthrough_action_dict: Unbatched hand-action tensors keyed by end effector.
+
+        Returns:
+            Scalar joint-position tensors keyed by articulation joint name [rad, m].
+        """
+
+        result: dict[str, torch.Tensor] = {}
+        for eef in (self.left, self.right):
+            if not eef.joint_names or eef.name not in passthrough_action_dict:
+                continue
+            values = passthrough_action_dict[eef.name]
+            assert values.shape == (len(eef.joint_names),)
+            result.update(zip(eef.joint_names, values, strict=True))
+        return result
+
+    def joint_positions_to_passthrough_actions(
+        self,
+        joint_position_dict: dict[str, torch.Tensor],
+        passthrough_action_dict: dict[str, torch.Tensor],
+    ) -> dict[str, torch.Tensor]:
+        """Update hand-action channels from named joint positions.
+
+        Args:
+            joint_position_dict: Scalar joint positions keyed by name [rad, m].
+            passthrough_action_dict: Action tensors providing the channel shapes and defaults.
+
+        Returns:
+            Copied action channels with the supplied hand-joint positions applied.
+        """
+
+        result = {name: value.clone() for name, value in passthrough_action_dict.items()}
+        for eef in (self.left, self.right):
+            selected = tuple(name in joint_position_dict for name in eef.joint_names)
+            if not any(selected):
+                continue
+            assert all(selected), f"planned joint state only partially covers the {eef.name!r} hand"
+            assert eef.name in result, f"passthrough actions are missing the {eef.name!r} hand channel"
+            template = result[eef.name]
+            assert template.shape == (len(eef.joint_names),)
+            values = tuple(joint_position_dict[name] for name in eef.joint_names)
+            assert all(
+                isinstance(value, torch.Tensor) and value.numel() == 1 for value in values
+            ), "planned hand joint positions must be scalar tensors"
+            result[eef.name] = torch.stack(
+                [value.reshape(()).to(device=template.device, dtype=template.dtype) for value in values]
+            )
+        return result
 
     @property
     def action_dim(self) -> int:
@@ -348,9 +603,15 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
               left:
                 pose_obs_keys: {pos: <str>, quat: <str>}
                 gripper_action_indices: [<int>, ...]
+                joint_names: [<str>, ...]       # optional
+                passthrough_presets:             # optional
+                  <name>: [<float>, ...]
               right:
                 pose_obs_keys: {pos: <str>, quat: <str>}
                 gripper_action_indices: [<int>, ...]
+                joint_names: [<str>, ...]       # optional
+                passthrough_presets:             # optional
+                  <name>: [<float>, ...]
             action_layout:
               left_pose_slice: [<start>, <end>]
               right_pose_slice: [<start>, <end>]
@@ -376,13 +637,17 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
             hand_joints_slice=tuple(layout["hand_joints_slice"]),
             canonicalize_quat=bool(layout.get("canonicalize_quat", True)),
             passthrough_channels=passthrough_channels,
+            planning_model_action_term=data.get("planning_model_action_term"),
         )
 
     @staticmethod
     def _eef_from_dict(name: str, data: dict[str, Any]) -> BimanualEefConfig:
+        """Build one end-effector configuration from its YAML fields."""
         pose_keys = data["pose_obs_keys"]
         return BimanualEefConfig(
             name=name,
             pose_obs_keys=PoseObsKeys(pos=pose_keys["pos"], quat=pose_keys["quat"]),
             gripper_action_indices=tuple(int(i) for i in data["gripper_action_indices"]),
+            joint_names=tuple(data.get("joint_names", ())),
+            passthrough_presets=data.get("passthrough_presets", {}),
         )

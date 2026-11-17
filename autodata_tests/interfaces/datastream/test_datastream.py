@@ -343,3 +343,11 @@ def test_get_robot_root_pose():
 def test_get_scene_state_passthrough():
     datastream, _, _, _ = _datastream()
     assert datastream.get_scene_state(is_relative=True) is _SCENE_STATE_SENTINEL
+
+
+def test_robot_joint_positions_preserve_requested_order():
+    datastream, _, _, _ = _datastream()
+    assert torch.equal(
+        datastream.get_robot_joint_positions(env_ids=[0], joint_names=("j6", "j1")),
+        torch.tensor([[0.6, 0.1]]),
+    )
