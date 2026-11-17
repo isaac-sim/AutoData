@@ -6,10 +6,10 @@ Troubleshooting
 ===============
 
 Use the table to identify the likely cause, then follow the linked check or fix. Run commands
-from the repository root in your installed runtime. Commands marked **host** run on the host;
-commands marked **container** apply only to Docker. Replace values in angle brackets with values
-from your run. Issues are ordered by workflow area: runtime and teleoperation, dataset handling,
-then SkillGen.
+from the repository root in your installed runtime. Commands marked **host** run on the host
+(for Docker, outside the development container); commands marked **container** apply only to
+Docker. Replace values in angle brackets with values from your run. Issues are ordered by workflow
+area: runtime and teleoperation, dataset handling, then SkillGen.
 
 .. autodata-runtime::
 

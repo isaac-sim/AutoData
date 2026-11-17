@@ -46,7 +46,8 @@ The CloudXR runtime bridges the Apple Vision Pro and the simulator. Use two term
 same repository root for native uv. Start CloudXR in the first terminal and leave it running
 for the whole recording session.
 
-#. On the **host machine**, configure the firewall to allow CloudXR traffic for either runtime:
+#. On the **host machine** (for Docker, outside the development container), configure the firewall to
+   allow CloudXR traffic:
 
    .. code-block:: bash
 

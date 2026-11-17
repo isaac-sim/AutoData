@@ -11,8 +11,8 @@ scale — see the :doc:`Franka cube-stacking workflow <../workflows/franka_cube_
 Prerequisites
 -------------
 
-* One installation method is ready: Docker or native uv, with the repository and submodules cloned
-  (see :doc:`installation`). NGC login and the NVIDIA Container Toolkit are needed only for Docker.
+* Installation is complete — repo cloned with submodules, plus either Docker (with NGC login and the
+  NVIDIA Container Toolkit) or the native uv environment (see :doc:`installation`).
 * Git LFS data is pulled — the source dataset lives at
   ``./datasets/annotated_datasets`` in the repository (``/workspaces/autodata/datasets/annotated_datasets``
   inside the container).
@@ -23,8 +23,7 @@ Prerequisites
 Choose Your Runtime
 -------------------
 
-Select the installation method you used. The selection follows the command tabs on subsequent pages
-during this browser session, independently of robot or physics-backend selections.
+Select the installation method you used.
 
 .. autodata-runtime::
 

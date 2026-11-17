@@ -27,7 +27,7 @@ Recording with a SpaceMouse (Recommended)
 Isaac Lab supports the **SpaceMouse Wireless** and **SpaceMouse Compact** from
 `3Dconnexion <https://3dconnexion.com/>`_.
 
-**Set up the device on the host:**
+**Set up the device on the host (for Docker, outside the development container):**
 
 #. Plug the SpaceMouse into the host machine.
 

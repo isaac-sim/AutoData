@@ -362,8 +362,7 @@ Verifying the Installation
 --------------------------
 
 Select the installation method you used. Run its commands from the repository root: inside the container
-for Docker, or on the host for native uv. The runtime selection follows subsequent command tabs during this
-browser session. The full suite includes SkillGen tests and requires cuRobo.
+for Docker, or on the host for native uv. The full suite includes SkillGen tests and requires cuRobo.
 
 For the optional conda installation, use the plain Python commands in the activated environment without
 starting a container.
