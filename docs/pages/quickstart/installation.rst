@@ -1,14 +1,17 @@
 Installation
 ============
 
-Docker is the recommended way to install AutoData. The dev container setup includes Isaac Sim,
-Isaac Lab, Isaac Lab-Arena, and AutoData, providing a reproducible environment
-without modifying the host Python installation. The repository is bind-mounted into the container,
-so edits on the host are live inside it.
+Choose **one** installation method before running its setup commands:
+
+* :ref:`Docker (recommended) <installation-docker>` runs AutoData in a development container.
+  It does not modify the host Python installation.
+* :ref:`Native uv <installation-uv>` installs the locked Python environment on a Linux x86_64 host.
+  It does not require Docker, the NVIDIA Container Toolkit, or an NGC container login.
+
+Complete the common prerequisites and cloning steps below, then follow only your chosen method's section.
+The optional conda installation is described separately.
 
 This checkout uses Isaac Sim 6.1.0, Isaac Lab 3.0.0, and Arena 0.3.0.
-Use the pinned Docker environment or one of the optional native installations below for the workflows on this
-site.
 
 Before installing, review the :doc:`support_matrix` for the complete supported software stack,
 hardware requirements, optional cuRobo and XR dependencies, and resource guidance.
@@ -47,6 +50,8 @@ Then pull the LFS-stored datasets:
 If a dataset remains a small text pointer or cannot be opened as HDF5, see
 :ref:`troubleshooting-lfs`.
 
+
+.. _installation-docker:
 
 Recommended Docker Installation
 -------------------------------
@@ -121,10 +126,13 @@ Useful flags of ``./docker/run_docker.sh``:
 For a missing Kit window or an X11 error, see :ref:`troubleshooting-display`.
 
 
-Updating an Existing Checkout
-------------------------------
+.. _updating-an-existing-checkout:
 
-After updating AutoData, synchronize the nested submodules and rebuild the image from the host:
+Updating a Docker Installation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+After updating AutoData, synchronize the nested submodules and rebuild the image from the repository root
+on the host, outside the development container:
 
 .. code-block:: bash
 
@@ -159,6 +167,8 @@ The checked-in example datasets are under ``./datasets/`` relative to the reposi
 ``/datasets`` mount comes from the host directory selected by ``-d``; it is not the repository's
 dataset directory.
 
+
+.. _installation-uv:
 
 Optional Native uv Installation
 -------------------------------
@@ -352,21 +362,23 @@ See :autodata_code_link:`<docs/README.md>` for local build instructions.
 Verifying the Installation
 --------------------------
 
-Run these commands from the repository root in the activated conda environment, or start them with
-``uv run --locked`` in the uv environment. Inside the container, run them from ``/workspaces/autodata``.
-The full suite includes SkillGen tests and requires cuRobo.
+Select the installation method you used. Run its commands from the repository root: inside the container
+for Docker, or on the host for native uv. The full suite includes SkillGen tests and requires cuRobo.
+
+For the optional conda installation, activate its environment and run the commands shown on the Docker tab
+from the repository root on the host.
 
 Run the fast unit tests (a few seconds, no Isaac Sim launch):
 
-.. code-block:: bash
+.. autodata-python::
 
-   pytest autodata_tests -m "not with_subprocess"
+   -m pytest autodata_tests -m "not with_subprocess"
 
 Then, to verify the full stack end-to-end, run one data-generation test (launches Isaac Sim
 as a subprocess; several minutes):
 
-.. code-block:: bash
+.. autodata-python::
 
-   pytest -s autodata_tests/e2e/test_mimicgen_data_generation.py::test_franka_cube_stack_mimicgen_data_generation_single_env_cuda
+   -m pytest -s autodata_tests/e2e/test_mimicgen_data_generation.py::test_franka_cube_stack_mimicgen_data_generation_single_env_cuda
 
 See :doc:`../advanced/testing_and_ci` for the full test-suite layout.

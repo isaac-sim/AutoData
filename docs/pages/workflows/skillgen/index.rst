@@ -97,8 +97,10 @@ Preflight
 ---------
 
 Before annotating or generating, complete the :doc:`Franka SkillGen preflight <preflight>`. It
-consolidates the cuRobo image and GPU checks, source dataset and Nucleus dependencies, a
+consolidates the cuRobo runtime and GPU checks, source dataset and Nucleus dependencies, a
 one-demonstration smoke test, expected planning failures, and runtime and VRAM guidance.
+
+Run the commands below from the repository root in that cuRobo-enabled runtime.
 
 The Task Descriptor for SkillGen
 --------------------------------
@@ -125,9 +127,9 @@ everything between a termination and the next start becomes plannable transit.
 Annotation is manual: each episode replays in a Kit window, and you mark signals with
 the keyboard.
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/annotate_demos.py \
+   scripts/annotate_demos.py \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz kit \
        --task_descriptor autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
@@ -222,9 +224,9 @@ dedicated task.
 
 Start small to verify the setup, using the pre-annotated source dataset:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/generate_dataset.py \
+   scripts/generate_dataset.py \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --alg skillgen \
        --task_descriptor autodata_examples/tasks/franka_cube_stack_skillgen.yaml \
@@ -246,9 +248,9 @@ training) and keep ``--viz none`` — rendering slows generation considerably.
 
 Validate the generated dataset the same way as any other:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/validate_dataset.py ./datasets/generated_dataset_skillgen_franka.hdf5
+   scripts/validate_dataset.py ./datasets/generated_dataset_skillgen_franka.hdf5
 
 Task 2: Cube Stacking in a Bin (Environment Profile)
 ----------------------------------------------------
@@ -320,9 +322,9 @@ Generating the bin dataset
 Note the reused annotated dataset — only the descriptor and the ``--env_profile`` flag
 change:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/generate_dataset.py \
+   scripts/generate_dataset.py \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --alg skillgen \
        --task_descriptor autodata_examples/tasks/franka_bin_stack_skillgen.yaml \

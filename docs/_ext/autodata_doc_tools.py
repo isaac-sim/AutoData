@@ -1,19 +1,18 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Small source-read macros for the AutoData docs.
-
-Mirrors the Arena docs tooling (``isaaclab_arena_doc_tools``): text substitutions applied to every
-RST page before parsing, so recurring snippets (docker commands, code links, clone URLs) are defined
-in one place and can switch between internal/external targets on release.
-"""
+"""Reusable commands, runtime tabs and source-derived tables for the AutoData docs."""
 
 import ast
 import re
 from pathlib import Path
+from textwrap import indent
 from typing import Any
 
+from docutils import nodes
+from docutils.parsers.rst import directives
 from sphinx.application import Sphinx
+from sphinx.util.docutils import SphinxDirective
 
 
 def autodata_git_clone_code_block(app: Sphinx, _: Any, source: list[str]) -> None:
@@ -69,6 +68,56 @@ def docker_run_command_replacer(app: Sphinx, _: Any, source: list[str]) -> None:
 
     source[0] = re.sub(r":docker_run_default:", default_replacer, source[0])
     source[0] = re.sub(r":docker_run_curobo:", curobo_replacer, source[0])
+
+
+def _runtime_tabs(docker: str, uv: str) -> str:
+    parts = [".. tab-set::\n   :sync-group: autodata-runtime\n"]
+    for label, key, content in (("Docker", "docker", docker), ("Native uv", "uv", uv)):
+        parts.append(f"   .. tab-item:: {label}\n      :sync: {key}\n\n{indent(content, '      ')}\n")
+    return "\n".join(parts)
+
+
+def _shell_block(command: str) -> str:
+    return f".. code-block:: bash\n\n{indent(command, '   ')}"
+
+
+class AutoDataPythonDirective(SphinxDirective):
+    """Render one Python invocation's arguments for Docker and native uv."""
+
+    has_content = True
+    option_spec = {"no-sync": directives.flag}
+
+    def run(self) -> list[nodes.Node]:
+        self.assert_has_content()
+        arguments = "\n".join(self.content)
+        uv_mode = "--no-sync" if "no-sync" in self.options else "--locked"
+        return self.parse_text_to_nodes(
+            _runtime_tabs(_shell_block(f"python {arguments}"), _shell_block(f"uv run {uv_mode} python {arguments}"))
+        )
+
+
+class AutoDataRuntimeDirective(SphinxDirective):
+    """Show where workflow commands run for each installation method."""
+
+    option_spec = {"curobo": directives.flag}
+
+    def run(self) -> list[nodes.Node]:
+        curobo = "curobo" in self.options
+        container = "the cuRobo container" if curobo else "a development container"
+        docker = (
+            f"If you are not already in {container}, run this from the repository root in a terminal on the host, "
+            "outside any container:\n\n"
+            + _shell_block("./docker/run_docker.sh" + (" -c" if curobo else ""))
+            + "\n\nIf the container is already running, this opens another shell in it. "
+            "Continue inside the container at ``/workspaces/autodata``."
+        )
+        installation = "installation-uv-curobo" if curobo else "installation-uv"
+        label = "uv environment with cuRobo" if curobo else "uv environment"
+        uv = (
+            "Run commands from the repository root in a terminal on the host. "
+            f"``uv run`` uses your installed :ref:`{label} <{installation}>`, so you don't need to activate it."
+        )
+        return self.parse_text_to_nodes(_runtime_tabs(docker, uv))
 
 
 def _declarations(app: Sphinx, decorator: str) -> list[tuple[str, dict[str, Any], str]]:
@@ -130,6 +179,9 @@ def autodata_checks_table(app: Sphinx, _: Any, source: list[str]) -> None:
 
 
 def setup(app: Sphinx) -> None:
+    app.add_js_file("runtime-tabs.js")
+    app.add_directive("autodata-python", AutoDataPythonDirective)
+    app.add_directive("autodata-runtime", AutoDataRuntimeDirective)
     app.connect("source-read", autodata_git_clone_code_block)
     app.connect("source-read", autodata_code_link)
     app.connect("source-read", docker_run_command_replacer)

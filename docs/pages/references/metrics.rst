@@ -6,9 +6,11 @@ file, of the generation run that produced it. Metrics are computed from recorded
 simulator. Generate, annotate or retarget with ``--record_metric_inputs`` to record what they read;
 without it, most metrics report that their inputs are missing.
 
-.. code-block:: bash
+.. autodata-runtime::
 
-   python scripts/validate_dataset.py datasets/generated.hdf5 --report \
+.. autodata-python::
+
+   scripts/validate_dataset.py datasets/generated.hdf5 --report \
        --result_file datasets/generated.json \
        --source datasets/annotated_datasets/dataset_franka_annotated.hdf5 \
        --gate datasets/gate.yaml \

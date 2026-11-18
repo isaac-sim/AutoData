@@ -64,3 +64,25 @@ xdg-open _build/index.html
   - `` :autodata_code_link:`<path/to/file.py>` `` — links to a file on GitHub.
   - `:autodata_git_clone_code_block:` — inserts the clone command.
 - Images go in `images/` and are referenced with relative paths (see the Arena docs for examples).
+
+## Runtime command tabs
+
+Use `autodata-python` for one Python invocation that applies to both Docker and native uv. Give only the
+script/module arguments; the directive supplies `python` or `uv run --locked python`:
+
+```rst
+.. autodata-python::
+
+   scripts/validate_dataset.py datasets/generated.hdf5
+```
+
+For diagnostics that inspect an existing installation, add `:no-sync:` to avoid installing or replacing
+packages before the check.
+
+Use `.. autodata-runtime::` where a workflow prepares its execution environment. Add `:curobo:` for SkillGen.
+These directives share the Sphinx-design `autodata-runtime` sync group, so the choice persists across pages
+during the browser session without changing robot or physics tabs.
+
+Keep host commands and method-specific installation/administration commands as ordinary code blocks. Do not
+put shell setup or multiple independent commands into `autodata-python`. Check paths and environment assumptions
+before sharing arguments: a Docker-only path such as `/workspaces/autodata` is not a native host path.

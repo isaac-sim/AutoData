@@ -5,11 +5,13 @@
 Troubleshooting
 ===============
 
-Use the table to identify the likely cause, then follow the linked check or fix. Commands
-marked **host** run outside the development container. Commands marked **container** run from
-``/workspaces/autodata`` inside the container. Replace values in angle brackets with values
-from your run. Issues are ordered by workflow area: runtime and teleoperation, dataset handling,
-then SkillGen.
+Use the table to identify the likely cause, then follow the linked check or fix. Run commands
+from the repository root in your installed runtime. Commands marked **host** run on the host
+(for Docker, outside the development container); commands marked **container** apply only to
+Docker. Replace values in angle brackets with values from your run. Issues are ordered by workflow
+area: runtime and teleoperation, dataset handling, then SkillGen.
+
+.. autodata-runtime::
 
 .. list-table:: Symptom, cause, and fix
    :widths: 31 29 40
@@ -20,17 +22,16 @@ then SkillGen.
      - Check or fix
    * - ``Environment ... doesn't exist`` during task lookup.
      - Lab 3.0 renamed the base task, or the command is using an old environment.
-     - Use the ``IsaacContrib-*`` name and the current Docker image. See
+     - Use the ``IsaacContrib-*`` name and the current Docker image or native uv environment. See
        :ref:`troubleshooting-task-names`.
    * - ``Error in sitecustomize`` / ``No module named 'autodata_utils'`` when creating a docs venv.
      - An old editable installation exposes the startup hook without the renamed packages.
      - Update the checkout and build docs in a dedicated virtual environment. See
        :ref:`troubleshooting-docs-startup`.
    * - ``--viz kit`` opens no window, or reports an X11/display error.
-     - ``DISPLAY`` or the X11 socket was not available when the container started, or the container
-       lacks X server permission.
-     - Check the host and container display state, then restart the container or use ``--viz none``.
-       See :ref:`troubleshooting-display`.
+     - ``DISPLAY`` or the X11 socket is unavailable, or the runtime lacks X server permission.
+     - Check the host display state and, for Docker, the container display state. See
+       :ref:`troubleshooting-display`.
    * - The Apple Vision Pro cannot connect, or hand tracking does not reach the recording script.
      - CloudXR is not running, its ports are blocked, or the recording shell did not source the
        runtime environment.
@@ -56,10 +57,10 @@ then SkillGen.
    * - ``import curobo`` fails, or cuRobo reports an incompatible CUDA kernel.
      - cuRobo is not installed (base container, or a uv environment without the ``curobo`` group), or it
        was built for a different GPU compute capability.
-     - Start the cuRobo container; for a GPU change, rebuild it without cache. In the uv environment,
-       rebuild cuRobo. See :ref:`troubleshooting-curobo`.
+     - For Docker, start the cuRobo container; for a GPU change, rebuild it without cache.
+       For native uv, rebuild cuRobo. See :ref:`troubleshooting-curobo`.
    * - SkillGen fails while downloading the Franka URDF from Nucleus.
-     - The container cannot reach the Nucleus asset server because of its network, DNS, proxy, or
+     - The runtime cannot reach the Nucleus asset server because of its network, DNS, proxy, or
        VPN configuration.
      - Test the exact asset download independently. See :ref:`troubleshooting-nucleus`.
    * - SkillGen repeatedly reports that motion planning failed.
@@ -73,25 +74,33 @@ then SkillGen.
 Display and X11
 ---------------
 
-Check the display on the **host** before starting the container:
+Check the display on the **host** (for Docker, outside the development container) before starting
+a GUI workflow:
 
 .. code-block:: bash
 
    echo "$DISPLAY"
    ls -ld /tmp/.X11-unix
+
+Both ``DISPLAY`` and ``/tmp/.X11-unix`` must be present. For native uv, run the workflow in this
+host shell. For Docker, grant X server access on the **host** before starting the container:
+
+.. code-block:: bash
+
    xhost +local:docker
 
-Both ``DISPLAY`` and ``/tmp/.X11-unix`` must be present. Check the same values inside the
-**container**:
+Then check the same values inside the **container**:
 
 .. code-block:: bash
 
    echo "$DISPLAY"
    ls -ld /tmp/.X11-unix
 
-The run script captures ``DISPLAY`` when it creates the container. If the container was created
+The Docker run script captures ``DISPLAY`` when it creates the container. If the container was created
 before the display was available, stop it and start it again with ``./docker/run_docker.sh`` (or
-``./docker/run_docker.sh -c`` for SkillGen). On a machine without a display, use ``--viz none``
+``./docker/run_docker.sh -c`` for SkillGen).
+
+With either runtime on a machine without a display, use ``--viz none``
 for generation or automatic annotation. Manual annotation and the keyboard/SpaceMouse recording
 workflow use ``--viz kit``. Also unset ``HEADLESS`` in an interactive shell if it is forcing
 windowless execution.
@@ -149,15 +158,25 @@ On the **host**, check that the CloudXR firewall rules are active:
 
    sudo ufw status
 
-The required TCP and UDP rules are listed in the :ref:`humanoid recording workflow
-<record_humanoid_cloudxr>`. In the first **container** shell, start CloudXR and leave it running:
+The required TCP and UDP rules and CloudXR prerequisites are listed in the
+:ref:`humanoid recording workflow <record_humanoid_cloudxr>`. Prepare the first terminal for
+your installed runtime:
 
-.. code-block:: bash
+.. autodata-runtime::
 
-   python -m isaacteleop.cloudxr --cloudxr-env-config=avp.env
+Start CloudXR and leave it running:
 
-In the second **container** shell, wait until the runtime has created its environment file, then
-source it before starting the recording script:
+.. autodata-python::
+
+   -m isaacteleop.cloudxr --cloudxr-env-config=avp.env
+
+Open a second terminal using the same runtime. For Docker, attach to the same container; for
+native uv, use another host shell at the same repository root:
+
+.. autodata-runtime::
+
+Wait until CloudXR has created its environment file, then source it in this second shell before
+starting the recording script:
 
 .. code-block:: bash
 
@@ -213,11 +232,16 @@ access, available disk space, and any proxy configuration.
 Invalid or Truncated HDF5
 -------------------------
 
-Run structural validation inside the **container**:
+Run structural validation from the repository root in your installed runtime:
+
+.. autodata-python::
+
+   scripts/validate_dataset.py <dataset.hdf5>
+
+Check the exit status immediately afterward in the same shell:
 
 .. code-block:: bash
 
-   python scripts/validate_dataset.py <dataset.hdf5>
    echo $?
 
 The validator exits nonzero for unreadable files, empty datasets, and episodes missing ``actions``,
@@ -236,15 +260,15 @@ Replay Failures and Divergence
 
 Validate the dataset first and note its ``Env ID`` and ``sim_args``:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/validate_dataset.py <dataset.hdf5>
+   scripts/validate_dataset.py <dataset.hdf5>
 
 Replay with that environment, the recorded device, and one environment while diagnosing the issue:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
+   submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
        --task <env-id-from-validator> \
        --device <device-from-sim-args> \
        --num_envs 1 \
@@ -266,20 +290,21 @@ replay; inspect multiple episodes before concluding that the dataset is invalid.
 cuRobo Build and GPU Compatibility
 ----------------------------------
 
-Verify cuRobo inside the **container**:
+Verify cuRobo from the repository root in your installed runtime:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python -c "import curobo; print(curobo.__file__)"
+   -c "import curobo; print(curobo.__file__)"
 
-If the module is missing, leave the base container and start the cuRobo image from the **host**:
+For **Docker**, if the module is missing, leave the base container and start the cuRobo image
+from the repository root on the **host**:
 
 .. code-block:: bash
 
    ./docker/run_docker.sh -c
 
-If cuRobo was built on a different GPU generation, query the active GPU and rebuild without the
-Docker cache:
+If the Docker image's cuRobo was built on a different GPU generation, leave the container, then query
+the active GPU and rebuild without the Docker cache on the **host**:
 
 .. code-block:: bash
 
@@ -290,23 +315,27 @@ Docker cache:
 The rebuild is required for errors such as ``no kernel image is available for execution on the
 device``. For ordinary source changes, a no-cache rebuild is not necessary.
 
-In the native uv environment, check the module with
-``uv run --locked python -c "import curobo; print(curobo.__file__)"``. If it is missing, or was built for
-another GPU or PyTorch version, install it again with the commands in :ref:`installation-uv-curobo`.
+For **native uv**, if cuRobo is missing or was built for another GPU or PyTorch version, install
+it again with the commands in :ref:`installation-uv-curobo`.
 
 .. _troubleshooting-nucleus:
 
 Nucleus Asset Download
 -----------------------
 
-SkillGen initialization retrieves its Franka URDF from the Nucleus asset server. Test that exact
-download inside the **container**:
+SkillGen initialization retrieves its Franka URDF from the Nucleus asset server. Prepare your
+installed SkillGen runtime:
 
-.. code-block:: bash
+.. autodata-runtime::
+   :curobo:
 
-   python -c "from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR, retrieve_file_path; path = f'{ISAACLAB_NUCLEUS_DIR}/Controllers/SkillGenAssets/FrankaPanda/franka_panda.urdf'; print(retrieve_file_path(path, force_download=True))"
+Test that exact download:
 
-Success prints a local path. If it fails, resolve the container's DNS, proxy, VPN, or outbound
+.. autodata-python::
+
+   -c "from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR, retrieve_file_path; path = f'{ISAACLAB_NUCLEUS_DIR}/Controllers/SkillGenAssets/FrankaPanda/franka_panda.urdf'; print(retrieve_file_path(path, force_download=True))"
+
+Success prints a local path. If it fails, resolve the selected runtime's DNS, proxy, VPN, or outbound
 network access before debugging cuRobo or planner settings.
 
 .. _troubleshooting-planning:
@@ -325,7 +354,14 @@ diagnostic options:
    --result_file ./datasets/planning_debug.json
 
 Check that the Rerun viewer shows the expected robot start pose, target pose, and collision world.
-If no Rerun window appears, run ``command -v rerun`` inside the container and also follow
+If no Rerun window appears, check for the viewer in your selected runtime:
+
+.. autodata-python::
+   :no-sync:
+
+   -c "import shutil; print(shutil.which('rerun'))"
+
+``None`` means the viewer is not on that runtime's executable search path. Also follow
 :ref:`troubleshooting-display`.
 
 Persistent failures usually come from one of four sources: subtask-start annotations that produce

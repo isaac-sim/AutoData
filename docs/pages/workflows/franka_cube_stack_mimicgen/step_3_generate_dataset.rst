@@ -15,15 +15,17 @@ trajectory is rigidly transformed to the new object poses and replayed.
 The commands below use the pre-annotated source dataset that ships with the repository. If you ran
 Steps 1–2, point ``--input_file`` at your own ``dataset_franka_annotated.hdf5`` instead.
 
+.. autodata-runtime::
+
 
 Small-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^^
 
 Start with a small-scale run in a Kit window (``--viz kit``) to sanity-check the setup:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/generate_dataset.py \
+   scripts/generate_dataset.py \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz kit \
        --num_envs 5 \
@@ -56,9 +58,9 @@ Full-Scale Generation
 
 For dataset-scale generation, run headless (``--viz none``) with parallel environments:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/generate_dataset.py \
+   scripts/generate_dataset.py \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz none \
        --num_envs 100 \

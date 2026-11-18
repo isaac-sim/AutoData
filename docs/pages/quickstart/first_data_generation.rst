@@ -11,36 +11,30 @@ scale — see the :doc:`Franka cube-stacking workflow <../workflows/franka_cube_
 Prerequisites
 -------------
 
-* Installation is complete — repo cloned with submodules, NGC login, Docker with the NVIDIA
-  Container Toolkit, or the optional native uv environment (see :doc:`installation`).
+* Installation is complete — repo cloned with submodules, plus either Docker (with NGC login and the
+  NVIDIA Container Toolkit) or the native uv environment (see :doc:`installation`).
 * Git LFS data is pulled — the source dataset lives at
   ``./datasets/annotated_datasets`` in the repository (``/workspaces/autodata/datasets/annotated_datasets``
   inside the container).
 
 
-Start the Dev Container
------------------------
+.. _start-the-dev-container:
 
-.. note::
-   See :doc:`installation` for more details about the development container.
+Choose Your Runtime
+-------------------
 
-:docker_run_default:
+Select the installation method you used.
 
-It will take a few minutes to build the container the first time you run it.
-Once built, the script will automatically drop you into a shell at ``/workspaces/autodata``
-inside the container. All following commands are run from there.
-
-In the native uv environment, skip the container. Run the following commands from the repository root
-and start each Python command with ``uv run --locked``.
+.. autodata-runtime::
 
 Generate a Dataset
 ------------------
 
-From ``/workspaces/autodata`` inside the container, run:
+From the repository root in your selected runtime, run:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/generate_dataset.py \
+   scripts/generate_dataset.py \
        --viz kit \
        --env_name IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --alg mimicgen \
@@ -101,9 +95,9 @@ Validate the HDF5 Dataset
 
 Validate the generated HDF5 dataset's structure and metadata:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/validate_dataset.py datasets/generated_dataset_franka_quickstart.hdf5
+   scripts/validate_dataset.py datasets/generated_dataset_franka_quickstart.hdf5
 
 The tool prints a summary table — episode count, the env id recorded in the file, and the
 simulation args — followed by any structural issues detected.
@@ -114,9 +108,9 @@ Replay the Generated Demonstrations
 
 Run the command to replay the generated demonstrations:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
+   submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
        --viz kit \
        --task IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --dataset_file datasets/generated_dataset_franka_quickstart.hdf5

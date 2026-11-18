@@ -119,9 +119,9 @@ skip directly to :doc:`step_3_generate_dataset` using the pre-annotated dataset 
 Prerequisites
 ^^^^^^^^^^^^^
 
-Start the dev container (see :doc:`../../quickstart/installation`):
+Complete :doc:`../../quickstart/installation` for your chosen runtime.
 
-:docker_run_default:
+.. autodata-runtime::
 
 .. attention::
 

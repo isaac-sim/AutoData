@@ -4,9 +4,12 @@ Testing and CI
 Test Suite
 ----------
 
-The test suite lives in ``autodata_tests/`` and runs inside the dev container, or in the native uv
-environment with ``uv run --locked pytest``. It is
-organized in tiers of increasing cost:
+The test suite lives in ``autodata_tests/`` and runs inside the dev container or in the native uv
+environment. Run commands from the repository root in your installed runtime:
+
+.. autodata-runtime::
+
+The suite is organized in tiers of increasing cost:
 
 .. list-table::
    :widths: 30 70
@@ -29,26 +32,37 @@ organized in tiers of increasing cost:
      - Pre-annotated source datasets (Git LFS) used by the tests — and handy as quickstart
        inputs.
 
-Common invocations:
+Fast unit tests only (seconds):
 
-.. code-block:: bash
+.. autodata-python::
 
-   # Fast unit tests only (seconds)
-   pytest autodata_tests -m "not with_subprocess"
+   -m pytest autodata_tests -m "not with_subprocess"
 
-   # One end-to-end generation test, streaming Isaac Sim output live
-   pytest -s autodata_tests/e2e/test_mimicgen_data_generation.py::test_franka_cube_stack_mimicgen_data_generation_single_env_cuda
+One end-to-end generation test, streaming Isaac Sim output live:
 
-   # Everything that launches Isaac Sim (long)
-   pytest autodata_tests -m with_subprocess
+.. autodata-python::
 
-   # All tests, including the success-rate benchmarks (use the cuRobo image)
-   pytest -s autodata_tests
+   -m pytest -s autodata_tests/e2e/test_mimicgen_data_generation.py::test_franka_cube_stack_mimicgen_data_generation_single_env_cuda
 
 .. note::
 
    The SkillGen end-to-end tests require cuRobo: the cuRobo image (``./docker/run_docker.sh -c``)
-   or the uv ``curobo`` group described in :doc:`../quickstart/installation`.
+   or the native setup described in :ref:`installation-uv-curobo`.
+
+.. autodata-runtime::
+   :curobo:
+
+Everything that launches Isaac Sim (long):
+
+.. autodata-python::
+
+   -m pytest autodata_tests -m with_subprocess
+
+All tests, including the success-rate benchmarks:
+
+.. autodata-python::
+
+   -m pytest -s autodata_tests
 
 
 Continuous Integration
@@ -110,10 +124,13 @@ When a run dies silently or hangs, work down this list:
 3. **Capture Kit's own log.** Isaac Sim messages from the C++/USD/PhysX layers often never
    reach Python stdout. Forward settings to Kit through the AppLauncher:
 
-   .. code-block:: bash
+   .. autodata-python::
 
-      python scripts/generate_dataset.py ... \
-          --kit_args "--/log/file=/workspaces/autodata/kit.log --/log/level=verbose --/log/async=false"
+      scripts/generate_dataset.py ... \
+          --kit_args "--/log/file=${PWD}/kit.log --/log/level=verbose --/log/async=false"
+
+   This writes ``kit.log`` at the repository root. The path must contain no whitespace because
+   AppLauncher splits ``--kit_args`` on whitespace.
 
    ``--/log/async=false`` is the important one for crashes: asynchronous logging loses the
    final messages when the process dies.
@@ -125,12 +142,11 @@ Linting
 -------
 
 Pre-commit hooks enforce the style guide (black, flake8, isort, pyupgrade, codespell, and
-RST checks). Run them before committing, inside the development container or with
-``uv run --locked pre-commit run --all-files`` in the uv environment:
+RST checks). Run them before committing, from the repository root in your installed runtime:
 
-.. code-block:: bash
+.. autodata-python::
 
-   pre-commit run --all-files
+   -m pre_commit run --all-files
 
 Documentation
 -------------

@@ -86,13 +86,12 @@ pre-annotated source dataset described in :doc:`step_3_generate_dataset`.
 Prerequisites
 ^^^^^^^^^^^^^
 
-Complete :doc:`../../quickstart/installation`, including downloading the Git LFS assets, and
-start the dev container:
+Complete :doc:`../../quickstart/installation`, including downloading the Git LFS assets.
 
-:docker_run_default:
+.. autodata-runtime::
 
-Run the commands below from the repository root inside the container. Both backends use
-``--device cuda``. A SpaceMouse is recommended for recording; a keyboard also works.
+Both backends use ``--device cuda``. A SpaceMouse is recommended for recording; a keyboard
+also works.
 
 The examples enable cameras to include the task's fixed-view and wrist RGB observations.
 ``--viz kit`` opens the simulation window; ``--viz none`` runs without it. Camera recording

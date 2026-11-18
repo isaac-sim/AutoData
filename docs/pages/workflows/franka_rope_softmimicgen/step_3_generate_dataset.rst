@@ -40,15 +40,17 @@ Use the source dataset that matches your physics backend:
 Small-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^^
 
+.. autodata-runtime::
+
 Start with two parallel environments in a Kit window to inspect the generated motions:
 
 .. tabs::
 
    .. group-tab:: Newton
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/generate_dataset.py \
+         scripts/generate_dataset.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
              --viz kit \
@@ -64,9 +66,9 @@ Start with two parallel environments in a Kit window to inspect the generated mo
 
    .. group-tab:: PhysX
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/generate_dataset.py \
+         scripts/generate_dataset.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
              --viz kit \
@@ -97,9 +99,9 @@ and observed throughput. Deformable simulation and camera recording can be expen
 
    .. group-tab:: Newton
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/generate_dataset.py \
+         scripts/generate_dataset.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets newton \
              --viz none \
@@ -115,9 +117,9 @@ and observed throughput. Deformable simulation and camera recording can be expen
 
    .. group-tab:: PhysX
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/generate_dataset.py \
+         scripts/generate_dataset.py \
              --env_name Isaac-Rope-Franka-Arena-IK-Rel-v0 \
              --presets physx \
              --viz none \

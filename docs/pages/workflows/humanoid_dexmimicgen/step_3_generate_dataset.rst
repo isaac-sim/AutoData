@@ -27,6 +27,8 @@ The commands below use the pre-annotated source dataset that ships with the repo
 Steps 1–2, point ``--input_file`` at your own ``dataset_gr1_annotated.hdf5`` /
 ``dataset_g1_annotated.hdf5`` instead.
 
+.. autodata-runtime::
+
 
 Small-Scale Generation
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -37,9 +39,9 @@ Start with a small run in a Kit window (``--viz kit``) to sanity-check the setup
 
    .. group-tab:: GR-1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/generate_dataset.py \
+         scripts/generate_dataset.py \
             --env_name IsaacContrib-PickPlace-GR1T2-Abs \
             --viz kit \
             --device cpu \
@@ -53,9 +55,9 @@ Start with a small run in a Kit window (``--viz kit``) to sanity-check the setup
 
    .. group-tab:: G1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/generate_dataset.py \
+         scripts/generate_dataset.py \
             --env_name IsaacContrib-PickPlace-Locomanipulation-G1-Abs \
             --viz kit \
             --device cpu \
@@ -98,9 +100,9 @@ For dataset-scale generation, run headless (``--viz none``) with parallel enviro
 
    .. group-tab:: GR-1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/generate_dataset.py \
+         scripts/generate_dataset.py \
             --env_name IsaacContrib-PickPlace-GR1T2-Abs \
             --viz none \
             --device cpu \
@@ -114,9 +116,9 @@ For dataset-scale generation, run headless (``--viz none``) with parallel enviro
 
    .. group-tab:: G1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/generate_dataset.py \
+         scripts/generate_dataset.py \
             --env_name IsaacContrib-PickPlace-Locomanipulation-G1-Abs \
             --viz none \
             --device cpu \

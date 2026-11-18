@@ -1,14 +1,16 @@
 Step 4: Validate the Generated Dataset
 --------------------------------------
 
+Run these commands from the repository root in the runtime used for generation.
+
 Structural Validation
 ^^^^^^^^^^^^^^^^^^^^^
 
 Check the generated HDF5 for structural problems and summarize its contents:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/validate_dataset.py ./datasets/generated_dataset_mimicgen_franka.hdf5
+   scripts/validate_dataset.py ./datasets/generated_dataset_mimicgen_franka.hdf5
 
 The validator prints one summary row per file (episode count, the env id recorded in the
 file's metadata, and the simulation args) followed by per-file issues. Every episode is
@@ -22,9 +24,9 @@ Metrics
 
 For a dataset generated with ``--record_metric_inputs`` and ``--result_file``, report its metrics:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python scripts/validate_dataset.py ./datasets/generated_dataset_mimicgen_franka.hdf5 \
+   scripts/validate_dataset.py ./datasets/generated_dataset_mimicgen_franka.hdf5 \
        --report \
        --result_file ./datasets/generated_dataset_mimicgen_franka.json \
        --source ./datasets/annotated_datasets/dataset_franka_annotated.hdf5
@@ -38,9 +40,9 @@ Visual Validation
 Replay generated episodes through the robot to inspect them visually, using Isaac Lab's
 replay tool:
 
-.. code-block:: bash
+.. autodata-python::
 
-   python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
+   submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/replay_demos.py \
        --task IsaacContrib-Stack-Cube-Franka-IK-Rel \
        --viz kit \
        --num_envs 20 \

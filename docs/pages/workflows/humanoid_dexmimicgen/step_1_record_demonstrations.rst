@@ -17,8 +17,8 @@ Unlike the single-arm Franka task — which can be teleoperated with a SpaceMous
 dexterous, bimanual humanoids are teleoperated with an **Apple Vision Pro** through
 `NVIDIA IsaacTeleop <https://github.com/NVIDIA/IsaacTeleop>`_ and the CloudXR runtime. The headset's
 wrist poses drive the robot's IK controllers, and the finger joints are retargeted onto
-the robot's hands. The AutoData development container includes IsaacTeleop, so the flow below
-provides the software dependencies. A headset, its client application, and a working CloudXR
+the robot's hands. Complete :doc:`../../quickstart/installation` for your chosen runtime
+before following the steps below. A headset, its client application, and a working CloudXR
 connection are still required.
 
 .. note::
@@ -41,10 +41,13 @@ connection are still required.
 Start the CloudXR Runtime
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The CloudXR runtime bridges the Apple Vision Pro and the simulator. Start it from the AutoData dev
-container. Leave it running in this terminal for the whole recording session.
+The CloudXR runtime bridges the Apple Vision Pro and the simulator. Use two terminals in the
+**same chosen runtime**: two shells in the same Docker container, or two host terminals at the
+same repository root for native uv. Start CloudXR in the first terminal and leave it running
+for the whole recording session.
 
-#. On the **host machine** outside of the development container, configure the firewall to allow CloudXR traffic:
+#. On the **host machine** (for Docker, outside the development container), configure the firewall to
+   allow CloudXR traffic:
 
    .. code-block:: bash
 
@@ -62,11 +65,11 @@ container. Leave it running in this terminal for the whole recording session.
       sudo ufw allow 48000/udp
       sudo ufw allow 48002/udp
 
-#. Start the AutoData dev container:
+#. Prepare the first terminal for your chosen runtime:
 
-   :docker_run_default:
+   .. autodata-runtime::
 
-#. Create a CloudXR config file for the Apple Vision Pro:
+#. In that terminal, create a CloudXR config file for the Apple Vision Pro at the repository root:
 
    .. code-block:: bash
 
@@ -77,9 +80,9 @@ container. Leave it running in this terminal for the whole recording session.
 
 #. Start the CloudXR runtime with that config:
 
-   .. code-block:: bash
+   .. autodata-python::
 
-      python -m isaacteleop.cloudxr --cloudxr-env-config=avp.env
+      -m isaacteleop.cloudxr --cloudxr-env-config=avp.env
 
 .. attention::
 
@@ -95,9 +98,11 @@ container. Leave it running in this terminal for the whole recording session.
 Start Recording
 ^^^^^^^^^^^^^^^
 
-#. In **another terminal**, attach a second shell to the running AutoData container:
+#. Open a **second terminal** in the same runtime as CloudXR. For Docker, attach to the same
+   running container. For native uv, use the same host user and repository root as the first
+   terminal:
 
-   :docker_run_default:
+   .. autodata-runtime::
 
 #. Activate the IsaacTeleop CloudXR environment settings written by the runtime:
 
@@ -121,9 +126,9 @@ Start Recording
 
       .. group-tab:: GR-1
 
-         .. code-block:: bash
+         .. autodata-python::
 
-            python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
+            submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
                 --task IsaacContrib-PickPlace-GR1T2-Abs \
                 --viz kit \
                 --device cpu \
@@ -135,9 +140,9 @@ Start Recording
 
       .. group-tab:: G1
 
-         .. code-block:: bash
+         .. autodata-python::
 
-            python submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
+            submodules/IsaacLab-Arena/submodules/IsaacLab/scripts/tools/record_demos.py \
                 --task IsaacContrib-PickPlace-Locomanipulation-G1-Abs \
                 --viz kit \
                 --device cpu \
@@ -228,14 +233,14 @@ Verify the datasets contain the recorded episodes using:
 
    .. group-tab:: GR-1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py datasets/dataset_gr1.hdf5
+         scripts/validate_dataset.py datasets/dataset_gr1.hdf5
 
    .. group-tab:: G1
 
-      .. code-block:: bash
+      .. autodata-python::
 
-         python scripts/validate_dataset.py datasets/dataset_g1.hdf5
+         scripts/validate_dataset.py datasets/dataset_g1.hdf5
 
 Continue to :doc:`step_2_annotate_demonstrations`.
