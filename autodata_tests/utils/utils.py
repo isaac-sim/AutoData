@@ -119,8 +119,8 @@ def report_metrics(dataset_file: str, result_file: str) -> dict:
 
 
 def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]) -> None:
-    """Report a generation run's metrics; assert every episode passes the checks and the metrics in ``expected_ok``
-    computed a value, as :func:`assert_computed_metrics` describes."""
+    """Report a generation run's metrics, assert every episode passes the checks, then
+    :func:`assert_computed_metrics`."""
 
     report = report_metrics(dataset_file, result_file)
     assert (
@@ -146,9 +146,9 @@ def assert_computed_metrics(report: dict, expected_ok: set[str], optional: froze
 
 @contextlib.contextmanager
 def benchmark_temp_dir(name: str) -> Iterator[str]:
-    """Yield a temporary directory for the benchmark ``name``. On exit, also after a failure, copy its files other than
+    """Yield a temporary directory for the benchmark ``name``. On exit, also after a failure, export its files other than
     HDF5 datasets (the generation result, its attempt log and the metrics report) to ``$AUTODATA_BENCHMARK_DIR/<name>``
-    when that variable is set. A failed copy fails a passing benchmark, but does not replace a failing one's error.
+    when that variable is set. A failed export fails a passing benchmark, but does not replace a failing one's error.
     """
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -162,17 +162,18 @@ def benchmark_temp_dir(name: str) -> Iterator[str]:
 
 
 def _export_benchmark_files(source_dir: str, name: str) -> None:
-    """Copy the files of ``source_dir`` other than HDF5 datasets to ``$AUTODATA_BENCHMARK_DIR/<name>``, if set."""
+    """Replace ``$AUTODATA_BENCHMARK_DIR/<name>``, if that variable is set, with the files of ``source_dir`` other than
+    HDF5 datasets, so the directory never mixes two runs."""
 
     if not os.environ.get("AUTODATA_BENCHMARK_DIR"):
         return
     export_dir = os.path.join(os.environ["AUTODATA_BENCHMARK_DIR"], name)
-    os.makedirs(export_dir, exist_ok=True)
+    shutil.rmtree(export_dir, ignore_errors=True)
+    os.makedirs(export_dir)
     for file_name in os.listdir(source_dir):
         path = os.path.join(source_dir, file_name)
         if os.path.isfile(path) and not file_name.endswith(".hdf5"):
-            # copyfile, not copy2: the result file is written private (0600), and the copy must be readable by
-            # whatever uploads it.
+            # copyfile, not copy2: the result file is written 0600, and another user may upload the copy.
             shutil.copyfile(path, os.path.join(export_dir, file_name))
 
 

@@ -28,8 +28,8 @@ The suite is organized in tiers of increasing cost:
    * - ``datagen_perf/``
      - Success-rate benchmarks (hundreds of attempts per run) asserting generation quality
        thresholds per task. Each also reports its run's :doc:`metrics <../references/metrics>`; with
-       ``AUTODATA_BENCHMARK_DIR`` set, each copies its generation result, attempt log and report
-       into a subdirectory of it named after the benchmark. Nightly-scale.
+       ``AUTODATA_BENCHMARK_DIR`` set, each writes its generation result, attempt log and report to a
+       subdirectory named after the benchmark, replacing an earlier run's. Nightly-scale.
    * - ``test_data/``
      - Pre-annotated source datasets (Git LFS) used by the tests — and handy as quickstart
        inputs.
