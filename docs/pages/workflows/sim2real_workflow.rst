@@ -223,7 +223,7 @@ full range of domain randomization has been evenly applied.
 * **Coverage:** compare sampled starts with saved successful starts. AutoData's success
   filter can remove the difficult layouts that randomization was meant to cover.
 
-.. figure:: ../../../agentic_design/sim2real/placement_coverage.svg
+.. figure:: ../../images/sim2real/placement_coverage.svg
    :width: 100%
    :alt: Uniform reference and measured object-placement heatmaps showing uneven coverage in saved demonstrations
 
@@ -434,7 +434,7 @@ Carry the source timestamp through observation assembly, inference, and action d
 Check wrist-state age separately: about 19 Hz TF updates left consecutive history
 entries identical in 61–64% of recorded inputs. Faster RGB cannot fix stale proprioception.
 
-.. figure:: ../../../agentic_design/sim2real/observation_timing.svg
+.. figure:: ../../images/sim2real/observation_timing.svg
    :width: 100%
    :alt: Capture, buffering, inference, and action decoding each affect observation freshness
 
