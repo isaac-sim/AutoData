@@ -15,6 +15,7 @@ system, and the pinned Isaac Sim, Isaac Lab, and Isaac Lab-Arena versions, see t
    :stub-columns: 1
 
    * - Robot
+     - Actions [#actions]_
      - Algorithm
      - Motion planning
      - Objects
@@ -22,6 +23,7 @@ system, and the pinned Isaac Sim, Isaac Lab, and Isaac Lab-Arena versions, see t
      - Newton
      - Example
    * - Single arm
+     - Relative pose
      - MimicGen
      - No
      - Rigid
@@ -29,6 +31,7 @@ system, and the pinned Isaac Sim, Isaac Lab, and Isaac Lab-Arena versions, see t
      - —
      - :doc:`Franka cube stacking <../workflows/franka_cube_stack_mimicgen/index>`
    * -
+     - Relative pose
      - SkillGen
      - Yes [#planning]_
      - Rigid
@@ -36,6 +39,7 @@ system, and the pinned Isaac Sim, Isaac Lab, and Isaac Lab-Arena versions, see t
      - —
      - :doc:`Franka cube and bin stacking <../workflows/skillgen/index>`
    * -
+     - Relative pose
      - SoftMimicGen
      - No
      - Deformable [#deformable]_
@@ -43,6 +47,7 @@ system, and the pinned Isaac Sim, Isaac Lab, and Isaac Lab-Arena versions, see t
      - ✓ [#newton]_
      - :doc:`Franka rope <../workflows/franka_rope_softmimicgen/index>`
    * - Two arms
+     - Absolute pose
      - DexMimicGen
      - No
      - Rigid
@@ -52,6 +57,9 @@ system, and the pinned Isaac Sim, Isaac Lab, and Isaac Lab-Arena versions, see t
 
 ✓ supported, with a shipped example · — not validated
 
+.. [#actions] The example's embodiment adapter sends end-effector pose actions. A robot that takes other actions,
+   such as joint positions, needs a new :doc:`embodiment adapter <../concepts/embodiments>` that converts between
+   pose targets and those actions.
 .. [#planning] SkillGen plans collision-aware transit between skills with cuRobo, an
    :doc:`optional installation <installation>`. Planner settings ship for the Franka; other robots need their
    own.
@@ -59,7 +67,5 @@ system, and the pinned Isaac Sim, Isaac Lab, and Isaac Lab-Arena versions, see t
 .. [#newton] Newton simulates the robot with MuJoCo Warp and the deformable object with VBD (Vertex Block
    Descent), and couples the two solvers.
 
-* **Environments:** AutoData runs in Isaac Lab manager-based environments, including Isaac Lab-Arena
-  environments. Isaac Lab direct-workflow environments are not supported.
-* **Robot control:** The environment must accept end-effector pose actions, relative or absolute. A robot
-  controlled only in joint space needs a new :doc:`embodiment adapter <../concepts/embodiments>`.
+AutoData runs in Isaac Lab manager-based environments, including Isaac Lab-Arena environments. Isaac Lab
+direct-workflow environments are not supported.
