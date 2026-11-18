@@ -82,8 +82,10 @@ Controls
      - Skip the episode.
 
 Marks are taken before the current action is applied. Use the visible robot/object state,
-not a guessed timestamp. Pause when adjacent marks belong to the same state; each press
-of ``S`` accepts one signal. The tool repeats a pass if the mark count is incomplete and
+not a guessed timestamp. Each press of ``S`` accepts one signal. A skill's start must be
+at a later action index than the previous skill's end, even when the visible states are
+close. For example, if one skill ends at action 100, start the next at action 101 or later.
+The tool repeats a pass if the mark count is incomplete and
 does not export a replay that fails the task-success check.
 
 Marks for This Task
@@ -147,6 +149,8 @@ and end marks belong to separate HDF5 groups.
 Each arm's final subtask ends implicitly with the episode. Its explicit **start** is still
 required. The descriptor also limits release windows around their object events; do not
 omit those marks because a final termination signal is implicit.
+Record and retain at least two actions after each ``beaker_release`` and ``bowl_release``
+mark for the configured release windows. The penultimate action is too late.
 
 Grasp/release marks update the planner's carried-object collision model. They do not weld
 objects to the robot in simulation and do not impose task-order constraints. Those remain

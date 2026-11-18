@@ -752,7 +752,10 @@ def _validate_control_task_dict(spec: Any, *, spec_type: type, label: str) -> No
 
 def _coerce_vector_fields(spec: dict[str, Any]) -> dict[str, Any]:
     """Coerce YAML-list vector fields of a rigid-object spec to tuples."""
-    return {key: tuple(val) if key in ("position", "rotation", "scale") else val for key, val in spec.items()}
+    return {
+        key: tuple(val) if key in ("position", "rotation", "scale") and val is not None else val
+        for key, val in spec.items()
+    }
 
 
 def _coerce_camera_vector_fields(spec: dict[str, Any]) -> dict[str, Any]:

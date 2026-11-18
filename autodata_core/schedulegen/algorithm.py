@@ -554,6 +554,14 @@ class ScheduleGen(GenerationAlgorithm):
                         if segment_id in present_segments
                     },
                     scheduled_object_events,
+                    attachment_link_names={
+                        name: tuple(planners[name].config.hand_link_names)
+                        for name in {
+                            event.path_event.segment_id.eef_name
+                            for event in scheduled_object_events
+                            if event.path_event.spec.event_type == SegmentEventType.ATTACH
+                        }
+                    },
                 )
                 diagnostics_before_success.append(
                     ("scheduled_robot_contacts", _scheduled_robot_contacts_format(scheduled_robot_contacts))
@@ -634,11 +642,24 @@ class ScheduleGen(GenerationAlgorithm):
 
             if scheduled_robot is not None:
                 assert full_state_planner is not None
+                object_manipulation_starts = {
+                    object_ref: min(
+                        (
+                            schedule.ticks_for(event.path_event.segment_id)[0]
+                            for event in scheduled_object_events
+                            if event.path_event.spec.event_type == SegmentEventType.ATTACH
+                            and event.path_event.spec.object_ref == object_ref
+                        ),
+                        default=schedule.makespan_ticks + 1,
+                    )
+                    for object_ref in object_spheres
+                }
                 robot_object_samples, waived_robot_contact_samples = scheduled_robot_object_validate(
                     full_state_planner,
                     scheduled_robot,
                     object_spheres,
                     collision_margin_m=schedule_spec.collision_margin_m,
+                    object_manipulation_starts=object_manipulation_starts,
                     robot_contacts=scheduled_robot_contacts,
                 )
                 robot_world_samples, object_world_samples, waived_world_contact_samples = scheduled_world_validate(
@@ -647,18 +668,7 @@ class ScheduleGen(GenerationAlgorithm):
                     object_spheres,
                     episode_paths.object_collision_spheres,
                     collision_margin_m=schedule_spec.collision_margin_m,
-                    object_manipulation_starts={
-                        object_ref: min(
-                            (
-                                schedule.ticks_for(event.path_event.segment_id)[0]
-                                for event in scheduled_object_events
-                                if event.path_event.spec.event_type == SegmentEventType.ATTACH
-                                and event.path_event.spec.object_ref == object_ref
-                            ),
-                            default=schedule.makespan_ticks + 1,
-                        )
-                        for object_ref in object_spheres
-                    },
+                    object_manipulation_starts=object_manipulation_starts,
                     world_contacts=scheduled_world_contacts,
                 )
                 full_state_diagnostics += (

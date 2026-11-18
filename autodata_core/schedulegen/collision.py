@@ -9,6 +9,7 @@ import math
 import torch
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from itertools import combinations
 from typing import TYPE_CHECKING, Any
 
 from autodata_core.schedulegen.scheduling import get_scheduled_path_indices
@@ -197,6 +198,9 @@ class _ScheduledRobotState:
     """Combined joint states and tool poses used by scheduled collision checks."""
 
     joint_positions: torch.Tensor
+    initial_joint_positions: torch.Tensor
+    collision_joint_positions: torch.Tensor
+    collision_sample_ticks: tuple[float, ...]
     tool_poses_by_eef: Mapping[str, torch.Tensor]
     self_collision_sample_count: int
     visualization_index: int | None
@@ -299,16 +303,19 @@ def scheduled_robot_object_validate(
     object_spheres: Mapping[str, torch.Tensor],
     *,
     collision_margin_m: float,
+    object_manipulation_starts: Mapping[str, int],
     robot_contacts: tuple[ScheduledRobotContact, ...],
     batch_size: int = 256,
 ) -> tuple[int, int]:
-    """Check released objects against the robot using the task's contact rules.
+    """Check projected objects against the robot using grasp, carry and release permissions.
 
     Args:
         full_state_planner: Collision model for the combined robot.
         scheduled_robot: Scheduled joint states and tool poses.
         object_spheres: Predicted environment-frame sphere centers and radii [m].
         collision_margin_m: Additional required surface separation [m].
+        object_manipulation_starts: Boundary where each projected object replaces its original world mesh.
+            Robot/world checks cover the original mesh before this boundary.
         robot_contacts: Object/link pairs and intervals where contact is permitted.
         batch_size: Maximum number of states per collision query.
 
@@ -320,10 +327,9 @@ def scheduled_robot_object_validate(
     """
 
     assert type(batch_size) is int and batch_size > 0
-    if not robot_contacts:
-        return 0, 0
+    assert set(object_manipulation_starts) == set(object_spheres)
     robot_states = torch.cat(
-        (scheduled_robot.joint_positions, scheduled_robot.joint_positions[-1:]),
+        (scheduled_robot.initial_joint_positions.unsqueeze(0), scheduled_robot.joint_positions),
         dim=0,
     )
     sample_count = 0
@@ -332,20 +338,21 @@ def scheduled_robot_object_validate(
     for contact in robot_contacts:
         contacts_by_object.setdefault(contact.spec.object_ref, []).append(contact)
 
-    for object_ref, contacts in sorted(contacts_by_object.items()):
-        if object_ref not in object_spheres:
-            raise EpisodeGenerationError(
-                "full_state_robot_contact_resolution",
-                f"robot-contact object {object_ref!r} has no projected sphere geometry",
-            )
-        spheres = object_spheres[object_ref]
+    missing = set(contacts_by_object) - set(object_spheres)
+    if missing:
+        raise EpisodeGenerationError(
+            "full_state_robot_contact_resolution", f"missing object geometry: {sorted(missing)}"
+        )
+    for object_ref, spheres in sorted(object_spheres.items()):
+        contacts = contacts_by_object.get(object_ref, [])
         assert len(spheres) == len(robot_states), "robot and object boundary timelines must align"
         if any(contact.stop_tick > len(spheres) for contact in contacts):
             raise EpisodeGenerationError(
                 "full_state_robot_contact_resolution",
                 f"robot-contact interval for {object_ref!r} exceeds its projected timeline",
             )
-        start_tick = min(contact.start_tick for contact in contacts)
+        start_tick = object_manipulation_starts[object_ref]
+        assert type(start_tick) is int and 0 <= start_tick <= len(spheres)
         allowed_links_by_tick = tuple(
             tuple(
                 sorted({
@@ -467,17 +474,21 @@ def scheduled_world_validate(
             f"cuRobo world synchronization failed: {type(error).__name__}: {error}",
         ) from error
 
-    robot_states = scheduled_robot.joint_positions
-    exclusions_by_tick = tuple(
-        tuple(
+    robot_states = scheduled_robot.collision_joint_positions
+    robot_sample_ticks = scheduled_robot.collision_sample_ticks
+
+    def exclusions_at(tick: float) -> tuple[str, ...]:
+        """Exclude each original mesh only after manipulation begins at this boundary."""
+        return tuple(
             sorted(
                 geometry.obstacle_path
                 for name, geometry in object_geometry.items()
                 if object_manipulation_starts[name] <= tick
             )
         )
-        for tick in range(len(robot_states) + 1)
-    )
+
+    exclusions_by_tick = tuple(exclusions_at(tick) for tick in robot_sample_ticks)
+    exclusions_by_boundary = tuple(exclusions_at(tick) for tick in range(len(scheduled_robot.joint_positions) + 1))
     start = 0
     while start < len(robot_states):
         stop = start + 1
@@ -500,11 +511,12 @@ def scheduled_world_validate(
             ) from error
         rejected = torch.nonzero(~collision_free, as_tuple=False)
         if len(rejected):
-            tick = start + int(rejected[0, 0].item())
+            sample = start + int(rejected[0, 0].item())
+            tick = robot_sample_ticks[sample]
             witness_message = ""
             try:
                 witness = full_state_planner.joint_positions_world_collision_witness(
-                    robot_states[tick : tick + 1],
+                    robot_states[sample : sample + 1],
                     collision_margin_m,
                     excluded_obstacle_paths=exclusions_by_tick[start],
                 )
@@ -516,7 +528,7 @@ def scheduled_world_validate(
             raise EpisodeGenerationError(
                 "full_state_robot_world_collision",
                 "full robot intersects the configured world at schedule tick "
-                f"{tick}/{len(robot_states)}{witness_message}",
+                f"{tick:g}/{len(scheduled_robot.joint_positions)}{witness_message}",
             )
         start = stop
 
@@ -571,10 +583,12 @@ def scheduled_world_validate(
                 stop < len(spheres)
                 and stop - start < batch_size
                 and allowed_paths_by_tick[stop] == allowed_paths
-                and exclusions_by_tick[stop] == exclusions_by_tick[start]
+                and exclusions_by_boundary[stop] == exclusions_by_boundary[start]
             ):
                 stop += 1
-            strict_exclusions = tuple(sorted({object_geometry[object_ref].obstacle_path, *exclusions_by_tick[start]}))
+            strict_exclusions = tuple(
+                sorted({object_geometry[object_ref].obstacle_path, *exclusions_by_boundary[start]})
+            )
             query_exclusions = tuple(sorted(set(strict_exclusions) | set(allowed_paths)))
             try:
                 strict_collision_free = full_state_planner.environment_spheres_world_collision_free(
@@ -620,7 +634,33 @@ def scheduled_world_validate(
                     f"boundary tick {tick}/{len(spheres) - 1}{witness_message}",
                 )
             start = stop
+    _object_pairs_validate(object_spheres, collision_margin_m, batch_size)
     return len(robot_states), object_sample_count, waived_contact_sample_count
+
+
+def _object_pairs_validate(
+    object_spheres: Mapping[str, torch.Tensor], collision_margin_m: float, batch_size: int
+) -> None:
+    """Reject collisions between projected object timelines.
+
+    Args:
+        object_spheres: Environment-frame spheres with shape ``(T, N, 4)`` per object [m].
+        collision_margin_m: Additional required surface separation [m].
+        batch_size: Maximum number of states per collision query.
+    """
+
+    for first_name, second_name in combinations(sorted(object_spheres), 2):
+        first, second = object_spheres[first_name], object_spheres[second_name]
+        assert len(first) == len(second), "projected object timelines must align"
+        for start in range(0, len(first), batch_size):
+            clearances = _minimum_clearance(first[start : start + batch_size], second[start : start + batch_size], 64)
+            rejected = torch.nonzero(clearances <= collision_margin_m, as_tuple=False)
+            if len(rejected):
+                tick = start + int(rejected[0, 0])
+                raise EpisodeGenerationError(
+                    "full_state_object_object_collision",
+                    f"projected objects {first_name!r} and {second_name!r} collide at boundary tick {tick}",
+                )
 
 
 def scheduled_robot_validate(
@@ -722,10 +762,11 @@ def scheduled_robot_validate(
 
     tool_links = tuple(planners[name].config.ee_link_name for name in arm_paths)
     assert all(tool_links), "every planning group must declare its physical tool link"
+    boundary_states = torch.cat((initial_full_state.unsqueeze(0), states), dim=0)
     try:
         full_state_planner.planning_root_pose_refresh()
         full_tool_poses = full_state_planner.joint_positions_to_link_poses(
-            torch.cat((initial_full_state.unsqueeze(0), states), dim=0),
+            boundary_states,
             tool_links,
         )
     except Exception as error:
@@ -757,10 +798,10 @@ def scheduled_robot_validate(
     visualization_index = None
     if full_state_planner.plan_visualizer is not None:
         full_state_planner.world_visualization_refresh()
-        spheres = full_state_planner.joint_positions_to_collision_spheres(states)
+        spheres = full_state_planner.joint_positions_to_collision_spheres(boundary_states)
         visualization_index = full_state_planner.plan_visualizer.animate_collision_spheres(spheres)
 
-    dense_states, sample_ticks = _joint_timeline_densify(states, densify_factor)
+    dense_states, sample_ticks = _joint_timeline_densify(boundary_states, densify_factor)
     for start in range(0, len(dense_states), batch_size):
         try:
             collision_free = full_state_planner.joint_positions_self_collision_free(
@@ -796,6 +837,9 @@ def scheduled_robot_validate(
             )
     return _ScheduledRobotState(
         joint_positions=states,
+        initial_joint_positions=initial_full_state,
+        collision_joint_positions=dense_states,
+        collision_sample_ticks=sample_ticks,
         tool_poses_by_eef={
             eef_name: full_tool_poses[tool_link].detach().clone()
             for eef_name, tool_link in zip(arm_paths, tool_links, strict=True)

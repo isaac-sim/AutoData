@@ -15,11 +15,12 @@ Inside the development container:
 
 .. code-block:: bash
 
-   python scripts/validate_dataset.py datasets/gr1t2_schedulegen/normal_newton.hdf5
+   python scripts/validate_dataset.py datasets/gr1t2_schedulegen/normal_newton.hdf5 --check_arrays
 
-The file must contain episodes with actions, observations and initial state. Check that
-numeric arrays are finite and observation lengths match the action count. The generation
-JSON should agree with the successful exports. Its per-attempt diagnostics distinguish
+The file must contain episodes with actions, observations and initial state. The
+``--check_arrays`` option also rejects non-finite numeric values and observation lengths
+that differ from the action count. Without this option, validation checks only structure.
+The generation JSON should agree with the successful exports. Its per-attempt diagnostics distinguish
 planning failure, scheduling infeasibility, motion validation and physical task failure.
 For nut pouring, inspect the final nut-in-bowl, bowl-on-scale and beaker-in-bin checks.
 
@@ -73,6 +74,11 @@ Use ``--physics_backend physx`` and the PhysX filename for PhysX data. For cross
 also use the cross environment profile. Leave the replay tool's solver-buffer-reset
 option disabled for Newton. Action replay can diverge from recorded physics; it is an
 additional inspection, not a replacement for generation's recorded task outcome.
+
+The supplied GR1T2 examples keep the waist fixed. For robots with shared planning joints,
+generation can also apply per-step posture targets that are not stored in the action array.
+These exports are not yet complete action-only demonstrations. Keep shared joints fixed
+when generating data for policy training until posture commands are included in the recorded actions.
 
 Inspect Plans in Rerun
 ----------------------

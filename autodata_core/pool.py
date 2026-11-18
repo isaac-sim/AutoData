@@ -159,6 +159,10 @@ class DataGenInfoPool:
         ep_grp = episode.data
 
         ep_datagen_info = DatagenInfo.from_episode(ep_grp)
+        if ep_datagen_info.subtask_term_signals is None and all(
+            len(self.task_descriptor.get_subtasks(eef_name)) == 1 for eef_name in self.task_descriptor.get_eef_names()
+        ):
+            ep_datagen_info.subtask_term_signals = {}
         missing = [
             name
             for name in ("eef_pose", "target_eef_pose", "subtask_term_signals")
@@ -209,7 +213,9 @@ class DataGenInfoPool:
             ), f"object event {name!r} must contain one scalar per source action"
             self._find_first_rising_edge(signal, signal_name=name)
         if demo_key is None:
-            demo_key = f"demo_{len(self._datagen_infos)}"
+            index = len(self._datagen_infos)
+            while (demo_key := f"demo_{index}") in self._demo_keys:
+                index += 1
         assert demo_key not in self._demo_keys, f"duplicate source demo key {demo_key!r}"
         self._datagen_infos.append(ep_datagen_info)
         self._demo_keys.append(demo_key)

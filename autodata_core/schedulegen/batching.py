@@ -59,6 +59,7 @@ def generate_buffered(
     datastream = data_generator.datastream
     base_env = datastream.get_env()
     policy = datastream.get_generation_policy()
+    assert policy.reset_settling_steps == 0, "buffered generation does not support reset_settling_steps"
     schedule_spec = datastream.get_schedule_spec()
     assert schedule_spec is not None
     loop = asyncio.get_event_loop()

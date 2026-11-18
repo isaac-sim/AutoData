@@ -25,6 +25,20 @@ def _create_dataset(path: Path, *, include_actions: bool = True) -> None:
         demo.create_group("obs")
 
 
+@pytest.mark.parametrize("invalid", ["nan_action", "nan_observation", "wrong_observation_length"])
+def test_array_checks_reject_invalid_values_and_lengths(tmp_path, invalid):
+    path = tmp_path / "invalid_arrays.hdf5"
+    _create_dataset(path)
+    with h5py.File(path, "a") as file:
+        demo = file["data/demo_0"]
+        if invalid == "nan_action":
+            demo["actions"][0, 0] = float("nan")
+        else:
+            demo["obs"].create_dataset("pose", data=[float("nan")] if invalid == "nan_observation" else [0, 1])
+    assert validate_dataset.main([str(path)]) == 0
+    assert validate_dataset.main([str(path), "--check_arrays"]) == 1
+
+
 def test_main_returns_zero_for_valid_dataset(tmp_path: Path) -> None:
     """A structurally valid dataset should produce a successful exit status, with or without the report."""
 

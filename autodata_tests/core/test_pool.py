@@ -124,6 +124,23 @@ def _pool(task: TaskDescriptor, uses_start_signals: bool = False) -> DataGenInfo
     )
 
 
+def test_appending_after_a_subset_load_uses_an_unused_source_key():
+    pool = _pool(_mimicgen_task())
+    pool._add_episode(_mimicgen_episode(), demo_key="demo_1")
+    pool._add_episode(_mimicgen_episode())
+    assert pool.demo_keys == ("demo_1", "demo_2")
+
+
+def test_single_skill_can_load_without_an_unused_termination_mapping():
+    task = _skillgen_task()
+    task.subtasks["franka"] = task.subtasks["franka"][:1]
+    pool = _pool(task, uses_start_signals=True)
+    episode = _skillgen_episode()
+    del episode.data["obs"]["datagen_info"]["subtask_term_signals"]
+    pool._add_episode(episode)
+    assert pool.subtask_boundaries["franka"] == [[(1, 10)]]
+
+
 def _episode(*, actions_len: int, datagen_info: dict, action_dim: int = 7) -> types.SimpleNamespace:
     return types.SimpleNamespace(
         data={"actions": torch.zeros(actions_len, action_dim), "obs": {"datagen_info": datagen_info}}

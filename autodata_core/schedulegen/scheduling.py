@@ -89,6 +89,8 @@ def schedule_robot_contacts(
     schedule: Schedule,
     contacts_by_segment: Mapping[SegmentId, tuple[SegmentRobotContactSpec, ...]],
     scheduled_object_events: tuple[ScheduledObjectEvent, ...],
+    *,
+    attachment_link_names: Mapping[str, tuple[str, ...]] | None = None,
 ) -> tuple[ScheduledRobotContact, ...]:
     """Map robot/object permissions through lane timing and optional release annotations.
 
@@ -97,6 +99,8 @@ def schedule_robot_contacts(
         schedule: Execution ticks for every segment waypoint.
         contacts_by_segment: Task-defined robot/object permissions.
         scheduled_object_events: Resolved attach/detach events used by release permissions.
+        attachment_link_names: Hand/tool collision links per lane. When provided, these links
+            may contact an object from its grasp segment through its detach event.
 
     Returns:
         Permissions sorted by start tick, segment, object and robot links.
@@ -131,6 +135,27 @@ def schedule_robot_contacts(
                 first_tick <= start_tick < stop_tick
             ), f"robot contact on {segment_id} begins outside segment ownership"
             scheduled.append(ScheduledRobotContact(segment_id, spec, start_tick, stop_tick))
+    for index, event in enumerate(scheduled_object_events):
+        if attachment_link_names is None or event.path_event.spec.event_type != SegmentEventType.ATTACH:
+            continue
+        segment_id = event.path_event.segment_id
+        object_ref = event.path_event.spec.object_ref
+        start_tick, _ = _contact_interval(path_by_segment[segment_id], schedule, segment_id)
+        stop_tick = next(
+            (
+                later.tick
+                for later in scheduled_object_events[index + 1 :]
+                if later.path_event.spec.object_ref == object_ref
+                and later.path_event.spec.event_type == SegmentEventType.DETACH
+            ),
+            schedule.makespan_ticks + 1,
+        )
+        links = tuple(sorted(attachment_link_names[segment_id.eef_name]))
+        if not links:
+            continue
+        scheduled.append(
+            ScheduledRobotContact(segment_id, SegmentRobotContactSpec(object_ref, links), start_tick, stop_tick)
+        )
     return tuple(
         sorted(
             scheduled,

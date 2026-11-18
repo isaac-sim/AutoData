@@ -384,6 +384,7 @@ class TaskDescriptor:
             names = tuple(subtask.name for subtask in subtasks if subtask.name)
             assert len(names) == len(set(names)), f"duplicate subtask name for {eef_name!r}"
             for subtask_index, subtask in enumerate(subtasks):
+                assert require_schedule or not subtask.segments, "explicit segments require the ScheduleGen algorithm"
                 if require_schedule:
                     assert (
                         subtask.name and subtask.segments

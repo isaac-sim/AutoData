@@ -39,6 +39,158 @@ from autodata_interfaces.tasks.segment_spec import (
 from autodata_utils import pose_math
 
 
+@pytest.mark.parametrize("collision_kind", ["self", "world"])
+def test_reset_transition_and_world_queries_use_dense_boundary_samples(collision_kind):
+    from autodata_core.schedulegen.collision import scheduled_robot_validate
+
+    segment = SegmentId.from_string("left.move.transit")
+    path = ArmPath("left", (Waypoint(torch.eye(4), {}),) * 2, torch.full((2, 1), 2.0), {segment: (0, 2)})
+    config = SimpleNamespace(ee_link_name="tool", position_threshold=0.01, rotation_threshold=0.01)
+    planner = SimpleNamespace(
+        active_joint_names=("joint",),
+        locked_joint_positions={},
+        plan_visualizer=None,
+        planning_root_pose_refresh=lambda: None,
+        joint_positions_to_link_poses=lambda states, links: {"tool": torch.eye(4).repeat(len(states), 1, 1)},
+        joint_positions_self_collision_free=lambda states, margin: (
+            (states[:, 0] != 1) if collision_kind == "self" else torch.ones(len(states), dtype=torch.bool)
+        ),
+        update_world=lambda: None,
+        joint_positions_world_collision_free=lambda states, margin, **kwargs: states[:, 0] != 1,
+    )
+    arguments = (
+        SimpleNamespace(get_robot_joint_names=lambda: ["joint"]),
+        {"left": SimpleNamespace(active_joint_names=("joint",), config=config)},
+        planner,
+        {"left": path},
+        Schedule({segment: (0, 1)}, 2),
+        torch.zeros(1),
+    )
+    if collision_kind == "self":
+        with pytest.raises(EpisodeGenerationError, match="self collision"):
+            scheduled_robot_validate(*arguments, collision_margin_m=0, densify_factor=2)
+    else:
+        robot = scheduled_robot_validate(*arguments, collision_margin_m=0, densify_factor=2)
+        assert robot.collision_sample_ticks == (0, 0.5, 1, 1.5, 2)
+        with pytest.raises(EpisodeGenerationError, match="schedule tick 0.5"):
+            scheduled_world_validate(planner, robot, {}, {}, collision_margin_m=0, object_manipulation_starts={})
+
+
+@pytest.mark.parametrize("has_release_contact", [False, True])
+def test_carried_object_checks_do_not_start_only_at_release(has_release_contact):
+    from autodata_core.schedulegen.collision import scheduled_robot_object_validate
+    from autodata_core.schedulegen.types import ScheduledRobotContact
+
+    segment = SegmentId.from_string("left.release.skill")
+    contacts = (
+        (ScheduledRobotContact(segment, SegmentRobotContactSpec("beaker", ("hand",)), 2, 3),)
+        if has_release_contact
+        else ()
+    )
+    robot = SimpleNamespace(initial_joint_positions=torch.zeros(1), joint_positions=torch.tensor([[1.0], [2.0]]))
+    planner = SimpleNamespace(
+        joint_positions_environment_spheres_collision_free=lambda states, *args, **kwargs: states[:, 0] != 1
+    )
+    with pytest.raises(EpisodeGenerationError, match="boundary tick 1"):
+        scheduled_robot_object_validate(
+            planner,
+            robot,
+            {"beaker": torch.ones(3, 1, 4)},
+            collision_margin_m=0,
+            object_manipulation_starts={"beaker": 1},
+            robot_contacts=contacts,
+        )
+
+
+def test_original_mesh_covers_object_until_manipulation_begins():
+    from autodata_core.schedulegen.collision import scheduled_robot_object_validate
+
+    robot = SimpleNamespace(initial_joint_positions=torch.zeros(1), joint_positions=torch.tensor([[1.0], [2.0]]))
+    query = Mock(side_effect=lambda states, *args: states[:, 0] == 2)
+    planner = SimpleNamespace(joint_positions_environment_spheres_collision_free=query)
+    assert scheduled_robot_object_validate(
+        planner,
+        robot,
+        {"beaker": torch.ones(3, 1, 4)},
+        collision_margin_m=0,
+        object_manipulation_starts={"beaker": 2},
+        robot_contacts=(),
+    ) == (1, 0)
+    assert query.call_args.args[0].tolist() == [[2.0]]
+
+
+def test_projected_objects_are_checked_against_each_other():
+    first = torch.tensor([[[-2.0, 0, 0, 0.1]], [[0.0, 0, 0, 0.1]], [[-2.0, 0, 0, 0.1]]])
+    second = first.clone()
+    second[:, :, 0] *= -1
+    robot = SimpleNamespace(
+        joint_positions=torch.zeros(2, 1), collision_joint_positions=torch.zeros(3, 1), collision_sample_ticks=(0, 1, 2)
+    )
+    planner = SimpleNamespace(
+        update_world=lambda: None,
+        joint_positions_world_collision_free=lambda states, *args, **kwargs: torch.ones(len(states), dtype=torch.bool),
+        environment_spheres_world_collision_free=lambda spheres, *args, **kwargs: torch.ones(
+            len(spheres), dtype=torch.bool
+        ),
+    )
+    with pytest.raises(EpisodeGenerationError, match="projected objects"):
+        scheduled_world_validate(
+            planner,
+            robot,
+            {"first": first, "second": second},
+            {name: SimpleNamespace(obstacle_path=f"/{name}") for name in ("first", "second")},
+            collision_margin_m=0,
+            object_manipulation_starts={"first": 0, "second": 0},
+        )
+
+
+def test_grasp_and_carry_permissions_allow_only_the_carrying_hand():
+    grasp, release = (SegmentId.from_string(f"left.{name}.skill") for name in ("grasp", "release"))
+    path = ArmPath("left", (Waypoint(torch.eye(4), {}),) * 5, torch.zeros(5, 1), {grasp: (0, 3), release: (3, 5)})
+    events = tuple(
+        ScheduledObjectEvent(
+            tick,
+            PathObjectEvent(
+                segment,
+                0,
+                SegmentEventSpec(kind, "beaker", attachment_frame="tool" if kind == SegmentEventType.ATTACH else ""),
+                torch.eye(4) if kind == SegmentEventType.ATTACH else None,
+            ),
+        )
+        for tick, segment, kind in (
+            (2, grasp, SegmentEventType.ATTACH),
+            (4, release, SegmentEventType.DETACH),
+        )
+    )
+    contacts = schedule_robot_contacts(
+        {"left": path},
+        Schedule({grasp: (0, 1, 2), release: (3, 4)}, 5),
+        {},
+        events,
+        attachment_link_names={"left": ("hand",)},
+    )
+    assert len(contacts) == 1
+    assert (contacts[0].start_tick, contacts[0].stop_tick) == (0, 4)
+    assert contacts[0].spec.robot_link_names == ("hand",)
+
+
+def test_buffered_generation_rejects_ignored_reset_settling():
+    from autodata_core.schedulegen.batching import generate_buffered
+    from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
+
+    datastream = SimpleNamespace(
+        get_env=lambda: None, get_generation_policy=lambda: GenerationPolicy(reset_settling_steps=2)
+    )
+    with pytest.raises(AssertionError, match="does not support reset_settling_steps"):
+        generate_buffered(
+            env=None,
+            data_generator=SimpleNamespace(datastream=datastream),
+            algorithm=SimpleNamespace(planning_contexts={0: None}),
+            success_term=None,
+            schedule_workers=1,
+        )
+
+
 @pytest.mark.parametrize(
     "point, slot", [(SegmentEventPoint.START, 0), (SegmentEventPoint.END, 6), (SegmentEventPoint.SOURCE_ANNOTATION, 4)]
 )
@@ -103,7 +255,11 @@ def test_unmanipulated_object_mesh_remains_a_world_obstacle(collision_tick):
     )
     arguments = (
         planner,
-        SimpleNamespace(joint_positions=torch.arange(4).reshape(4, 1)),
+        SimpleNamespace(
+            joint_positions=torch.arange(4).reshape(4, 1),
+            collision_joint_positions=torch.arange(4).reshape(4, 1),
+            collision_sample_ticks=(0.0, 1.0, 2.0, 3.0),
+        ),
         {"bowl": torch.ones(5, 1, 4)},
         {"bowl": SimpleNamespace(obstacle_path="/bowl")},
     )
