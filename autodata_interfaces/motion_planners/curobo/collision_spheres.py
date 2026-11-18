@@ -286,11 +286,11 @@ def _fit_link(
             tangent_mesh = tangent_mesh.convex_hull
         candidates = points[: config.candidates_per_geometry]
         centers, radii = trimesh.proximity.max_tangent_sphere(tangent_mesh, candidates)
-        radii = np.asarray(radii, dtype=np.float64) + config.inflation_m
+        radii = np.asarray(radii, dtype=np.float64)
         keep = np.isfinite(radii) & (radii > 0.0) & (radii <= 0.5 * np.linalg.norm(mesh.extents))
         surface_parts.append(points)
         center_parts.append(np.asarray(centers, dtype=np.float64)[keep])
-        radius_parts.append(radii[keep])
+        radius_parts.append(radii[keep] + config.inflation_m)
 
     points = np.concatenate(surface_parts)
     centers = np.concatenate(center_parts)

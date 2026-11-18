@@ -161,6 +161,7 @@ class PlanVisualizer:
         # Store visualization state
         self._current_frame = 0
         self._plan_frame = 0
+        self._schedule_timelines: dict[int, str] = {}
         self._active_plan_root = "world/plans"
         self._world_scene = None
         self._sphere_entities: dict[str, list[str]] = {"robot": [], "attached": [], "target": []}
@@ -703,6 +704,9 @@ class PlanVisualizer:
         not attempt to render the full robot geometry—only key points—keeping the data
         transfer to the viewer minimal.
 
+        End-effector markers share the current interval with :meth:`animate_spheres_along_path`,
+        which advances the planning cursor after both overlays have been logged.
+
         Args:
             ee_positions: Array of shape (T, 3) with planner-base end-effector positions.
             object_positions: Mapping from object name to an array (T, 3) with that
@@ -770,6 +774,7 @@ class PlanVisualizer:
         index = self._current_frame
         self._current_frame += 1
         timeline = f"{timeline_prefix}_{index}"
+        self._schedule_timelines[index] = timeline
         entity_path = f"world/schedules/{index:04d}/robot_spheres"
 
         rr.reset_time()
@@ -801,7 +806,7 @@ class PlanVisualizer:
         assert spheres.ndim == 3 and spheres.shape[-1] == 4 and len(spheres) > 0
         assert type(schedule_index) is int and schedule_index >= 0
         values = spheres.detach().cpu().numpy()
-        timeline = f"full_state_schedule_{schedule_index}"
+        timeline = self._schedule_timelines[schedule_index]
         entity_path = f"world/schedules/{schedule_index:04d}/object_spheres"
         for tick, frame in enumerate(values):
             valid = np.isfinite(frame).all(axis=1) & (frame[:, 3] > 0.0)
@@ -1029,5 +1034,5 @@ class PlanVisualizer:
 
     def mark_idle(self) -> None:
         """Clear the active arm preview between episodes, retaining its recorded history."""
-        self._clear_visualization()
         self._plan_frame += 1
+        self._clear_visualization()

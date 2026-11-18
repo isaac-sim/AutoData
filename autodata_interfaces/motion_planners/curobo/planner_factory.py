@@ -65,6 +65,7 @@ _ROBOT_CONFIG_KEYS = {
 _SPHERE_FIT_KEYS = set(CollisionSphereFitConfig.__dataclass_fields__)
 _PLANNER_KEYS = {
     "world_config_file",
+    "include_configured_world",
     "static_objects",
     "world_ignore_substrings",
     "num_trajopt_seeds",
@@ -126,6 +127,9 @@ def curobo_planning_context_create(
     cache_dir: str | Path | None = None,
 ) -> CuroboPlanningContext:
     """Build arm-local planners and one collision-only full-state context.
+
+    All contexts use live-stage obstacles. Set ``planner.include_configured_world`` in
+    the description to also load ``world_config_file``. Plan samples use the environment's control period.
 
     Args:
         datastream: Bound environment, embodiment and task interface.
@@ -220,6 +224,9 @@ def _curobo_planners_create(
 
     assert type(env_id) is int and env_id >= 0, "env_id must be non-negative"
     description = _description_load(description_path)
+    planner_settings = dict(description["planner"])
+    planner_settings["interpolation_dt"] = float(datastream.get_env().step_dt)
+    planner_settings.setdefault("include_configured_world", False)
     _action_target_frames_validate(datastream, description["planning_groups"])
     controller_model_path = datastream.get_robot_planning_model_path()
     assert (
@@ -331,14 +338,16 @@ def _curobo_planners_create(
             planning_group_name=group_name,
             ee_link_name=tool_link,
             root_pose_source_frame_name=description["root_pose_source_frame"],
-            include_configured_world=True,
             initial_auxiliary_joint_positions=initial_auxiliary_positions,
-            hand_link_names=list(chains[group_name].contact_link_names),
+            hand_link_names=[
+                name for name in chains[group_name].contact_link_names if name in collision_links_by_group[group_name]
+            ],
             attached_object_link_name=ATTACHED_OBJECT_LINK_NAME,
             extra_collision_spheres={},
             visualize_plan=False,
             visualize_spheres=False,
-            **description["planner"],
+            interpolate_plan=True,
+            **planner_settings,
         )
         eef_name = group["eef_name"]
         planners[eef_name] = CuroboPlanner(datastream=datastream, config=planner_config, env_id=env_id)
@@ -375,13 +384,12 @@ def _curobo_planners_create(
             planning_group_name=f"{description['name']}_full_state",
             ee_link_name=tool_links[0],
             root_pose_source_frame_name=description["root_pose_source_frame"],
-            include_configured_world=False,
             extra_collision_spheres={},
             visualize_plan=False,
             visualize_spheres=False,
             planning_enabled=False,
             use_native_self_collision=False,
-            **description["planner"],
+            **planner_settings,
         )
         full_state = CuroboPlanner(
             datastream=datastream,

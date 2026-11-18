@@ -354,7 +354,8 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
             joint_positions: Posture target with shape (J,) [rad, m].
             env_id: Environment controller to update.
         """
-        self._planning_action_term().set_joint_posture_target(joint_names, joint_positions, env_id)
+        if self.planning_model_action_term is not None:
+            self._planning_action_term().set_joint_posture_target(joint_names, joint_positions, env_id)
 
     def reset_joint_posture_target(self, env_id: int = 0) -> None:
         """Restore the planning action's default posture reference.
@@ -362,7 +363,8 @@ class AbsolutePoseWholeBodyBimanualAdapter(BimanualEmbodimentAdapter):
         Args:
             env_id: Environment controller to update.
         """
-        self._planning_action_term().reset_joint_posture_target(env_id)
+        if self.planning_model_action_term is not None:
+            self._planning_action_term().reset_joint_posture_target(env_id)
 
     def get_planning_root_pose(
         self,

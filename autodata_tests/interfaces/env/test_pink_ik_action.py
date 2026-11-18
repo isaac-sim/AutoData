@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import xml.etree.ElementTree as ET
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -42,8 +43,8 @@ def test_hand_action_order_does_not_follow_backend_joint_order(monkeypatch):
     assert action._controlled_joint_names == ["arm_a", "arm_b", *names]
 
 
-@pytest.mark.parametrize("valid", [True, False])
-def test_coupled_action_restores_targets_after_success_or_rejection(valid):
+@pytest.mark.parametrize("valid, failed_seed", [(True, False), (False, False), (True, True)])
+def test_coupled_action_restores_targets_after_success_or_rejection(valid, failed_seed, monkeypatch):
     pin = pytest.importorskip("pinocchio")
     frame = SimpleNamespace(frame="tool", transform_target_to_base=pin.SE3(np.eye(3), np.ones(3)))
 
@@ -72,7 +73,12 @@ def test_coupled_action_restores_targets_after_success_or_rejection(valid):
 
     configuration.update = update_configuration
     controller = SimpleNamespace(
-        cfg=SimpleNamespace(variable_input_tasks=(frame, posture), joint_names=("joint",), base_link_name="base"),
+        cfg=SimpleNamespace(
+            variable_input_tasks=(frame, posture),
+            joint_names=("joint",),
+            base_link_name="base",
+            fail_on_joint_limit_violation=True,
+        ),
         pink_configuration=configuration,
         isaac_lab_to_pink_ordering=np.array([0]),
         compute=lambda q, dt: torch.tensor(q.copy()),
@@ -95,6 +101,15 @@ def test_coupled_action_restores_targets_after_success_or_rejection(valid):
     action._get_base_link_frame_transform = base_link_pose
     initial = NamedJointTrajectory(("joint",), torch.zeros(1, 1))
     seeds = NamedJointTrajectory(("joint",), torch.zeros(2, 1))
+    if failed_seed:
+        from pink.exceptions import NoSolutionFound
+
+        error = NoSolutionFound.__new__(NoSolutionFound)
+        Exception.__init__(error, "invalid seed")
+        solver = Mock(side_effect=error)
+        monkeypatch.setattr("pink.solve_ik", solver)
+        frame.compute_error = lambda configuration: np.zeros(6) if configuration.q[0] > 0.5 else np.ones(6)
+        seeds = NamedJointTrajectory(("joint",), torch.ones(2, 1))
     args = ({"tool": torch.eye(4).repeat(2, 1, 1)}, {"tool": seeds}, initial, 0.01, 0.02)
 
     assert action.get_action_target_frame_names() == ("tool",)
@@ -106,6 +121,8 @@ def test_coupled_action_restores_targets_after_success_or_rejection(valid):
             action.solve_joint_trajectory(*args, lambda names, positions, sample: False)
     assert np.array_equal(frame.transform_target_to_base.translation, np.ones(3))
     assert np.array_equal(posture.target_q, np.array([0.3]))
+    if failed_seed:
+        solver.assert_called_once()
 
 
 @pytest.mark.parametrize(

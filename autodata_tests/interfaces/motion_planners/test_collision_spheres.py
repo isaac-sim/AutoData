@@ -61,3 +61,36 @@ def test_locked_auxiliary_joints_preserve_collision_geometry(tmp_path):
     assert planning["lock_joints"] == {"finger": -0.2}
     assert planning["collision_link_names"] == query["collision_link_names"]
     assert planning["collision_spheres"] == query["collision_spheres"]
+
+
+def test_small_geometry_keeps_valid_candidates_before_inflation(monkeypatch):
+    import numpy as np
+    import trimesh
+
+    monkeypatch.setattr(
+        trimesh.proximity,
+        "max_tangent_sphere",
+        lambda mesh, points: (np.zeros_like(points), np.full(len(points), 0.005)),
+    )
+    spheres = collision_spheres._fit_link(
+        (trimesh.creation.box(extents=(0.01, 0.01, 0.01)),),
+        collision_spheres.CollisionSphereFitConfig(inflation_m=0.01),
+        "small_link",
+    )
+    assert spheres and all(sphere.radius == 0.015 for sphere in spheres)
+
+
+def test_fixed_tool_descendants_keep_their_collision_geometry(tmp_path):
+    from autodata_interfaces.motion_planners.curobo.robot_config import curobo_arm_chain
+
+    model = tmp_path / "fixed_finger.urdf"
+    model.write_text(
+        '<robot name="arm"><link name="base"/><link name="tool"/><link name="finger"><visual>'
+        '<geometry><box size="0.1 0.1 0.1"/></geometry></visual></link>'
+        '<joint name="arm" type="revolute"><parent link="base"/><child link="tool"/>'
+        '<limit lower="-1" upper="1" effort="1" velocity="1"/></joint>'
+        '<joint name="mount" type="fixed"><parent link="tool"/><child link="finger"/></joint></robot>'
+    )
+    chain = curobo_arm_chain(model, "tool")
+    assert "finger" in chain.collision_link_names
+    assert "finger" in chain.contact_link_names

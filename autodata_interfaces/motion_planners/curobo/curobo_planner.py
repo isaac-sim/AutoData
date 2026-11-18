@@ -319,8 +319,10 @@ class CuroboPlanner(MotionPlannerBase):
         self.planning_root_frame_name = str(robot_cfg["kinematics"]["base_link"])
         self.root_pose_source_frame_name = config.root_pose_source_frame_name
 
-        # Load world configuration using the config's method
-        world_cfg: WorldConfig = self.config.get_world_config()
+        # Named robot groups use the live stage unless a configured world is explicitly requested.
+        world_cfg: WorldConfig = (
+            self.config.get_world_config() if self.config.include_configured_world else WorldConfig()
+        )
         self._configured_world_config = world_cfg.get_collision_check_world()
 
         # Synchronize before rollout construction: exported zero velocities are not valid bounds.
@@ -359,7 +361,6 @@ class CuroboPlanner(MotionPlannerBase):
                 world_coll_checker=collision_world_source.motion_gen.world_coll_checker,
             )
         self._collision_world_owner: CuroboPlanner = collision_world_source or self
-        self._collision_world_active_context: CuroboPlanner | None = None
         self._kinematics = self.motion_gen.kinematics
         self._kinematic_robot_cfg = robot_cfg
         if config.kinematic_robot_config_file is not None:
@@ -446,6 +447,9 @@ class CuroboPlanner(MotionPlannerBase):
         # Cache object mappings
         # Only recompute when objects are added/removed, not when poses change
         self._cached_object_mappings: dict[str, str] | None = None
+        self._object_obstacle_transforms: dict[str, torch.Tensor] = (
+            collision_world_source._object_obstacle_transforms if collision_world_source is not None else {}
+        )
 
     # =====================================================================================
     # DEVICE CONVERSION UTILITIES
@@ -589,6 +593,13 @@ class CuroboPlanner(MotionPlannerBase):
         that don't change during the simulation. Dynamic objects are synchronized separately
         in update_world() to maintain performance.
         """
+        if not activate:
+            owner = self._collision_world_owner
+            assert self.config.include_configured_world == owner.config.include_configured_world
+            assert self.planning_root_frame_name == owner.planning_root_frame_name
+            self._static_world_config = owner._static_world_config
+            return
+
         _usd_mesh_missing_scales_fill(self.usd_helper.stage)
         # Prim scoping for obstacle extraction comes from the Datastream (collision-world source),
         # not from direct env access.
@@ -621,19 +632,32 @@ class CuroboPlanner(MotionPlannerBase):
                 combined_world.add_obstacle(obstacle)
             self._static_world_config = combined_world
 
-        if activate:
-            self._static_world_activate()
+        self._static_world_base_pose = self._base_pose_in_env.clone()
+        self.motion_gen.clear_world_cache()
+        self.motion_gen.update_world(self._static_world_config)
 
-    def _static_world_activate(self) -> None:
-        """Install this context's world in its shared fixed-capacity collision checker."""
+    def _static_world_refresh(self) -> None:
+        """Keep shared world geometry in the current planning-root frame without resetting enable flags."""
 
         owner = self._collision_world_owner
-        if owner._collision_world_active_context is self:
+        if owner is not self:
+            owner._refresh_base_frame_transform()
+            owner._static_world_refresh()
             return
-        # Rebuild the cache so pinned cuRobo cannot retain an unlisted bootstrap cuboid.
-        owner.motion_gen.clear_world_cache()
-        owner.motion_gen.update_world(self._static_world_config)
-        owner._collision_world_active_context = self
+        if torch.allclose(self._static_world_base_pose, self._base_pose_in_env, atol=1e-6, rtol=0.0):
+            return
+        transform = self._env_to_base_transform @ self._static_world_base_pose
+        world = self.motion_gen.world_coll_checker.world_model
+        for obstacle in world:
+            pose = self._make_pose(position=obstacle.pose[:3], quaternion=obstacle.pose[3:], quat_is_xyzw=False)
+            moved = transform.to(pose.position) @ pose.get_matrix().reshape(4, 4)
+            pose_list = self._object_pose_to_curobo_list(moved)
+            self.motion_gen.world_coll_checker.update_obstacle_pose(
+                obstacle.name,
+                self._make_pose(position=pose_list[:3], quaternion=pose_list[3:], quat_is_xyzw=False),
+                update_cpu_reference=True,
+            )
+        self._static_world_base_pose = self._base_pose_in_env.clone()
 
     def _transform_world_config_to_base_frame(self, world_config: WorldConfig) -> None:
         """Express env-relative cuRobo obstacles in the live planning-root frame."""
@@ -1165,15 +1189,25 @@ class CuroboPlanner(MotionPlannerBase):
         assert all(
             isinstance(path, str) and path and path == path.strip() for path in obstacle_paths
         ), "obstacle_paths must contain unique, non-empty, trimmed strings"
-        disabled_paths: list[str] = []
+        checker = self.motion_gen.world_coll_checker
+        disabled_paths: list[tuple[str, bool]] = []
         try:
             for path in obstacle_paths:
-                self.motion_gen.world_coll_checker.enable_obstacle(path, enable=False)
-                disabled_paths.append(path)
+                for names, tensors in (
+                    (getattr(checker, "_env_mesh_names", None), getattr(checker, "_mesh_tensor_list", None)),
+                    (getattr(checker, "_env_obbs_names", None), getattr(checker, "_cube_tensor_list", None)),
+                ):
+                    if names is not None and path in names[0]:
+                        enabled = bool(tensors[2][0, names[0].index(path)].item())
+                        break
+                else:
+                    raise KeyError(f"unknown collision obstacle {path!r}")
+                checker.enable_obstacle(path, enable=False)
+                disabled_paths.append((path, enabled))
             yield
         finally:
-            for path in reversed(disabled_paths):
-                self.motion_gen.world_coll_checker.enable_obstacle(path, enable=True)
+            for path, enabled in reversed(disabled_paths):
+                checker.enable_obstacle(path, enable=enabled)
 
     def joint_positions_world_collision_witness(
         self,
@@ -1334,7 +1368,8 @@ class CuroboPlanner(MotionPlannerBase):
         """Retrieve object pose from cuRobo's collision world model.
 
         Searches the collision world model for the specified object and returns its current
-        pose. This is useful for attachment calculations and debugging collision world state.
+        root pose, accounting for any child-geometry transform. This is used for attachment
+        calculations and debugging collision world state.
         The method handles both mesh and cuboid object types automatically.
 
         Args:
@@ -1363,7 +1398,14 @@ class CuroboPlanner(MotionPlannerBase):
             for obj in obj_list:
                 if obj.name and object_path == str(obj.name):
                     if obj.pose is not None:
-                        return Pose.from_list(obj.pose, tensor_args=self.tensor_args)
+                        pose = Pose.from_list(obj.pose, tensor_args=self.tensor_args)
+                        object_from_obstacle = self._object_obstacle_transform(object_name, object_path)
+                        root_from_object = pose.get_matrix().reshape(4, 4) @ torch.linalg.inv(object_from_obstacle).to(
+                            pose.position
+                        )
+                        return Pose.from_list(
+                            self._object_pose_to_curobo_list(root_from_object), tensor_args=self.tensor_args
+                        )
 
         self.logger.debug(f"Object {object_name} found in mappings but pose not available")
         return None
@@ -1461,7 +1503,7 @@ class CuroboPlanner(MotionPlannerBase):
         Updates all dynamic object poses in cuRobo's collision world to match their current
         positions in Isaac Lab. This ensures collision checking uses accurate object positions
         after simulation steps, resets, or manual object movements. Static world geometry
-        is loaded once during initialization and not updated here for performance.
+        is loaded once and re-expressed only when the planning root moves.
 
         The method validates that the set of objects hasn't changed at runtime, as cuRobo
         requires world model reinitialization when objects are added or removed.
@@ -1477,7 +1519,7 @@ class CuroboPlanner(MotionPlannerBase):
         # Refresh the env-relative -> robot base frame transform before syncing geometry, so
         # object, goal, and planned poses are reconciled against the current base pose.
         self._refresh_base_frame_transform()
-        self._static_world_activate()
+        self._static_world_refresh()
 
         # Establish validation baseline on first call, validate on subsequent calls
         if self._expected_objects is None:
@@ -1575,11 +1617,10 @@ class CuroboPlanner(MotionPlannerBase):
         """
         # Object poses enter in the Datastream's env-relative frame and are converted to the
         # planning-root frame before updating cuRobo's collision world.
-        object_mappings = self._get_object_mappings()
         world_model = self.motion_gen.world_coll_checker.world_model
         object_poses = self.datastream.get_object_poses(env_ids=[self.env_id])
         pose_overrides = dict(object_pose_overrides or {})
-        unknown_overrides = set(pose_overrides) - set(object_mappings)
+        unknown_overrides = set(pose_overrides) - set(object_poses)
         assert not unknown_overrides, f"object-pose overrides reference unknown obstacles: {sorted(unknown_overrides)}"
         static_objects = getattr(self.config, "static_objects", [])
 
@@ -1587,7 +1628,7 @@ class CuroboPlanner(MotionPlannerBase):
             return any(static_name in name.lower() for static_name in static_objects)
 
         updates: list[tuple[str, str, list[float]]] = []
-        for object_name, object_path in object_mappings.items():
+        for object_name in object_poses:
             if _is_static(object_name):
                 continue
             if object_name in pose_overrides:
@@ -1596,8 +1637,15 @@ class CuroboPlanner(MotionPlannerBase):
                 pose_env = object_poses[object_name][0]
             else:
                 continue
-            pose_list = self._object_pose_to_curobo_list(self._pose_env_to_base(pose_env))
-            updates.append((object_name, object_path, pose_list))
+            try:
+                obstacle_paths = self.world_object_obstacle_paths(object_name)
+            except KeyError:
+                assert object_name not in pose_overrides, f"object-pose override has no obstacles: {object_name!r}"
+                continue
+            for object_path in obstacle_paths:
+                child_pose = pose_env @ self._object_obstacle_transform(object_name, object_path).to(pose_env)
+                pose_list = self._object_pose_to_curobo_list(self._pose_env_to_base(child_pose))
+                updates.append((object_name, object_path, pose_list))
 
         updated_count = 0
         for object_name, object_path, pose_list in updates:
@@ -1617,6 +1665,44 @@ class CuroboPlanner(MotionPlannerBase):
                 )
 
             self.logger.debug(f"Updated {updated_count} object poses in collision checker")
+
+    def _object_obstacle_transform(self, object_name: str, obstacle_path: str) -> torch.Tensor:
+        """Cache the obstacle's rigid transform relative to its authored scene-object root.
+
+        Args:
+            object_name: Scene object containing the obstacle.
+            obstacle_path: Collision-world name of the object's geometry prim.
+
+        Returns:
+            Object-relative obstacle transform with shape ``(4, 4)`` [m].
+        """
+        from pxr import Gf, UsdGeom
+
+        if obstacle_path not in self._object_obstacle_transforms:
+            stage = self.datastream.get_usd_stage()
+            root = stage.GetPrimAtPath(self.datastream.get_object_prim_path(object_name, self.env_id))
+            env = stage.GetPrimAtPath(self.datastream.get_env_prim_path(self.env_id))
+            authored = Gf.Transform(UsdGeom.XformCache().ComputeRelativeTransform(root, env)[0])
+            env_from_object = torch.eye(4, device=self.datastream.device)
+            env_from_object[:3, :3] = torch.as_tensor(
+                np.asarray(Gf.Matrix4d().SetRotate(authored.GetRotation()))[:3, :3].T.copy(),
+                dtype=env_from_object.dtype,
+                device=env_from_object.device,
+            )
+            env_from_object[:3, 3] = env_from_object.new_tensor(tuple(authored.GetTranslation()))
+            obstacle = next(
+                value for value in self.motion_gen.world_coll_checker.world_model if value.name == obstacle_path
+            )
+            root_from_obstacle = (
+                self._make_pose(position=obstacle.pose[:3], quaternion=obstacle.pose[3:], quat_is_xyzw=False)
+                .get_matrix()
+                .reshape(4, 4)
+                .to(env_from_object)
+            )
+            self._object_obstacle_transforms[obstacle_path] = (
+                torch.linalg.inv(env_from_object) @ self._base_pose_in_env @ root_from_obstacle
+            )
+        return self._object_obstacle_transforms[obstacle_path]
 
     def _object_pose_to_curobo_list(self, pose_mat: torch.Tensor) -> list[float]:
         """Decompose a 4x4 pose into cuRobo's ``[x, y, z, qw, qx, qy, qz]`` list.
@@ -2715,9 +2801,10 @@ class CuroboPlanner(MotionPlannerBase):
                 self.motion_gen.rollout_fn.robot_self_collision_constraint.enable_cost()
 
             if result.success.item():
-                # The optimizer's sample period can differ from the controller's fixed period.
-                self._current_plan = result.get_interpolated_plan()
-                self.logger.debug(f"Using interpolated plan with {len(self._current_plan.position)} waypoints")
+                self._current_plan = (
+                    result.get_interpolated_plan() if self.config.interpolate_plan else result.optimized_plan
+                )
+                self.logger.debug(f"Using plan with {len(self._current_plan.position)} waypoints")
 
                 self._current_plan = self._planning_joint_state_expand(self._current_plan)
                 common_js_names: list[str] = [
@@ -2861,6 +2948,7 @@ class CuroboPlanner(MotionPlannerBase):
                     device=position.device,
                     dtype=position.dtype,
                 )
+                offset = self._env_to_base_transform[:3, :3].to(offset) @ offset
                 retreat_pose = self._make_pose(
                     position=position + offset,
                     quaternion=ee_pose.quaternion,
@@ -2881,6 +2969,7 @@ class CuroboPlanner(MotionPlannerBase):
                     device=position.device,
                     dtype=position.dtype,
                 )
+                offset = self._env_to_base_transform[:3, :3].to(offset) @ offset
                 approach_pose = self._make_pose(
                     position=position + offset,
                     quaternion=goal_pose.quaternion,
@@ -3467,6 +3556,7 @@ class CuroboPlanner(MotionPlannerBase):
         if not locked_joints:
             return
         self.motion_gen.update_locked_joints(locked_joints, self.robot_cfg)
+        self._joint_limits_sync(self.motion_gen.kinematics.get_joint_limits())
 
     def _count_active_spheres(self) -> dict[str, int]:
         """Count active collision spheres by category for debugging.

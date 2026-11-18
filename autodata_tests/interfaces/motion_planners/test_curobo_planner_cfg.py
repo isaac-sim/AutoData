@@ -36,6 +36,12 @@ def test_from_profile_rejects_unknown_profile_name():
         CuroboPlannerCfg.from_profile("franka_stack_cube_bin_typo")
 
 
+def test_legacy_defaults_keep_configured_world_and_optimized_samples():
+    config = CuroboPlannerCfg()
+    assert config.include_configured_world
+    assert not config.interpolate_plan
+
+
 @pytest.mark.parametrize("tool_override, expected", [(None, "panda_hand"), ("custom_tool", "custom_tool")])
 def test_attachment_capture_resolves_the_default_tool(tool_override, expected):
     """Attachment metadata uses the model's tool unless an explicit override is configured."""

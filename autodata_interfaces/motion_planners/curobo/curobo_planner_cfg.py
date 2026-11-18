@@ -114,6 +114,9 @@ class CuroboPlannerCfg:
     interpolation_dt: float = 0.05
     """Time step for interpolating waypoints."""
 
+    interpolate_plan: bool = False
+    """Return controller-rate samples; False preserves legacy SkillGen optimizer waypoints."""
+
     max_joint_velocity: float | None = None
     """Optional planning speed cap [rad/s, m/s], also bounded by the live actuator limits."""
 

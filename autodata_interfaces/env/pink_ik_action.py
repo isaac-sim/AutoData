@@ -191,6 +191,7 @@ class PinkInverseKinematicsActionSharedUrdf(PinkInverseKinematicsAction):
         current = initial_joint_positions.detach().cpu().numpy().copy()
         solutions: list[torch.Tensor] = []
         from pink import solve_ik
+        from pink.exceptions import NoSolutionFound, NotWithinConfigurationLimits
 
         try:
             for sample in range(sample_count):
@@ -214,13 +215,17 @@ class PinkInverseKinematicsActionSharedUrdf(PinkInverseKinematicsAction):
                             current[np.asarray(controlled_ids)] = solution.detach().cpu().numpy()
                         else:
                             controller.pink_configuration.update(current[controller.isaac_lab_to_pink_ordering])
-                            velocity = solve_ik(
-                                controller.pink_configuration,
-                                frame_tasks,
-                                self._sim_dt,
-                                solver="daqp",
-                                safety_break=controller.cfg.fail_on_joint_limit_violation,
-                            )
+                            try:
+                                velocity = solve_ik(
+                                    controller.pink_configuration,
+                                    frame_tasks,
+                                    self._sim_dt,
+                                    solver="daqp",
+                                    safety_break=controller.cfg.fail_on_joint_limit_violation,
+                                )
+                            except (NoSolutionFound, NotWithinConfigurationLimits):
+                                converged = False
+                                break
                             joint_delta = velocity * self._sim_dt
                             current[np.asarray(controlled_ids)] += joint_delta[
                                 controller.pink_to_isaac_lab_controlled_ordering

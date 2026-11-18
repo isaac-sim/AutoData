@@ -238,15 +238,14 @@ def curobo_arm_chain(
         - contact_joints
     ):
         contact_joints.update(followers)
-    contact_links = {tool_link}
-    for joint_name in contact_joints:
-        queue = deque([model.joints[joint_name].child_link])
-        while queue:
-            link_name = queue.popleft()
-            if link_name in contact_links:
-                continue
-            contact_links.add(link_name)
-            queue.extend(children[link_name])
+    contact_links: set[str] = set()
+    queue = deque([tool_link, *(model.joints[name].child_link for name in contact_joints)])
+    while queue:
+        link_name = queue.popleft()
+        if link_name in contact_links:
+            continue
+        contact_links.add(link_name)
+        queue.extend(children[link_name])
     owned_collision_links = ({root_name, *(joint.child_link for joint in chain)} | contact_links) & collision_links
     return CuroboArmChain(
         root_link=root_name,

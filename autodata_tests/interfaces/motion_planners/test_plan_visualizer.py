@@ -27,6 +27,7 @@ def visualizer(monkeypatch):
     value._world_scene = None
     value._current_frame = 0
     value._plan_frame = 0
+    value._schedule_timelines = {}
     value._active_plan_root = "world/plans"
     value._sphere_entities = {"robot": [], "attached": [], "target": []}
     value._motion_gen_ref = SimpleNamespace(
@@ -68,3 +69,21 @@ def test_scheduled_robot_does_not_switch_planning_view(visualizer):
     assert visualizer._plan_frame == 0
     assert {call.args[0] for call in module.rr.set_time.call_args_list} == {"full_state_schedule_0"}
     module.rr.send_blueprint.assert_not_called()
+
+
+def test_end_effector_markers_share_the_sphere_animation_interval(visualizer):
+    visualizer.animate_plan(np.zeros((3, 3)))
+    assert visualizer._plan_frame == 0
+    visualizer.animate_spheres_along_path(
+        SimpleNamespace(position=torch.zeros(3, 1)), robot_spheres_at_start=[object()], interpolation_steps=1
+    )
+    assert visualizer._plan_frame == 3
+    visualizer.mark_idle()
+    assert visualizer._plan_frame == 4
+
+
+def test_object_overlay_uses_the_custom_robot_timeline(visualizer):
+    spheres = torch.tensor([[[0.0, 0.0, 0.0, 0.01]]])
+    index = visualizer.animate_collision_spheres(spheres, timeline_prefix="inspection")
+    visualizer.animate_object_collision_spheres(spheres, schedule_index=index)
+    assert {call.args[0] for call in module.rr.set_time.call_args_list} == {"inspection_0"}

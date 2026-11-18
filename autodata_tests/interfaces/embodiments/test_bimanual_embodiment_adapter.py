@@ -54,6 +54,12 @@ def _bound(embodiment_adapter: AbsolutePoseWholeBodyBimanualAdapter, left_pos, r
     return embodiment_adapter
 
 
+def test_optional_posture_hooks_do_not_require_a_planning_action():
+    adapter = _embodiment_adapter()
+    adapter.set_joint_posture_target(("joint",), torch.zeros(1))
+    adapter.reset_joint_posture_target()
+
+
 def test_coupled_joint_solving_delegates_named_targets_to_action(monkeypatch):
     adapter = _embodiment_adapter()
     adapter.planning_model_action_term = "arms"
