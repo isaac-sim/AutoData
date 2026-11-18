@@ -101,6 +101,7 @@ Table of Contents
    :caption: Set Up
 
    pages/quickstart/support_matrix
+   pages/quickstart/compatibility_matrix
    pages/quickstart/installation
 
 .. toctree::
