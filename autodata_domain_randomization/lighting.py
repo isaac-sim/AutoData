@@ -77,9 +77,9 @@ def _find_light_prims(env: ManagerBasedEnv, env_ids: torch.Tensor, asset_cfg: Sc
     from pxr import UsdLux
 
     stage = env.scene.stage
-    asset = env.scene[asset_cfg.name]
+    light_cfg = getattr(env.scene.cfg, asset_cfg.name)
     candidates = [
-        prim for prim in find_matching_prims(asset.cfg.prim_path, stage=stage) if prim.HasAPI(UsdLux.LightAPI)
+        prim for prim in find_matching_prims(light_cfg.prim_path, stage=stage) if prim.HasAPI(UsdLux.LightAPI)
     ]
     if len(env.scene.env_prim_paths) == 1:
         assert (

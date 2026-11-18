@@ -555,6 +555,56 @@ def test_material_scalar_sampling_is_seeded_and_updates_all_matches(monkeypatch)
     assert all(0.25 <= value <= 0.75 for value in first)
 
 
+def test_material_overrides_isolate_targets_sharing_a_source_and_are_reused():
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    material = UsdShade.Material.Define(stage, "/World/Looks/Shared")
+    shader = UsdShade.Shader.Define(stage, "/World/Looks/Shared/Shader")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(1.0))
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    root = "/World/envs/env_0/Object"
+    UsdGeom.Xform.Define(stage, root)
+    meshes = [UsdGeom.Cube.Define(stage, f"{root}/{name}").GetPrim() for name in ("mesh_A", "mesh_B")]
+    for mesh in meshes:
+        UsdShade.MaterialBindingAPI.Apply(mesh).Bind(material)
+    scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path=root)))
+    scene.stage = stage
+    scene.env_prim_paths = ["/World/envs/env_0"]
+    env = SimpleNamespace(scene=scene, device="cpu")
+    ids = torch.tensor([0])
+    asset_cfg = SimpleNamespace(name="object")
+
+    def reset_materials():
+        for marker, roughness in (("mesh_A", 0.2), ("mesh_B", 0.8)):
+            materials.randomize_material_scalar(env, ids, asset_cfg, (marker,), "roughness", (roughness, roughness))
+        materials.randomize_material_color(env, ids, asset_cfg, ("mesh_A",), "diffuseColor", ((0.1, 0.2, 0.3),))
+
+    reset_materials()
+    bound_materials = [UsdShade.MaterialBindingAPI(mesh).ComputeBoundMaterial()[0] for mesh in meshes]
+    bound_shaders = [
+        UsdShade.Shader(stage.GetPrimAtPath(str(bound.GetPath()) + "/Shader")) for bound in bound_materials
+    ]
+    assert bound_shaders[0].GetInput("roughness").Get() == pytest.approx(0.2)
+    assert bound_shaders[1].GetInput("roughness").Get() == pytest.approx(0.8)
+    assert bound_materials[0].GetPath() != bound_materials[1].GetPath()
+    assert tuple(bound_shaders[0].GetInput("diffuseColor").Get()) == pytest.approx((0.1, 0.2, 0.3))
+    assert tuple(bound_shaders[1].GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
+    assert shader.GetInput("roughness").Get() == 0.5
+    assert tuple(shader.GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
+    assert sum(prim.IsA(UsdShade.Material) for prim in stage.Traverse()) == 3
+
+    before = stage.GetRootLayer().ExportToString()
+    for _ in range(3):
+        reset_materials()
+        assert stage.GetRootLayer().ExportToString() == before
+
+
 def test_material_resets_sample_independently_and_isolate_shared_source_material():
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
@@ -772,6 +822,7 @@ def test_generation_requires_cameras_for_camera_randomization():
 @pytest.mark.parametrize("light_type", ["DomeLight", "RectLight"])
 @pytest.mark.parametrize("prim_path", ["/World/Light", "/World/envs/env_0/Light"])
 def test_single_environment_lighting_supports_global_and_local_lights(light_type, prim_path):
+    from isaaclab.assets import AssetBaseCfg
     from pxr import Usd, UsdLux
 
     class Scene(dict):
@@ -779,7 +830,9 @@ def test_single_environment_lighting_supports_global_and_local_lights(light_type
 
     stage = Usd.Stage.CreateInMemory()
     light = getattr(UsdLux, light_type).Define(stage, prim_path)
-    scene = Scene(light=SimpleNamespace(cfg=SimpleNamespace(prim_path=prim_path)))
+    light_cfg = AssetBaseCfg(prim_path=prim_path)
+    scene = Scene(light=light_cfg)
+    scene.cfg = SimpleNamespace(light=light_cfg)
     scene.stage = stage
     scene.env_prim_paths = ["/World/envs/env_0"]
     env = SimpleNamespace(scene=scene, device="cpu")
@@ -793,6 +846,7 @@ def test_single_environment_lighting_supports_global_and_local_lights(light_type
 @pytest.mark.parametrize("global_light", [True, False])
 @pytest.mark.parametrize("env_ids", [[0], [0, 1]])
 def test_parallel_dome_randomization_is_rejected_before_modifying_the_scene(global_light, env_ids):
+    from isaaclab.assets import AssetBaseCfg
     from pxr import Usd, UsdLux
 
     class Scene(dict):
@@ -803,7 +857,9 @@ def test_parallel_dome_randomization_is_rejected_before_modifying_the_scene(glob
     for path in ["/World/Dome"] if global_light else [root + "/Dome" for root in roots]:
         UsdLux.DomeLight.Define(stage, path)
     pattern = "/World/Dome" if global_light else "/World/envs/env_.*/Dome"
-    scene = Scene(light=SimpleNamespace(cfg=SimpleNamespace(prim_path=pattern)))
+    light_cfg = AssetBaseCfg(prim_path=pattern)
+    scene = Scene(light=light_cfg)
+    scene.cfg = SimpleNamespace(light=light_cfg)
     scene.stage = stage
     scene.env_prim_paths = roots
     env = SimpleNamespace(scene=scene, device="cpu")
@@ -818,6 +874,7 @@ def test_parallel_dome_randomization_is_rejected_before_modifying_the_scene(glob
 
 
 def test_existing_non_dome_lights_are_seeded_and_only_selected_environments_change():
+    from isaaclab.assets import AssetBaseCfg
     from pxr import Usd, UsdLux
 
     class Scene(dict):
@@ -828,7 +885,9 @@ def test_existing_non_dome_lights_are_seeded_and_only_selected_environments_chan
     lamps = [UsdLux.RectLight.Define(stage, root + "/Light").GetPrim() for root in roots]
     dome = UsdLux.DomeLight.Define(stage, "/World/Dome")
     dome.GetIntensityAttr().Set(250.0)
-    scene = Scene(light=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/envs/env_.*/Light")))
+    light_cfg = AssetBaseCfg(prim_path="/World/envs/env_.*/Light")
+    scene = Scene(light=light_cfg)
+    scene.cfg = SimpleNamespace(light=light_cfg)
     scene.stage = stage
     scene.env_prim_paths = roots
     env = SimpleNamespace(scene=scene, device="cpu")
@@ -856,6 +915,7 @@ def test_existing_non_dome_lights_are_seeded_and_only_selected_environments_chan
 
 
 def test_global_non_dome_light_cannot_be_randomized_as_a_cloned_light():
+    from isaaclab.assets import AssetBaseCfg
     from pxr import Usd, UsdLux
 
     class Scene(dict):
@@ -863,7 +923,9 @@ def test_global_non_dome_light_cannot_be_randomized_as_a_cloned_light():
 
     stage = Usd.Stage.CreateInMemory()
     UsdLux.RectLight.Define(stage, "/World/Light")
-    scene = Scene(light=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/Light")))
+    light_cfg = AssetBaseCfg(prim_path="/World/Light")
+    scene = Scene(light=light_cfg)
+    scene.cfg = SimpleNamespace(light=light_cfg)
     scene.stage = stage
     scene.env_prim_paths = ["/World/envs/env_0", "/World/envs/env_1"]
     env = SimpleNamespace(scene=scene, device="cpu")

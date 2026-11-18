@@ -128,12 +128,12 @@ def _find_shader_inputs(
             material, _ = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()
             if not material:
                 continue
-            # Clones can bind the same source material. Author per-asset overrides so a
-            # partial reset never recolors another environment or edits the source material.
+            # Isolate each prim's binding from other targets sharing its source material,
+            # including clones in other environments.
             overrides_path = root.GetPath().AppendChild("DomainRandomizationMaterials")
             if not material.GetPath().HasPrefix(overrides_path):
                 assert not prim.IsInstanceProxy(), "Material DR requires non-instanceable target visual prims."
-                identifier = hashlib.sha256(str(material.GetPath()).encode()).hexdigest()[:16]
+                identifier = hashlib.sha256(f"{prim.GetPath()}|{material.GetPath()}".encode()).hexdigest()[:16]
                 local_path = overrides_path.AppendChild(f"Material_{identifier}")
                 local_material = UsdShade.Material.Get(env.scene.stage, local_path)
                 if not local_material:

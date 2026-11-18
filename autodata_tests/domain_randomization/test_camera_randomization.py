@@ -228,12 +228,18 @@ def test_camera_resets_use_nominal_mount_and_only_selected_environment():
     )
     before = np.array(UsdGeom.Xformable(stage.GetPrimAtPath(paths[0])).GetLocalTransformation())
     expected_rotation = Rotation.from_quat(nominal_q) * Rotation.from_euler("XYZ", [3, -3, 2], degrees=True)
+    expected_transform = np.eye(4)
+    # USD uses row vectors; OpenGL flips the ROS camera's down and forward axes.
+    expected_transform[:3, :3] = (expected_rotation.as_matrix() @ np.diag([1, -1, -1])).T
+    expected_transform[3, :3] = (0.088, 0.024, 0.478)
     for _ in range(8):
         result = camera.randomize_camera(env, ids, **params)
         assert set(result) == {1}
         assert result[1]["position_xyz"] == pytest.approx((0.088, 0.024, 0.478))
         assert result[1]["rotation_xyzw"] == pytest.approx(expected_rotation.as_quat(), abs=1e-6)
         assert result[1]["focal_length_px"] == pytest.approx((312.0,))
+        selected = np.array(UsdGeom.Xformable(stage.GetPrimAtPath(paths[1])).GetLocalTransformation())
+        np.testing.assert_allclose(selected, expected_transform, atol=1e-6)
         unchanged = np.array(UsdGeom.Xformable(stage.GetPrimAtPath(paths[0])).GetLocalTransformation())
         np.testing.assert_array_equal(before, unchanged)
         assert writes[-1][1]["env_ids"] == [1]
