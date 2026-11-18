@@ -128,17 +128,20 @@ def _find_shader_inputs(
             material, _ = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()
             if not material:
                 continue
-            # Isolate each prim's binding from other targets sharing its source material,
-            # including clones in other environments.
+            # An inherited override may belong to another target. Resolve the original
+            # source before computing this prim's stable override path.
             overrides_path = root.GetPath().AppendChild("DomainRandomizationMaterials")
-            if not material.GetPath().HasPrefix(overrides_path):
+            source_material = material
+            while source_material.GetPath().HasPrefix(overrides_path):
+                source_material = source_material.GetBaseMaterial()
+            identifier = hashlib.sha256(f"{prim.GetPath()}|{source_material.GetPath()}".encode()).hexdigest()[:16]
+            local_path = overrides_path.AppendChild(f"Material_{identifier}")
+            if material.GetPath() != local_path:
                 assert not prim.IsInstanceProxy(), "Material DR requires non-instanceable target visual prims."
-                identifier = hashlib.sha256(f"{prim.GetPath()}|{material.GetPath()}".encode()).hexdigest()[:16]
-                local_path = overrides_path.AppendChild(f"Material_{identifier}")
                 local_material = UsdShade.Material.Get(env.scene.stage, local_path)
                 if not local_material:
                     local_material = UsdShade.Material.Define(env.scene.stage, local_path)
-                    local_material.GetPrim().GetSpecializes().AddSpecialize(material.GetPath())
+                    local_material.GetPrim().GetSpecializes().AddSpecialize(source_material.GetPath())
                 UsdShade.MaterialBindingAPI.Apply(prim).Bind(local_material)
                 material = local_material
             for material_prim in Usd.PrimRange(material.GetPrim()):

@@ -605,6 +605,65 @@ def test_material_overrides_isolate_targets_sharing_a_source_and_are_reused():
         assert stage.GetRootLayer().ExportToString() == before
 
 
+def test_material_overrides_do_not_reuse_an_inherited_override():
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    material = UsdShade.Material.Define(stage, "/World/Looks/Shared")
+    shader = UsdShade.Shader.Define(stage, "/World/Looks/Shared/Shader")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(1.0))
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    root = "/World/envs/env_0/Object"
+    UsdGeom.Xform.Define(stage, root)
+    group = UsdGeom.Xform.Define(stage, f"{root}/panel_group").GetPrim()
+    insert = UsdGeom.Cube.Define(stage, f"{root}/panel_group/insert").GetPrim()
+    sibling = UsdGeom.Cube.Define(stage, f"{root}/panel_group/sibling").GetPrim()
+    UsdShade.MaterialBindingAPI.Apply(group).Bind(material)
+    scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path=root)))
+    scene.stage = stage
+    scene.env_prim_paths = ["/World/envs/env_0"]
+    env = SimpleNamespace(scene=scene, device="cpu")
+    ids = torch.tensor([0])
+    asset_cfg = SimpleNamespace(name="object")
+
+    def reset_materials():
+        materials.randomize_material_scalar(env, ids, asset_cfg, ("panel_group",), "roughness", (0.2, 0.2))
+        materials.randomize_material_color(env, ids, asset_cfg, ("panel_group",), "diffuseColor", ((0.9, 0.4, 0.1),))
+        materials.randomize_material_scalar(env, ids, asset_cfg, ("insert",), "roughness", (0.8, 0.8))
+
+    reset_materials()
+    bound_materials = [UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()[0] for prim in (group, insert, sibling)]
+    bound_shaders = [
+        UsdShade.Shader(stage.GetPrimAtPath(str(bound.GetPath()) + "/Shader")) for bound in bound_materials
+    ]
+    assert [bound.GetInput("roughness").Get() for bound in bound_shaders] == pytest.approx((0.2, 0.8, 0.2))
+    assert bound_materials[0].GetPath() == bound_materials[2].GetPath()
+    assert bound_materials[1].GetPath() != bound_materials[0].GetPath()
+    assert bound_materials[1].GetBaseMaterialPath() == material.GetPath()
+    assert tuple(bound_shaders[1].GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
+
+    materials.randomize_material_color(env, ids, asset_cfg, ("insert",), "diffuseColor", ((0.1, 0.2, 0.3),))
+    insert_material, _ = UsdShade.MaterialBindingAPI(insert).ComputeBoundMaterial()
+    assert insert_material.GetPath() == bound_materials[1].GetPath()
+    assert tuple(bound_shaders[1].GetInput("diffuseColor").Get()) == pytest.approx((0.1, 0.2, 0.3))
+    assert tuple(bound_shaders[0].GetInput("diffuseColor").Get()) == pytest.approx((0.9, 0.4, 0.1))
+    assert bound_shaders[1].GetInput("roughness").Get() == pytest.approx(0.8)
+    assert shader.GetInput("roughness").Get() == 0.5
+    assert tuple(shader.GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
+    assert sum(prim.IsA(UsdShade.Material) for prim in stage.Traverse()) == 3
+
+    before = stage.GetRootLayer().ExportToString()
+    for _ in range(3):
+        reset_materials()
+        materials.randomize_material_color(env, ids, asset_cfg, ("insert",), "diffuseColor", ((0.1, 0.2, 0.3),))
+        assert stage.GetRootLayer().ExportToString() == before
+
+
 def test_material_resets_sample_independently_and_isolate_shared_source_material():
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
