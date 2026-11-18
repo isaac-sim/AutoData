@@ -18,26 +18,26 @@ from autodata_domain_randomization.robot import reset_all_articulation_joints
 
 
 @pytest.mark.parametrize(
-    "values",
+    "values,error",
     [
-        {"enabled": True},
-        {"joint_names": "arm"},
-        {"joint_names": [""]},
-        {"delta_range_deg": (5, -5)},
-        {"delta_range_deg": (0,)},
-        {"delta_range_deg": (0, float("inf"))},
-        {"delta_range_deg": (float("nan"), 5)},
+        ({}, "requires joint_names"),
+        ({"joint_names": "arm"}, "must be a sequence"),
+        ({"joint_names": [""]}, "non-empty strings"),
+        ({"joint_names": ["arm"], "delta_range_deg": (5, -5)}, "lower bound exceeds upper bound"),
+        ({"joint_names": ["arm"], "delta_range_deg": (0,)}, "must contain two finite values"),
+        ({"joint_names": ["arm"], "delta_range_deg": (0, float("inf"))}, "must contain two finite values"),
+        ({"joint_names": ["arm"], "delta_range_deg": (float("nan"), 5)}, "must contain two finite values"),
     ],
 )
-def test_invalid_joint_dr_configuration(values):
-    with pytest.raises(AssertionError):
+def test_invalid_joint_dr_configuration(values, error):
+    with pytest.raises(AssertionError, match=error):
         RobotJointRandomizationCfg(**values)
 
 
 def test_yaml_overrides_native_reset_in_degrees_and_combines_with_root_dr():
     cfg = DomainRandomizationCfg.from_dict({
-        "robot_root": {"enabled": True, "x_range_m": [-0.1, 0.1]},
-        "robot_joints": {"enabled": True, "joint_names": [".*_shoulder_.*"], "delta_range_deg": [-5, 5]},
+        "robot_root": {"x_range_m": [-0.1, 0.1]},
+        "robot_joints": {"joint_names": [".*_shoulder_.*"], "delta_range_deg": [-5, 5]},
     })
     profile = create_domain_randomization_profile("Test", cfg)
     params = profile.events.override["reset_all"].params
@@ -46,10 +46,8 @@ def test_yaml_overrides_native_reset_in_degrees_and_combines_with_root_dr():
     assert params["robot_root_pose_range"]["x"] == (-0.1, 0.1)
 
 
-def test_disabling_joint_dr_leaves_the_original_reset():
-    cfg = DomainRandomizationCfg.from_dict({
-        "robot_joints": {"enabled": False, "joint_names": ["arm"], "delta_range_deg": [-5, 5]},
-    })
+def test_omitting_joint_dr_leaves_the_original_reset():
+    cfg = DomainRandomizationCfg.from_dict({})
     assert "reset_all" not in create_domain_randomization_profile("Test", cfg).events.override
 
 

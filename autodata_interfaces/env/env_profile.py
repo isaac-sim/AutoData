@@ -178,12 +178,10 @@ class EnvironmentProfile:
               add:
                 <term_name>:
                   func: "<module.path>:<function>"
-                  mode: reset                   # optional
-                  params: {...}                 # *_cfg/*_cfgs values name scene assets
-            domain_randomization:              # optional; only supplied settings are applied; cameras require --enable_cameras
-              cameras:
-                - asset_name: <camera_sensor_name>
-                  focal_length_scale_range: [0.96, 1.04]
+                  mode: reset                     # optional
+                  params: {...}                   # *_cfg/*_cfgs values name scene assets
+            domain_randomization:               # optional
+              <randomizer_name>: {<parameter>: <value>}
         """
         with open(path) as f:
             data = yaml.safe_load(f)

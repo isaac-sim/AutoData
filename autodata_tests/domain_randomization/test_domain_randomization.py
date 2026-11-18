@@ -260,7 +260,6 @@ def test_pose_profile_overrides_existing_reset_event():
         events=SimpleNamespace(apple=SimpleNamespace(params={"pose_range": {}})), scene=SimpleNamespace(light=object())
     )
     cfg = DomainRandomizationCfg(
-        lighting=LightingRandomizationCfg(enabled=False),
         poses=(
             PoseRandomizationCfg(
                 event_name="apple", position_xyz_min=(0.1, 0.15, 0.775), position_xyz_max=(0.2, 0.25, 0.775)
@@ -275,11 +274,17 @@ def test_pose_profile_overrides_existing_reset_event():
 @pytest.mark.parametrize("section", ["scene", "episode", "chunk"])
 def test_legacy_lifecycle_sections_are_rejected(section):
     with pytest.raises(AssertionError, match="unknown keys"):
-        DomainRandomizationCfg.from_dict({section: {"enabled": True}})
+        DomainRandomizationCfg.from_dict({section: {}})
 
 
 def test_material_only_randomization_supports_parallel_environments():
-    cfg = DomainRandomizationCfg(lighting=LightingRandomizationCfg(enabled=False))
+    cfg = DomainRandomizationCfg(
+        material_scalars=(
+            MaterialScalarRandomizationCfg(
+                asset_name="table", prim_name_markers=("mesh",), shader_input="roughness", value_range=(0.1, 0.9)
+            ),
+        )
+    )
     cfg.validate_runtime(num_envs=4)
 
 
@@ -288,14 +293,23 @@ def test_domain_randomization_yaml_rejects_unknown_keys():
         DomainRandomizationCfg.from_dict({"episodic": {}})
 
 
+@pytest.mark.parametrize(
+    "section", ["lighting", "robot_root", "robot_joints", "poses", "material_colors", "material_scalars", "cameras"]
+)
+@pytest.mark.parametrize("value", [True, False])
+def test_randomizers_reject_enable_switches(section, value):
+    entry = {"enabled": value}
+    data = {section: entry if section in {"lighting", "robot_root", "robot_joints"} else [entry]}
+    with pytest.raises(AssertionError, match="unknown keys.*enabled"):
+        DomainRandomizationCfg.from_dict(data)
+
+
 def test_apply_domain_randomization_updates_env_cfg(tmp_path):
     config_path = tmp_path / "domain_randomization.yaml"
     config_path.write_text("""
 name: test_dr
 base_env: TestEnv-v0
 domain_randomization:
-  lighting:
-    enabled: false
   poses:
   - event_name: apple
     position_xyz_min:
@@ -313,12 +327,12 @@ domain_randomization:
     cfg = apply_domain_randomization(
         env_cfg, "TestEnv-v0", EnvironmentProfile.from_yaml(config_path).domain_randomization, num_envs=2
     )
-    assert cfg.lighting is None or not cfg.lighting.enabled
+    assert cfg.lighting is None
     assert env_cfg.events.apple.params["pose_range"]["x"] == (0.1, 0.2)
 
 
 @pytest.mark.parametrize("root", [True, False])
-def test_robot_root_profile_switches(root):
+def test_robot_root_presence_controls_reset_override(root):
     import math
 
     from isaaclab_arena.terms.events import reset_all_articulation_joints as arena_reset
@@ -326,14 +340,17 @@ def test_robot_root_profile_switches(root):
     profile = EnvironmentProfile.from_dict({
         "name": "root_reset",
         "base_env": "TestEnv-v0",
-        "domain_randomization": {
-            "robot_root": {
-                "enabled": root,
-                "x_range_m": [-0.1, 0.1],
-                "y_range_m": [-0.05, 0.05],
-                "yaw_range_deg": [-5, 5],
-            },
-        },
+        "domain_randomization": (
+            {
+                "robot_root": {
+                    "x_range_m": [-0.1, 0.1],
+                    "y_range_m": [-0.05, 0.05],
+                    "yaw_range_deg": [-5, 5],
+                },
+            }
+            if root
+            else {}
+        ),
     })
     env_cfg = SimpleNamespace(
         events=SimpleNamespace(reset_all=SimpleNamespace(params={}, func=arena_reset)),
@@ -440,19 +457,20 @@ def test_material_scalar_yaml_extends_example_preset():
     import yaml
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[2] / "autodata_examples/env_profiles/franka_stack_randomized.yaml"
+    path = Path(__file__).resolve().parents[2] / "autodata_examples/env_profiles/g1_locomanip_dr.yaml"
     data = yaml.safe_load(path.read_text())["domain_randomization"]
     baseline = create_domain_randomization_profile("TestEnv-v0", DomainRandomizationCfg.from_dict(data))
-    data["material_scalars"] = [{
+    index = len(data["material_scalars"])
+    data["material_scalars"].append({
         "asset_name": "table",
         "prim_name_markers": ["tabletop"],
         "shader_input": "specular_level",
         "value_range": [0.0, 0.5],
-    }]
+    })
     cfg = DomainRandomizationCfg.from_dict(data)
-    cfg.validate_runtime(num_envs=8)
+    cfg.validate_runtime(num_envs=1)
     profile = create_domain_randomization_profile("TestEnv-v0", cfg)
-    event = profile.events.add.pop("randomize_material_scalar_0")
+    event = profile.events.add.pop(f"randomize_material_scalar_{index}")
     assert event.mode == "reset"
     assert event.params == {
         "asset_cfg": "table",
@@ -467,7 +485,7 @@ def test_material_scalar_profile_applies_as_a_reset_event():
     scalar = MaterialScalarRandomizationCfg(
         asset_name="table", prim_name_markers=("tabletop",), shader_input="roughness", value_range=(0.5, 0.5)
     )
-    cfg = DomainRandomizationCfg(lighting=LightingRandomizationCfg(enabled=False), material_scalars=(scalar,))
+    cfg = DomainRandomizationCfg(material_scalars=(scalar,))
     env_cfg = SimpleNamespace(events=SimpleNamespace(), scene=SimpleNamespace(table=object()))
     apply_env_profile(env_cfg, create_domain_randomization_profile("TestEnv-v0", cfg), "TestEnv-v0")
     event = env_cfg.events.randomize_material_scalar_0
@@ -477,15 +495,18 @@ def test_material_scalar_profile_applies_as_a_reset_event():
 
 
 @pytest.mark.parametrize("term", [True, False])
-def test_material_scalar_enable_switches(term):
+def test_material_scalar_presence_controls_reset_event(term):
     cfg = DomainRandomizationCfg.from_dict({
-        "material_scalars": [{
-            "enabled": term,
-            "asset_name": "table",
-            "prim_name_markers": ["mesh"],
-            "shader_input": "roughness",
-            "value_range": [0.1, 0.9],
-        }],
+        "material_scalars": (
+            [{
+                "asset_name": "table",
+                "prim_name_markers": ["mesh"],
+                "shader_input": "roughness",
+                "value_range": [0.1, 0.9],
+            }]
+            if term
+            else []
+        ),
     })
     profile = create_domain_randomization_profile("TestEnv-v0", cfg)
     assert ("randomize_material_scalar_0" in profile.events.add) == term
@@ -509,7 +530,7 @@ def test_material_scalar_yaml_rejects_unknown_keys():
 
 def test_material_scalar_sampling_is_seeded_and_updates_all_matches(monkeypatch):
     attributes = [_Attribute(), _Attribute()]
-    monkeypatch.setattr(materials, "_find_shader_inputs", lambda *args: attributes)
+    monkeypatch.setattr(materials, "_find_shader_inputs", lambda *args: {1: attributes})
 
     def sample(bounds):
         materials.randomize_material_scalar(
@@ -534,7 +555,7 @@ def test_material_scalar_sampling_is_seeded_and_updates_all_matches(monkeypatch)
     assert all(0.25 <= value <= 0.75 for value in first)
 
 
-def test_material_partial_reset_isolates_shared_source_material():
+def test_material_resets_sample_independently_and_isolate_shared_source_material():
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
     class Scene(dict):
@@ -547,7 +568,7 @@ def test_material_partial_reset_isolates_shared_source_material():
     shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(1.0))
     shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
     material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
-    env_paths = [f"/World/envs/env_{i}" for i in range(2)]
+    env_paths = [f"/World/envs/env_{i}" for i in range(3)]
     meshes = []
     for env_path in env_paths:
         UsdGeom.Xform.Define(stage, env_path + "/Object")
@@ -580,6 +601,37 @@ def test_material_partial_reset_isolates_shared_source_material():
     )
     assert stage.GetRootLayer().ExportToString() == before
 
+    def reset_materials(env_ids):
+        materials.randomize_material_color(
+            env, env_ids, **params, shader_input="diffuseColor", color_palette=((0, 0, 0), (1, 1, 1))
+        )
+        materials.randomize_material_scalar(env, env_ids, **params, shader_input="roughness", value_range=(0.1, 0.9))
+        values = []
+        for mesh in meshes[1:]:
+            bound_material, _ = UsdShade.MaterialBindingAPI(mesh).ComputeBoundMaterial()
+            bound_shader = UsdShade.Shader(stage.GetPrimAtPath(str(bound_material.GetPath()) + "/Shader"))
+            values.append(
+                (tuple(bound_shader.GetInput("diffuseColor").Get()), bound_shader.GetInput("roughness").Get())
+            )
+        return values
+
+    ids = torch.tensor([2, 1])
+    torch.manual_seed(7)
+    first = reset_materials(ids)
+    assert first[0][0] != first[1][0]
+    assert first[0][1] != first[1][1]
+    assert all(0 <= component <= 1 for color, _ in first for component in color)
+    assert all(0.1 <= scalar <= 0.9 for _, scalar in first)
+    torch.manual_seed(7)
+    assert reset_materials(ids) == first
+
+    torch.manual_seed(11)
+    second = reset_materials(torch.tensor([1]))
+    assert second[0] != first[0]
+    assert second[1] == first[1]
+    assert tuple(shader.GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
+    assert shader.GetInput("roughness").Get() == 0.5
+
 
 @pytest.mark.parametrize("event", ["light", "color", "scalar"])
 def test_visual_empty_reset_does_not_consume_rng_or_access_the_scene(event):
@@ -595,25 +647,44 @@ def test_visual_empty_reset_does_not_consume_rng_or_access_the_scene(event):
     assert torch.equal(rng, torch.get_rng_state())
 
 
-def test_example_config_applies_to_registered_franka_task():
+def test_visual_example_applies_to_registered_g1_task():
     from pathlib import Path
 
     from autodata_interfaces.env import setup_env_config
     from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 
-    base_env = "IsaacContrib-Stack-Cube-Franka-IK-Rel"
+    base_env = "IsaacContrib-PickPlace-Locomanipulation-G1-Abs"
     root = Path(__file__).resolve().parents[2]
     env_cfg, _ = setup_env_config(
         base_env,
         "/tmp",
         "randomized",
-        2,
+        1,
         "cpu",
         GenerationPolicy(),
-        env_profile=EnvironmentProfile.from_yaml(root / "autodata_examples/env_profiles/franka_stack_randomized.yaml"),
+        env_profile=EnvironmentProfile.from_yaml(root / "autodata_examples/env_profiles/g1_locomanip_dr.yaml"),
+        enable_cameras=True,
     )
     assert not hasattr(env_cfg.events, "randomize_light")
-    assert env_cfg.events.randomize_cube_positions.params["pose_range"]["x"] == (0.4, 0.7)
+    event = env_cfg.events.randomize_camera_0
+    assert event.params["asset_cfg"].name == "robot_pov_cam"
+    assert event.params["focal_length_scale_range"] == (0.98, 1.02)
+    assert env_cfg.scene.robot_pov_cam is not None
+    assert "robot_pov_cam" in env_cfg.image_obs_list
+    assert not hasattr(env_cfg.events, "reset_all")
+    pose_event = env_cfg.events.reset_object_pose
+    assert pose_event.params["asset_cfg"].name == "object"
+    assert pose_event.params["pose_range"]["x"] == (-0.02, 0.02)
+    assert pose_event.params["pose_range"]["yaw"] == (-0.15, 0.15)
+    event_names = list(vars(env_cfg.events))
+    assert event_names.index("reset_scene_to_default") < event_names.index("reset_object_pose")
+    color_event = env_cfg.events.randomize_material_color_0
+    assert color_event.params["asset_cfg"].name == "object"
+    assert color_event.params["prim_name_markers"] == ("wheel_rim",)
+    assert color_event.params["shader_input"] == "diffuse_tint"
+    scalar_event = env_cfg.events.randomize_material_scalar_0
+    assert scalar_event.params["asset_cfg"].name == "object"
+    assert scalar_event.params["shader_input"] == "reflection_roughness_constant"
 
 
 def test_robot_randomization_rejects_an_unrelated_reset_function(tmp_path):
@@ -622,10 +693,7 @@ def test_robot_randomization_rejects_an_unrelated_reset_function(tmp_path):
 name: test_dr
 base_env: TestEnv-v0
 domain_randomization:
-  lighting:
-    enabled: false
-  robot_root:
-    enabled: true
+  robot_root: {}
 """)
     env_cfg = SimpleNamespace(
         scene=SimpleNamespace(), events=SimpleNamespace(reset_all=SimpleNamespace(func=lambda: None))
@@ -687,7 +755,7 @@ def test_empty_randomization_does_not_add_events():
     assert vars(env_cfg.events) == {}
 
 
-def test_generation_requires_cameras_for_enabled_camera_randomization():
+def test_generation_requires_cameras_for_camera_randomization():
     from autodata_interfaces.env import setup_env_config
     from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 
@@ -701,19 +769,49 @@ def test_generation_requires_cameras_for_enabled_camera_randomization():
         setup_env_config(base_env, "/tmp", "camera", 2, "cpu", GenerationPolicy(), env_profile=profile)
 
 
-@pytest.mark.parametrize("num_envs", [1, 2])
-@pytest.mark.parametrize("intensity_range", [(500.0, 500.0), (100.0, 900.0)])
-def test_lighting_rejects_dome_scenes_without_modifying_them(num_envs, intensity_range):
+@pytest.mark.parametrize("light_type", ["DomeLight", "RectLight"])
+@pytest.mark.parametrize("prim_path", ["/World/Light", "/World/envs/env_0/Light"])
+def test_single_environment_lighting_supports_global_and_local_lights(light_type, prim_path):
     from pxr import Usd, UsdLux
 
+    class Scene(dict):
+        pass
+
     stage = Usd.Stage.CreateInMemory()
-    UsdLux.DomeLight.Define(stage, "/World/Dome")
-    env = SimpleNamespace(scene=SimpleNamespace(stage=stage), device="cpu")
+    light = getattr(UsdLux, light_type).Define(stage, prim_path)
+    scene = Scene(light=SimpleNamespace(cfg=SimpleNamespace(prim_path=prim_path)))
+    scene.stage = stage
+    scene.env_prim_paths = ["/World/envs/env_0"]
+    env = SimpleNamespace(scene=scene, device="cpu")
+    paths = [str(prim.GetPath()) for prim in stage.Traverse()]
+    lighting.randomize_light(env, torch.tensor([0]), (500.0, 500.0), (5500.0, 5500.0), SimpleNamespace(name="light"))
+    assert light.GetIntensityAttr().Get() == 500.0
+    assert tuple(light.GetColorAttr().Get()) == pytest.approx(color_temperature_to_rgb(5500.0))
+    assert [str(prim.GetPath()) for prim in stage.Traverse()] == paths
+
+
+@pytest.mark.parametrize("global_light", [True, False])
+@pytest.mark.parametrize("env_ids", [[0], [0, 1]])
+def test_parallel_dome_randomization_is_rejected_before_modifying_the_scene(global_light, env_ids):
+    from pxr import Usd, UsdLux
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    roots = ["/World/envs/env_0", "/World/envs/env_1"]
+    for path in ["/World/Dome"] if global_light else [root + "/Dome" for root in roots]:
+        UsdLux.DomeLight.Define(stage, path)
+    pattern = "/World/Dome" if global_light else "/World/envs/env_.*/Dome"
+    scene = Scene(light=SimpleNamespace(cfg=SimpleNamespace(prim_path=pattern)))
+    scene.stage = stage
+    scene.env_prim_paths = roots
+    env = SimpleNamespace(scene=scene, device="cpu")
     original = stage.GetRootLayer().ExportToString()
     rng = torch.get_rng_state().clone()
-    with pytest.raises(AssertionError, match="not supported in environments with dome lighting"):
+    with pytest.raises(AssertionError, match="Dome-light DR requires num_envs=1"):
         lighting.randomize_light(
-            env, torch.arange(num_envs), intensity_range, (3000.0, 8000.0), SimpleNamespace(name="light")
+            env, torch.tensor(env_ids), (100.0, 900.0), (3000.0, 8000.0), SimpleNamespace(name="light")
         )
     assert stage.GetRootLayer().ExportToString() == original
     assert torch.equal(rng, torch.get_rng_state())
@@ -728,6 +826,8 @@ def test_existing_non_dome_lights_are_seeded_and_only_selected_environments_chan
     stage = Usd.Stage.CreateInMemory()
     roots = ["/World/envs/env_0", "/World/envs/env_1"]
     lamps = [UsdLux.RectLight.Define(stage, root + "/Light").GetPrim() for root in roots]
+    dome = UsdLux.DomeLight.Define(stage, "/World/Dome")
+    dome.GetIntensityAttr().Set(250.0)
     scene = Scene(light=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/envs/env_.*/Light")))
     scene.stage = stage
     scene.env_prim_paths = roots
@@ -751,6 +851,7 @@ def test_existing_non_dome_lights_are_seeded_and_only_selected_environments_chan
     lighting.randomize_light(env, torch.tensor([1]), (500.0, 500.0), (5500.0, 5500.0), asset)
     assert values()[0] == first[0]
     assert values()[1][0] == 500.0
+    assert dome.GetIntensityAttr().Get() == 250.0
     assert [str(prim.GetPath()) for prim in stage.Traverse()] == paths
 
 
@@ -764,7 +865,7 @@ def test_global_non_dome_light_cannot_be_randomized_as_a_cloned_light():
     UsdLux.RectLight.Define(stage, "/World/Light")
     scene = Scene(light=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/Light")))
     scene.stage = stage
-    scene.env_prim_paths = ["/World/envs/env_0"]
+    scene.env_prim_paths = ["/World/envs/env_0", "/World/envs/env_1"]
     env = SimpleNamespace(scene=scene, device="cpu")
     with pytest.raises(AssertionError, match="Global lights cannot be randomized independently"):
         lighting.randomize_light(env, torch.tensor([0]), (100, 200), (3000, 8000), SimpleNamespace(name="light"))

@@ -249,9 +249,7 @@ def setup_env_config(
 
     if env_profile is not None:
         dr = env_profile.domain_randomization
-        assert (
-            enable_cameras or dr is None or not any(camera.enabled for camera in dr.cameras)
-        ), "Camera DR requires --enable_cameras."
+        assert enable_cameras or dr is None or not dr.cameras, "Camera DR requires --enable_cameras."
         apply_env_profile(env_cfg, env_profile, env_name)
 
     # Extract success checking function

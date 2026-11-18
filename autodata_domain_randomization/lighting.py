@@ -9,6 +9,8 @@ import math
 import torch
 from typing import TYPE_CHECKING, Any
 
+from autodata_utils.pose_math import sample_uniform_scalar
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
     from isaaclab.managers import SceneEntityCfg
@@ -47,25 +49,25 @@ def randomize_light(
     color_temperature_range: tuple[float, float],
     asset_cfg: SceneEntityCfg,
 ) -> None:
-    """Randomize existing non-dome lights for the selected environments.
+    """Randomize existing lights for the selected environments.
 
-    Dome lighting is unsupported because dome lights illuminate the whole scene. The target
-    asset must provide one non-dome light beneath each environment's prim path. This event
-    edits intensity and color only; light placement and linking remain task configuration.
+    A single environment supports one local or global light, including a dome. Parallel
+    environments require one non-dome light beneath each environment's prim path. This event
+    edits intensity and color only; other lights, placement, and linking remain unchanged.
 
     Args:
         env: Isaac Lab manager-based environment.
         env_ids: Environments whose lights should be randomized.
         intensity_range: Uniform USD emitter intensity range.
         color_temperature_range: Uniform color-temperature range [K].
-        asset_cfg: Scene entity identifying the per-environment light.
+        asset_cfg: Scene entity identifying the light to randomize.
     """
     if len(env_ids) == 0:
         return
     prims = _find_light_prims(env, env_ids, asset_cfg)
     for prim in prims:
-        intensity = _sample_uniform(intensity_range, env.device)
-        color_temperature = _sample_uniform(color_temperature_range, env.device)
+        intensity = sample_uniform_scalar(intensity_range, env.device)
+        color_temperature = sample_uniform_scalar(color_temperature_range, env.device)
         prim.GetAttribute("inputs:intensity").Set(intensity)
         prim.GetAttribute("inputs:color").Set(color_temperature_to_rgb(color_temperature))
 
@@ -75,30 +77,25 @@ def _find_light_prims(env: ManagerBasedEnv, env_ids: torch.Tensor, asset_cfg: Sc
     from pxr import UsdLux
 
     stage = env.scene.stage
-    assert not any(prim.IsA(UsdLux.DomeLight) for prim in stage.Traverse()), (
-        "Lighting DR is not supported in environments with dome lighting. "
-        "Omit domain_randomization.lighting or configure per-environment non-dome lights."
-    )
     asset = env.scene[asset_cfg.name]
-    candidates = find_matching_prims(asset.cfg.prim_path, stage=stage)
+    candidates = [
+        prim for prim in find_matching_prims(asset.cfg.prim_path, stage=stage) if prim.HasAPI(UsdLux.LightAPI)
+    ]
+    if len(env.scene.env_prim_paths) == 1:
+        assert (
+            len(candidates) == 1
+        ), f"Lighting DR requires exactly one light for {asset_cfg.name!r}; found {len(candidates)}."
+        return candidates
+    assert not any(
+        prim.IsA(UsdLux.DomeLight) for prim in candidates
+    ), "Dome-light DR requires num_envs=1. Use per-environment non-dome lights for parallel lighting DR."
     selected = []
     for index in env_ids.tolist():
         env_path = env.scene.env_prim_paths[index]
-        matches = [
-            prim
-            for prim in candidates
-            if str(prim.GetPath()).startswith(f"{env_path}/") and prim.HasAPI(UsdLux.LightAPI)
-        ]
+        matches = [prim for prim in candidates if str(prim.GetPath()).startswith(f"{env_path}/")]
         assert len(matches) == 1, (
             f"Lighting DR requires exactly one non-dome light for {asset_cfg.name!r} under {env_path!r}; "
             f"found {len(matches)}. Global lights cannot be randomized independently per environment."
         )
         selected.append(matches[0])
     return selected
-
-
-def _sample_uniform(value_range: tuple[float, float], device: str) -> float:
-    low, high = value_range
-    if low == high:
-        return float(low)
-    return float(low + (high - low) * torch.rand((), device=device).item())

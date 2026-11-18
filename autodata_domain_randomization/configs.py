@@ -12,22 +12,19 @@ from typing import Any
 
 @dataclass(kw_only=True)
 class LightingRandomizationCfg:
-    """Randomization settings for existing per-environment, non-dome lights.
+    """Randomization settings for existing lights.
 
     Attributes:
-        enabled: Whether lighting is randomized.
-        asset_name: Scene-asset name of the per-environment light.
+        asset_name: Scene-asset name of the light. Global and dome lights require one environment.
         intensity_range: Uniform USD emitter intensity range.
         color_temperature_range: Uniform color-temperature range [K].
     """
 
-    enabled: bool = True
     asset_name: str = "light"
     intensity_range: tuple[float, float] = (250.0, 750.0)
     color_temperature_range: tuple[float, float] = (3000.0, 8000.0)
 
     def __post_init__(self) -> None:
-        assert isinstance(self.enabled, bool), "Lighting enabled must be a boolean."
         assert self.asset_name, "Lighting randomization requires a non-empty scene asset name."
         self.intensity_range = tuple(self.intensity_range)
         self.color_temperature_range = tuple(self.color_temperature_range)
@@ -49,21 +46,18 @@ class MaterialColorRandomizationCfg:
     to brighten a dark source texture.
 
     Attributes:
-        enabled: Whether this material color is randomized.
         asset_name: Scene-asset name containing the target prims.
         prim_name_markers: Substrings that identify target visual prim names.
         shader_input: Material shader input that receives the sampled color.
         color_palette: RGB multiplier anchors defining the sampled color gradient.
     """
 
-    enabled: bool = True
     asset_name: str
     prim_name_markers: tuple[str, ...]
     shader_input: str
     color_palette: tuple[tuple[float, float, float], ...]
 
     def __post_init__(self) -> None:
-        assert isinstance(self.enabled, bool), "Material color enabled must be a boolean."
         assert not isinstance(self.prim_name_markers, str), "Material color prim name markers must be a sequence."
         self.prim_name_markers = tuple(self.prim_name_markers)
         self.color_palette = tuple(tuple(color) for color in self.color_palette)
@@ -89,21 +83,18 @@ class MaterialScalarRandomizationCfg:
     a fixed value for matching a known material.
 
     Attributes:
-        enabled: Whether this material scalar is applied.
         asset_name: Scene-asset name containing the target prims.
         prim_name_markers: Substrings that identify target visual prim names.
         shader_input: Material shader input that receives the sampled value.
         value_range: Uniform sampling range for the scalar.
     """
 
-    enabled: bool = True
     asset_name: str
     prim_name_markers: tuple[str, ...]
     shader_input: str
     value_range: tuple[float, float]
 
     def __post_init__(self) -> None:
-        assert isinstance(self.enabled, bool), "Material scalar enabled must be a boolean."
         assert not isinstance(self.prim_name_markers, str), "Material scalar prim name markers must be a sequence."
         self.prim_name_markers = tuple(self.prim_name_markers)
         self.value_range = tuple(self.value_range)
@@ -125,7 +116,6 @@ class CameraRandomizationCfg:
     the calibration error being modelled and never accumulate across resets.
 
     Attributes:
-        enabled: Whether this camera is randomized.
         asset_name: Scene-asset name of the camera sensor.
         focal_length_scale_range: Uniform multiplier range applied to the nominal focal length.
             The native pinhole sensor uses square pixels and a centered principal point.
@@ -136,7 +126,6 @@ class CameraRandomizationCfg:
         rotation_rpy_max_deg: Upper bound of the rotation offset [deg] about the same axes.
     """
 
-    enabled: bool = True
     asset_name: str
     focal_length_scale_range: tuple[float, float] = (1.0, 1.0)
     position_xyz_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -145,7 +134,6 @@ class CameraRandomizationCfg:
     rotation_rpy_max_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def __post_init__(self) -> None:
-        assert isinstance(self.enabled, bool), "Camera enabled must be a boolean."
         assert self.asset_name, "Camera randomization requires a non-empty scene asset name."
         self.focal_length_scale_range = tuple(self.focal_length_scale_range)
         assert all(
@@ -172,7 +160,6 @@ class PoseRandomizationCfg:
     """Pose range applied through an existing Isaac Lab reset event.
 
     Attributes:
-        enabled: Whether to override this reset event's pose range.
         event_name: Existing reset event accepting a ``pose_range`` parameter.
         position_xyz_min: Lower position bounds [m], in the event's reference frame.
         position_xyz_max: Upper position bounds [m], in the event's reference frame.
@@ -180,7 +167,6 @@ class PoseRandomizationCfg:
         rpy_max: Upper roll/pitch/yaw bounds [rad].
     """
 
-    enabled: bool = True
     event_name: str
     position_xyz_min: tuple[float, float, float]
     position_xyz_max: tuple[float, float, float]
@@ -188,7 +174,6 @@ class PoseRandomizationCfg:
     rpy_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def __post_init__(self) -> None:
-        assert isinstance(self.enabled, bool), "Pose enabled must be a boolean."
         assert self.event_name, "Pose randomization requires a reset event name."
         self.position_xyz_min = tuple(self.position_xyz_min)
         self.position_xyz_max = tuple(self.position_xyz_max)
@@ -220,13 +205,11 @@ class PoseRandomizationCfg:
 class RobotRootRandomizationCfg:
     """Independent uniform offsets from the default robot root, in world axes."""
 
-    enabled: bool = True
     x_range_m: tuple[float, float] = (0.0, 0.0)
     y_range_m: tuple[float, float] = (0.0, 0.0)
     yaw_range_deg: tuple[float, float] = (0.0, 0.0)
 
     def __post_init__(self) -> None:
-        assert isinstance(self.enabled, bool), "Robot root enabled must be a boolean."
         for name in ("x_range_m", "y_range_m", "yaw_range_deg"):
             bounds = tuple(getattr(self, name))
             assert len(bounds) == 2 and all(
@@ -248,18 +231,16 @@ class RobotRootRandomizationCfg:
 class RobotJointRandomizationCfg:
     """Independent uniform joint offsets from the nominal reset position."""
 
-    enabled: bool = True
     joint_names: tuple[str, ...] = ()
     delta_range_deg: tuple[float, float] = (0.0, 0.0)
 
     def __post_init__(self) -> None:
-        assert isinstance(self.enabled, bool), "Robot joints enabled must be a boolean."
         assert not isinstance(self.joint_names, str), "Robot joint_names must be a sequence of names or regex patterns."
         self.joint_names = tuple(self.joint_names)
         assert all(
             isinstance(name, str) and name for name in self.joint_names
         ), "Joint names must be non-empty strings."
-        assert not self.enabled or self.joint_names, "Enabled robot joint DR requires joint_names."
+        assert self.joint_names, "Robot joint DR requires joint_names."
         self.delta_range_deg = tuple(self.delta_range_deg)
         assert len(self.delta_range_deg) == 2 and all(
             math.isfinite(value) for value in self.delta_range_deg
@@ -278,7 +259,7 @@ class DomainRandomizationCfg:
     Only sections present in the profile are applied. Settings are sampled once per episode reset.
 
     Attributes:
-        lighting: Optional non-dome lighting settings.
+        lighting: Optional lighting settings.
         robot_root: Optional robot root offsets.
         robot_joints: Optional robot joint offsets.
         poses: Pose ranges for existing reset events.
@@ -339,12 +320,17 @@ class DomainRandomizationCfg:
         return cls(**kwargs)
 
     def validate_runtime(self, num_envs: int) -> None:
-        """Validate the environment count before creation.
+        """Validate the environment count and single-environment intrinsics restriction.
 
         Args:
             num_envs: Number of parallel environments in the process.
         """
         assert num_envs > 0, "num_envs must be positive."
+        for camera in self.cameras:
+            assert num_envs == 1 or camera.focal_length_scale_range == (1.0, 1.0), (
+                "Camera intrinsics DR requires num_envs=1. For multi-environment extrinsics DR, "
+                "keep focal_length_scale_range at [1.0, 1.0]."
+            )
 
 
 def _validate_keys(data: Any, name: str, allowed_keys: set[str]) -> None:

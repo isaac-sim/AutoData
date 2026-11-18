@@ -50,7 +50,6 @@ def test_camera_profile_applies_as_an_isaac_lab_reset_event():
     profile = create_domain_randomization_profile(
         "TestEnv-v0",
         DomainRandomizationCfg(
-            lighting=LightingRandomizationCfg(enabled=False),
             cameras=(CameraRandomizationCfg(asset_name="robot_head_cam"),),
         ),
     )
@@ -62,10 +61,8 @@ def test_camera_profile_applies_as_an_isaac_lab_reset_event():
     assert event.params["asset_cfg"].name == "robot_head_cam"
 
 
-def test_camera_randomization_supports_parallel_environments():
-    cfg = DomainRandomizationCfg(
-        lighting=LightingRandomizationCfg(enabled=False), cameras=(CameraRandomizationCfg(asset_name="robot_head_cam"),)
-    )
+def test_camera_extrinsics_randomization_supports_parallel_environments():
+    cfg = DomainRandomizationCfg(cameras=(CameraRandomizationCfg(asset_name="robot_head_cam"),))
     cfg.validate_runtime(num_envs=5)
 
 
@@ -91,8 +88,6 @@ def test_camera_yaml_section_builds_reset_profile(tmp_path):
 name: test_dr
 base_env: TestEnv-v0
 domain_randomization:
-  lighting:
-    enabled: false
   cameras:
   - asset_name: robot_head_cam
     focal_length_scale_range:
@@ -116,7 +111,7 @@ domain_randomization:
     - 1.0
 """)
     cfg = EnvironmentProfile.from_yaml(config_path).domain_randomization
-    cfg.validate_runtime(num_envs=5)
+    cfg.validate_runtime(num_envs=1)
     profile = create_domain_randomization_profile("TestEnv-v0", cfg)
     assert cfg.cameras[0].focal_length_scale_range == (0.98, 1.02)
     assert cfg.cameras[0].rotation_rpy_max_deg == (1.0, 1.0, 1.0)
@@ -126,34 +121,6 @@ domain_randomization:
 def test_camera_yaml_section_rejects_unknown_keys():
     with pytest.raises(AssertionError, match="unknown keys"):
         DomainRandomizationCfg.from_dict({"cameras": [{"asset_name": "cam", "focal_length_range": [1.0, 1.0]}]})
-
-
-def _rotate(quat_xyzw, vector):
-    """Rotate ``vector`` by an (x, y, z, w) quaternion, for checking the camera quaternion helpers."""
-    x, y, z, w = quat_xyzw
-    conjugate = (-x, -y, -z, w)
-    vector_quat = (vector[0], vector[1], vector[2], 0.0)
-    rotated = camera._quat_multiply(camera._quat_multiply(quat_xyzw, vector_quat), conjugate)
-    return rotated[:3]
-
-
-def test_camera_rotation_offset_uses_right_handed_xyzw_quaternions():
-    quat_x_90 = camera._quat_from_rpy_deg((90.0, 0.0, 0.0))
-    quat_z_90 = camera._quat_from_rpy_deg((0.0, 0.0, 90.0))
-
-    assert _rotate(quat_x_90, (0.0, 1.0, 0.0)) == pytest.approx((0.0, 0.0, 1.0), abs=1e-6)
-    assert _rotate(quat_z_90, (1.0, 0.0, 0.0)) == pytest.approx((0.0, 1.0, 0.0), abs=1e-6)
-    assert camera._quat_from_rpy_deg((0.0, 0.0, 0.0)) == (0.0, 0.0, 0.0, 1.0)
-
-
-def test_camera_rotation_offset_is_composed_in_the_camera_body_frame():
-    nominal = camera._quat_from_rpy_deg((0.0, 0.0, 90.0))
-    offset = camera._quat_from_rpy_deg((90.0, 0.0, 0.0))
-    composed = camera._quat_multiply(nominal, offset)
-
-    # A body-frame composition rotates by ``offset`` first, then by ``nominal``.
-    expected = _rotate(nominal, _rotate(offset, (0.0, 1.0, 0.0)))
-    assert _rotate(composed, (0.0, 1.0, 0.0)) == pytest.approx(expected, abs=1e-6)
 
 
 def test_profile_event_params_bind_to_their_event_functions():
@@ -191,9 +158,11 @@ def test_camera_bounds_must_be_finite(field, value):
         CameraRandomizationCfg(asset_name="cam", **{field: bounds})
 
 
-def test_camera_switch_disables_only_that_camera():
-    cfg = DomainRandomizationCfg.from_dict({"cameras": [{"asset_name": "cam", "enabled": False}]})
-    assert not create_domain_randomization_profile("Test", cfg).events.add
+@pytest.mark.parametrize("present", [True, False])
+def test_camera_presence_controls_reset_event(present):
+    cfg = DomainRandomizationCfg.from_dict({"cameras": [{"asset_name": "cam"}]} if present else {})
+    profile = create_domain_randomization_profile("Test", cfg)
+    assert set(profile.events.add) == ({"randomize_camera_0"} if present else set())
 
 
 def test_duplicate_camera_entries_rejected():
@@ -216,13 +185,6 @@ def test_empty_reset_is_a_noop():
         )
         == {}
     )
-
-
-def test_intrinsic_xyz_matches_independent_scipy_rotation():
-    from scipy.spatial.transform import Rotation
-
-    result = camera._quat_from_rpy_deg((2.0, -3.0, 1.0))
-    assert result == pytest.approx(Rotation.from_euler("XYZ", [2, -3, 1], degrees=True).as_quat())
 
 
 def test_camera_resets_use_nominal_mount_and_only_selected_environment():
@@ -288,7 +250,7 @@ def test_camera_resets_use_nominal_mount_and_only_selected_environment():
     assert first[0] != first[1]
 
 
-def test_camera_yaml_selects_independent_rtx_products_without_changing_other_sensors(tmp_path):
+def test_camera_yaml_preserves_renderer_configuration_and_other_sensors(tmp_path):
     from isaaclab_physx.renderers.isaac_rtx_renderer_cfg import IsaacRtxRendererCfg
 
     from autodata_domain_randomization import apply_domain_randomization
@@ -303,20 +265,19 @@ def test_camera_yaml_selects_independent_rtx_products_without_changing_other_sen
 name: test_dr
 base_env: TestEnv-v0
 domain_randomization:
-  lighting:
-    enabled: false
   cameras:
   - asset_name: cam
 """)
     apply_domain_randomization(cfg, "Test", EnvironmentProfile.from_yaml(path).domain_randomization, num_envs=5)
-    assert not cfg.scene.cam.renderer_cfg.tiled_rendering
-    assert cfg.scene.other.renderer_cfg.tiled_rendering
-    assert renderer.tiled_rendering
+    assert cfg.scene.cam.renderer_cfg is renderer
+    assert cfg.scene.other.renderer_cfg is renderer
     assert cfg.events.randomize_camera_0.func is camera.randomize_camera
 
 
 def test_calibrated_focal_dr_preserves_principal_point_and_does_not_accumulate():
-    from pxr import Gf, Sdf, Usd, UsdGeom
+    from isaaclab.sensors import Camera
+    from isaaclab.sim import OpenCvPinholeDistortionCfg, PinholeCameraCfg
+    from pxr import Sdf, Usd, UsdGeom
 
     stage = Usd.Stage.CreateInMemory()
     nominal = (303.9342346191406, 303.904052734375, 159.6581573486328, 126.32707977294922)
@@ -324,17 +285,29 @@ def test_calibrated_focal_dr_preserves_principal_point_and_does_not_accumulate()
     prims = []
     for env_id in range(2):
         prim = UsdGeom.Camera.Define(stage, f"/World/envs/env_{env_id}/Camera").GetPrim()
-        prim.SetCustomDataByKey("isaaclab_arena:nominal_opencv_intrinsics", Gf.Vec4d(*nominal))
+        prim.CreateAttribute("omni:lensdistortion:model", Sdf.ValueTypeNames.Token).Set("opencvPinhole")
         for name, value in zip(("fx", "fy", "cx", "cy"), nominal):
             prim.CreateAttribute(prefix + name, Sdf.ValueTypeNames.Float).Set(value)
         prims.append(prim)
     matrices = torch.eye(3).repeat(2, 1, 1)
+    updates = []
+
+    def update_intrinsics(env_ids):
+        updates.append(env_ids)
+        for env_id in env_ids:
+            fx, fy, cx, cy = Camera._read_authored_opencv_intrinsics(sensor, prims[env_id], 320, 240, env_id)
+            matrices[env_id] = torch.tensor([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
+
+    distortion = OpenCvPinholeDistortionCfg(
+        fx=nominal[0], fy=nominal[1], cx=nominal[2], cy=nominal[3], image_size=(320, 240)
+    )
     sensor = SimpleNamespace(
         cfg=SimpleNamespace(
-            prim_path="/World/envs/env_.*/Camera", spawn=SimpleNamespace(focal_length=15.0, horizontal_aperture=16.0)
+            prim_path="/World/envs/env_.*/Camera",
+            spawn=PinholeCameraCfg(focal_length=15.0, horizontal_aperture=16.0, distortion=distortion),
         ),
         image_shape=(240, 320),
-        _data=SimpleNamespace(intrinsic_matrices=SimpleNamespace(torch=matrices)),
+        _update_intrinsic_matrices=update_intrinsics,
     )
     scene = SimpleNamespace(stage=stage, env_prim_paths=["/World/envs/env_0", "/World/envs/env_1"])
     env = SimpleNamespace(scene=scene, device="cpu")
@@ -349,3 +322,42 @@ def test_calibrated_focal_dr_preserves_principal_point_and_does_not_accumulate()
             actual = prims[1].GetAttribute(prefix + name).Get()
             assert actual == pytest.approx(nominal[index] * (scale if index < 2 else 1))
             assert prims[0].GetAttribute(prefix + name).Get() == pytest.approx(nominal[index])
+    assert updates == [[1], [1], [1], [1]]
+    assert (distortion.fx, distortion.fy, distortion.cx, distortion.cy) == nominal
+
+
+@pytest.mark.parametrize(
+    "num_envs,bounds,allowed",
+    [
+        (1, (0.96, 1.04), True),
+        (1, (1.04, 1.04), True),
+        (3, (1.0, 1.0), True),
+        (3, (1.04, 1.04), False),
+        (3, (0.96, 1.04), False),
+        (3, None, True),
+    ],
+)
+def test_camera_intrinsics_are_restricted_to_one_environment(num_envs, bounds, allowed):
+    kwargs = {} if bounds is None else {"focal_length_scale_range": bounds}
+    cfg = DomainRandomizationCfg(cameras=(CameraRandomizationCfg(asset_name="cam", **kwargs),))
+    if allowed:
+        cfg.validate_runtime(num_envs)
+    else:
+        with pytest.raises(AssertionError, match="Camera intrinsics DR requires num_envs=1"):
+            cfg.validate_runtime(num_envs)
+
+
+@pytest.mark.parametrize("renderer_type", ["isaac_rtx", "newton"])
+def test_parallel_intrinsics_are_rejected_even_with_independent_render_products(renderer_type):
+    from autodata_domain_randomization import apply_domain_randomization
+
+    renderer_cfg = SimpleNamespace(renderer_type=renderer_type, tiled_rendering=False)
+    sensor_cfg = SimpleNamespace(renderer_cfg=renderer_cfg)
+    env_cfg = SimpleNamespace(scene=SimpleNamespace(cam=sensor_cfg), events=SimpleNamespace())
+    dr = DomainRandomizationCfg(
+        cameras=(CameraRandomizationCfg(asset_name="cam", focal_length_scale_range=(0.96, 1.04)),)
+    )
+    with pytest.raises(AssertionError, match="Camera intrinsics DR requires num_envs=1"):
+        apply_domain_randomization(env_cfg, "Test", dr, num_envs=3)
+    assert vars(env_cfg.events) == {}
+    assert sensor_cfg.renderer_cfg is renderer_cfg

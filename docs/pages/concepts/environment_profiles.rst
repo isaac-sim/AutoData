@@ -90,10 +90,8 @@ Schema
          mode: reset                   # startup | reset | interval
          params: {...}
 
-   domain_randomization:              # optional; cameras require --enable_cameras
-     cameras:
-       - asset_name: <camera_sensor_name>
-         focal_length_scale_range: [0.96, 1.04]
+   domain_randomization:               # optional
+     <randomizer_name>: {<parameter>: <value>}
 
 Profiles are validated on load; a schema violation raises an error naming the offending
 field.
@@ -127,7 +125,7 @@ override → add), then domain randomization. Added events may reference added a
 
 .. important::
 
-   An enabled ``domain_randomization.poses`` entry replaces the **entire** ``pose_range`` of
+   A ``domain_randomization.poses`` entry replaces the **entire** ``pose_range`` of
    its named event, including ranges set by ``events.override`` or ``events.add`` in this
    profile. Domain randomization is applied last, so its pose ranges take precedence.
    Individual axes are not merged with the earlier range; other event parameters are preserved.

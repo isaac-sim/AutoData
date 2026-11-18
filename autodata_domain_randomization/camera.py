@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
-import math
 import torch
 from typing import TYPE_CHECKING, Any
+
+from autodata_utils import pose_math
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -90,24 +91,33 @@ def _randomize_extrinsics(
     from isaaclab.sim.utils import standardize_xform_ops
 
     offset = sensor.cfg.offset
-    nominal_position = tuple(float(component) for component in offset.pos)
-    nominal_rotation = _convert_rotation(tuple(offset.rot), offset.convention, "ros")
+    nominal_position = torch.tensor(offset.pos, dtype=torch.float64)
+    nominal_rotation = pose_math.convert_camera_frame_orientation_convention(
+        torch.tensor(offset.rot, dtype=torch.float64), offset.convention, "ros"
+    )
     camera_prims = _find_camera_prims_by_env(env, env_ids, sensor)
 
     applied = {}
     for env_id in env_ids:
-        position_offset = _sample_uniform_vector(position_xyz_min, position_xyz_max, env.device)
-        rotation_offset_deg = _sample_uniform_vector(rotation_rpy_min_deg, rotation_rpy_max_deg, env.device)
-        position = tuple(nominal + sampled for nominal, sampled in zip(nominal_position, position_offset))
-        rotation = _quat_multiply(nominal_rotation, _quat_from_rpy_deg(rotation_offset_deg))
+        position_offset = pose_math.sample_uniform_vector(position_xyz_min, position_xyz_max, env.device)
+        rotation_offset_deg = pose_math.sample_uniform_vector(rotation_rpy_min_deg, rotation_rpy_max_deg, env.device)
+        position = nominal_position + position_offset
+        rotation = pose_math.quat_mul(
+            nominal_rotation, pose_math.quat_from_euler_xyz(torch.deg2rad(rotation_offset_deg))
+        )
+        position_xyz = tuple(position.tolist())
         standardize_xform_ops(
             camera_prims[env_id],
-            translation=position,
-            orientation=_convert_rotation(rotation, "ros", "opengl"),
+            translation=position_xyz,
+            orientation=tuple(
+                pose_math.convert_camera_frame_orientation_convention(rotation, "ros", "opengl").tolist()
+            ),
         )
         applied[env_id] = {
-            "position_xyz": position,
-            "rotation_xyzw": _convert_rotation(rotation, "ros", offset.convention),
+            "position_xyz": position_xyz,
+            "rotation_xyzw": tuple(
+                pose_math.convert_camera_frame_orientation_convention(rotation, "ros", offset.convention).tolist()
+            ),
         }
     return applied
 
@@ -129,7 +139,7 @@ def _randomize_intrinsics(
     height, width = sensor.image_shape
     nominal_focal_length_px = width * focal_length / horizontal_aperture
     scales = torch.tensor(
-        [_sample_uniform(focal_length_scale_range, env.device) for _ in env_ids],
+        [pose_math.sample_uniform_scalar(focal_length_scale_range, env.device) for _ in env_ids],
         dtype=torch.float32,
         device=env.device,
     )
@@ -140,23 +150,26 @@ def _randomize_intrinsics(
     matrices[:, 0, 2] = 0.5 * width
     matrices[:, 1, 2] = 0.5 * height
     matrices[:, 2, 2] = 1.0
-    prims = _find_camera_prims_by_env(env, env_ids, sensor)
-    nominal = [prims[env_id].GetCustomDataByKey("isaaclab_arena:nominal_opencv_intrinsics") for env_id in env_ids]
-    if any(value is not None for value in nominal):
-        assert all(value is not None for value in nominal), "Camera clones must share the same lens model"
+    distortion = getattr(spawn_cfg, "distortion", None)
+    if distortion is not None:
+        assert distortion.model == "opencvPinhole", "Camera DR supports OpenCV pinhole calibration only."
+        prims = _find_camera_prims_by_env(env, env_ids, sensor)
         for index, env_id in enumerate(env_ids):
-            fx, fy, cx, cy = nominal[index]
+            fx, fy, cx, cy = distortion.fx, distortion.fy, distortion.cx, distortion.cy
             scale = float(scales[index])
             matrices[index, 0, 0], matrices[index, 1, 1] = fx * scale, fy * scale
             matrices[index, 0, 2], matrices[index, 1, 2] = cx, cy
             prim = prims[env_id]
+            assert (
+                prim.GetAttribute("omni:lensdistortion:model").Get() == "opencvPinhole"
+            ), "Camera DR requires the renderer to author the configured OpenCV pinhole lens model."
             prefix = "omni:lensdistortion:opencvPinhole:"
-            prim.GetAttribute(prefix + "fx").Set(fx * scale)
-            prim.GetAttribute(prefix + "fy").Set(fy * scale)
+            for name, value in (("fx", fx * scale), ("fy", fy * scale), ("cx", cx), ("cy", cy)):
+                prim.GetAttribute(prefix + name).Set(value)
             prim.GetAttribute("focalLength").Set(focal_length * scale)
-        # set_intrinsic_matrices would discard cx/cy and average fx/fy. RTX reads
-        # the native lens attributes; publish the same K in the sensor metadata.
-        sensor._data.intrinsic_matrices.torch[env_ids] = matrices
+        # Lab's setter skips cameras with an authored OpenCV model. Edit the lens
+        # attributes and use its readback to keep the sensor calibration consistent.
+        sensor._update_intrinsic_matrices(env_ids)
     else:
         sensor.set_intrinsic_matrices(matrices, focal_length=focal_length, env_ids=env_ids)
     return {env_id: float(matrices[index, 0, 0]) for index, env_id in enumerate(env_ids)}
@@ -172,16 +185,17 @@ def _sync_camera_mounts_to_fabric(env: ManagerBasedEnv, env_ids: list[int], sens
     import usdrt
     from isaaclab.sim.utils.stage import get_current_stage_id
     from pxr import UsdGeom
+    from usdrt import hierarchy
 
     stage = usdrt.Usd.Stage.Attach(get_current_stage_id())
-    hierarchy = usdrt.hierarchy.IFabricHierarchy().get_fabric_hierarchy(
+    fabric_hierarchy = hierarchy.IFabricHierarchy().get_fabric_hierarchy(
         stage.GetFabricId(), stage.GetStageIdAsStageId()
     )
     for prim in _find_camera_prims_by_env(env, env_ids, sensor).values():
         local = UsdGeom.Xformable(prim).GetLocalTransformation()
         matrix = usdrt.Gf.Matrix4d(*[value for row in local for value in row])
-        hierarchy.set_local_xform(usdrt.Sdf.Path(str(prim.GetPath())), matrix)
-    hierarchy.update_world_xforms()
+        fabric_hierarchy.set_local_xform(usdrt.Sdf.Path(str(prim.GetPath())), matrix)
+    fabric_hierarchy.update_world_xforms()
 
 
 def _find_camera_prims_by_env(env: ManagerBasedEnv, env_ids: list[int], sensor: Camera) -> dict[int, Any]:
@@ -198,57 +212,3 @@ def _find_camera_prims_by_env(env: ManagerBasedEnv, env_ids: list[int], sensor: 
         ), f"Expected exactly one camera prim under {env_path!r} for {sensor.cfg.prim_path!r}, found {len(matches)}."
         prims_by_env[env_id] = matches[0]
     return prims_by_env
-
-
-def _convert_rotation(
-    rotation_xyzw: tuple[float, float, float, float],
-    origin: str,
-    target: str,
-) -> tuple[float, float, float, float]:
-    """Convert camera orientation conventions without changing the physical mount."""
-    from isaaclab.utils.math import convert_camera_frame_orientation_convention
-
-    rotation = torch.tensor([rotation_xyzw], dtype=torch.float32)
-    converted = convert_camera_frame_orientation_convention(rotation, origin=origin, target=target)
-    return tuple(float(component) for component in converted[0])
-
-
-def _quat_from_rpy_deg(rpy_deg: tuple[float, float, float]) -> tuple[float, float, float, float]:
-    """Build an (x, y, z, w) quaternion from intrinsic x-y-z rotations [deg]."""
-    quat = (0.0, 0.0, 0.0, 1.0)
-    for axis, angle_deg in enumerate(rpy_deg):
-        half_angle = 0.5 * math.radians(angle_deg)
-        axis_quat = [0.0, 0.0, 0.0, math.cos(half_angle)]
-        axis_quat[axis] = math.sin(half_angle)
-        quat = _quat_multiply(quat, tuple(axis_quat))
-    return quat
-
-
-def _quat_multiply(
-    first_xyzw: tuple[float, float, float, float],
-    second_xyzw: tuple[float, float, float, float],
-) -> tuple[float, float, float, float]:
-    """Compose two (x, y, z, w) quaternions, applying ``second_xyzw`` in the body frame."""
-    x_1, y_1, z_1, w_1 = first_xyzw
-    x_2, y_2, z_2, w_2 = second_xyzw
-    return (
-        w_1 * x_2 + x_1 * w_2 + y_1 * z_2 - z_1 * y_2,
-        w_1 * y_2 - x_1 * z_2 + y_1 * w_2 + z_1 * x_2,
-        w_1 * z_2 + x_1 * y_2 - y_1 * x_2 + z_1 * w_2,
-        w_1 * w_2 - x_1 * x_2 - y_1 * y_2 - z_1 * z_2,
-    )
-
-
-def _sample_uniform_vector(
-    minimum: tuple[float, float, float],
-    maximum: tuple[float, float, float],
-    device: str,
-) -> tuple[float, float, float]:
-    return tuple(_sample_uniform((low, high), device) for low, high in zip(minimum, maximum))
-
-
-def _sample_uniform(value_range: tuple[float, float], device: str) -> float:
-    low, high = value_range
-    if low == high:
-        return float(low)
-    return float(low + (high - low) * torch.rand((), device=device).item())
