@@ -7,6 +7,23 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+
+def test_secondary_objective_is_not_hidden_by_a_relative_mip_gap(monkeypatch):
+    from autodata_core.scheduling import retiming
+
+    original = retiming.milp
+    options = []
+
+    def solve(*args, **kwargs):
+        options.append(kwargs["options"].copy())
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(retiming, "milp", solve)
+    segment = SegmentId.from_string("left.move.transit")
+    assert isinstance(schedule_paths((SchedulePath(segment, "left", 2),)), Schedule)
+    assert options and all(value["mip_rel_gap"] == 0.0 for value in options)
+
+
 from autodata_core.scheduling import (
     Schedule,
     ScheduleFailure,

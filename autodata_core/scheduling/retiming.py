@@ -232,7 +232,7 @@ def schedule_paths(
     upper_bounds[binary_offset:] = 1.0
     integrality = np.ones(variable_count, dtype=np.uint8)
     linear_constraints = _scipy_constraints(rows, variable_count)
-    options: dict[str, float | bool] = {}
+    options: dict[str, float | bool] = {"mip_rel_gap": 0.0}
     deadline = None if time_limit_s is None else time.monotonic() + time_limit_s
 
     try:

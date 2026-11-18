@@ -24,6 +24,7 @@ class SchedulePath:
         lane: Persistent command lane, normally an end-effector name.
         waypoint_count: Number of configurations in the segment path.
         resource_ids: Additional task-local resources held for the nominal segment interval.
+            Each resource must be claimed on at least two lanes in the same scheduling call.
     """
 
     segment_id: SegmentId
