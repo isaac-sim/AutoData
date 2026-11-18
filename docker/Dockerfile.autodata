@@ -86,6 +86,7 @@ COPY autodata_retargeting ${WORKDIR}/autodata_retargeting
 COPY autodata_utils ${WORKDIR}/autodata_utils
 COPY autodata_examples ${WORKDIR}/autodata_examples
 COPY autodata_tests ${WORKDIR}/autodata_tests
+COPY scripts ${WORKDIR}/scripts
 RUN --mount=type=cache,id=autodata-uv,target=/root/.cache/uv,sharing=locked \
     set -e; if [ "$INSTALL_CUROBO" = "true" ]; then \
       bash /opt/autodata/sync_dependencies.sh --group curobo; \
@@ -116,5 +117,8 @@ RUN chmod +x /entrypoint.sh
 ENV PYTHONPYCACHEPREFIX=/tmp/autodata-pycache
 # uv run must not install the native Sim wheels over the image's simulator.
 ENV UV_NO_SYNC=1
+# The image has no .git; generation results and metric reports record this commit instead.
+ARG AUTODATA_REVISION=
+ENV AUTODATA_REVISION=${AUTODATA_REVISION}
 ENTRYPOINT ["/entrypoint.sh"]
 HEALTHCHECK NONE

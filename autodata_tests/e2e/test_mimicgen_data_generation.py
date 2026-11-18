@@ -6,26 +6,12 @@ import tempfile
 
 import pytest
 
-from autodata_tests.utils.constants import TestPaths
+from autodata_tests.utils.constants import MIMICGEN_FRANKA_METRICS, TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
 from autodata_tests.utils.utils import assert_ok_metrics, assert_recorded_run, assert_valid_dataset
 
 HEADLESS = True
 GENERATION_NUM_TRIALS = 2
-# Metrics a MimicGen run recorded with --record_metric_inputs must compute; no camera, so no image checks.
-METRICS = {
-    "generation_success_rate",
-    "demos_per_gpu_hour",
-    "time_to_dataset",
-    "correctness_pass_rate",
-    "final_success_rate",
-    "action_rotation_error",
-    "action_saturation",
-    "motion_smoothness",
-    "joint_limit_ratio",
-    "start_layout_spread",
-    "workspace_spread",
-}
 
 
 def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
@@ -66,7 +52,7 @@ def _run_franka_cube_stack_mimicgen(num_envs: int, device: str) -> None:
 
         assert_valid_dataset(output_file, min_num_demos=GENERATION_NUM_TRIALS)
         assert_recorded_run(output_file, result_file)
-        assert_ok_metrics(output_file, result_file, METRICS)
+        assert_ok_metrics(output_file, result_file, MIMICGEN_FRANKA_METRICS)
 
 
 @pytest.mark.with_subprocess
