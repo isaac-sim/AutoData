@@ -138,7 +138,7 @@ def generate_buffered(
             for prepared in candidates:
                 if prepared.result is not None:
                     record_generation_attempt(
-                        GenerationResult(prepared.initial_state, False, prepared.result.diagnostics),
+                        GenerationResult(prepared.initial_state, False, diagnostics=prepared.result.diagnostics),
                         0,
                         stats,
                         attempts,
@@ -261,7 +261,7 @@ def _replay_wave(
                 env_id_tensor=env_ids[env_id : env_id + 1], success=result.success, export_demo=True
             )
             record_generation_attempt(
-                GenerationResult(prepared.initial_state, result.success, result.diagnostics),
+                GenerationResult(prepared.initial_state, result.success, diagnostics=result.diagnostics),
                 env_id,
                 stats,
                 attempts,

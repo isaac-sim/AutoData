@@ -24,6 +24,13 @@ from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from autodata_interfaces.tasks.subtask_spec import MimicGenSubtaskAlgoParams, Subtask
 
 
+def test_generation_result_preserves_positional_extras():
+    extras = {"example": 1}
+    result = GenerationResult({}, True, extras)
+    assert result.extras is extras
+    assert result.diagnostics == ()
+
+
 def _subtask(term_signal: str = "s", term_offset: tuple[int, int] = (0, 0)) -> Subtask:
     return Subtask(
         subtask_term_signal=term_signal,

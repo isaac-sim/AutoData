@@ -23,7 +23,8 @@ class DatagenInfo:
             nodal positions [m].
         subtask_term_signals: ``{subtask_name: [T]}`` binary completion flag per step.
         subtask_start_signals: ``{subtask_name: [T]}`` binary skill-start flags for SkillGen and ScheduleGen.
-        object_event_signals: ``{event_name: [T]}`` binary grasp/release flags, active from the event sample.
+        object_event_signals: ``{event_name: [T]}`` grasp/release flags used by ScheduleGen's
+            object ownership tracking, separate from the shared skill-boundary signals.
         target_eef_pose: ``{eef_name: [T, 4, 4]}`` controller target poses [m, rad].
         passthrough_action: ``{channel_name: [T, D]}`` non-pose actions copied verbatim from the
             source demo, keyed by channel (eef grippers/hands plus any non-eef channel such as a

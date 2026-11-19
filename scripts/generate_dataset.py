@@ -52,6 +52,9 @@ PROCESS_START = time.monotonic()
 _ALG_CHOICES = ["mimicgen", "dexmimicgen", "skillgen", "softmimicgen", "schedulegen"]
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+planning_args = parser.add_argument_group("Motion planning (SkillGen and ScheduleGen)")
+schedule_args = parser.add_argument_group("ScheduleGen execution")
+recording_args = parser.add_argument_group("Recording and reports")
 parser.add_argument(
     "--env_name",
     type=str,
@@ -100,13 +103,13 @@ parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel 
 parser.add_argument(
     "--presets", choices=("physx", "newton"), default=None, help="Physics backend preset for Arena environments."
 )
-parser.add_argument(
+schedule_args.add_argument(
     "--generation_mode",
     choices=("per_environment", "buffered"),
     default="per_environment",
     help="Per-environment generation or buffered ScheduleGen planning/scheduling with vectorized replay.",
 )
-parser.add_argument(
+schedule_args.add_argument(
     "--schedule_workers",
     type=int,
     default=1,
@@ -124,7 +127,7 @@ parser.add_argument(
     default="./datasets/output_dataset.hdf5",
     help="Destination HDF5 for generated episodes.",
 )
-parser.add_argument(
+recording_args.add_argument(
     "--result_file",
     type=str,
     default=None,
@@ -133,7 +136,7 @@ parser.add_argument(
         "log with one JSON line per attempt is written next to it (<result_file stem>.<run id>.attempts.jsonl)."
     ),
 )
-parser.add_argument(
+recording_args.add_argument(
     "--record_metric_inputs",
     action="store_true",
     help=(
@@ -146,30 +149,30 @@ parser.add_argument(
     action="store_true",
     help="Pause after every subtask for interactive debugging.",
 )
-parser.add_argument(
+planning_args.add_argument(
     "--visualize_plan",
     action="store_true",
-    help="Visualize SkillGen motion plans in a Rerun viewer (env 0 only; requires the rerun package).",
+    help="Visualize SkillGen or ScheduleGen plans in Rerun (environment zero only).",
 )
-parser.add_argument(
+planning_args.add_argument(
     "--rerun_output",
     type=str,
     default=None,
-    help="Save ScheduleGen plan visualization to this Rerun .rrd file instead of spawning a viewer.",
+    help="Save SkillGen or ScheduleGen visualization to this .rrd file instead of opening a viewer.",
 )
-parser.add_argument("--robot_planning", type=str, default=None, help="Planning-groups YAML for schedulegen.")
-parser.add_argument(
+planning_args.add_argument("--robot_planning", type=str, default=None, help="Planning-groups YAML for ScheduleGen.")
+recording_args.add_argument(
     "--record_video",
     action="store_true",
     help="Save every generated rollout from the configured simulator viewport (single environment).",
 )
-parser.add_argument(
+recording_args.add_argument(
     "--video_dir",
     type=str,
     default="./datasets/visual_validation",
     help="Directory for generated rollout MP4 files.",
 )
-parser.add_argument(
+recording_args.add_argument(
     "--video_observation_path",
     type=str,
     default=None,
@@ -204,6 +207,10 @@ if args_cli.generation_mode == "buffered" and args_cli.alg != "schedulegen":
     parser.error("--generation_mode buffered requires --alg schedulegen.")
 if args_cli.generation_mode != "buffered" and args_cli.schedule_workers != 1:
     parser.error("--schedule_workers applies only to buffered generation.")
+if args_cli.alg != "schedulegen" and args_cli.robot_planning is not None:
+    parser.error("--robot_planning applies only to ScheduleGen.")
+if args_cli.alg not in ("skillgen", "schedulegen") and (args_cli.visualize_plan or args_cli.rerun_output):
+    parser.error("plan visualization requires SkillGen or ScheduleGen.")
 
 args_cli.record_images = args_cli.record_images or args_cli.record_video
 record_viewport = args_cli.record_video and args_cli.video_observation_path is None
@@ -351,7 +358,13 @@ def setup_async_generation(
 
 
 def _build_motion_planners(
-    datastream, num_envs: int, env_name: str, *, planner_profile: str | None = None, visualize_plan: bool = False
+    datastream,
+    num_envs: int,
+    env_name: str,
+    *,
+    planner_profile: str | None = None,
+    visualize_plan: bool = False,
+    rerun_output: str | None = None,
 ) -> dict:
     """Construct one cuRobo v1 motion planner per env_id satisfying the SkillGen interface.
 
@@ -360,6 +373,17 @@ def _build_motion_planners(
     The planner config comes from ``planner_profile`` (named by the environment profile) when
     given, else from task-name matching. Rerun plan visualization is opt-in via
     ``visualize_plan`` and limited to env 0.
+
+    Args:
+        datastream: Environment, task and embodiment interfaces used by each planner.
+        num_envs: Number of independent planners to construct.
+        env_name: Task name used when no planner profile is provided.
+        planner_profile: Optional named robot/planner configuration.
+        visualize_plan: Whether environment zero logs plans to Rerun.
+        rerun_output: Optional recording path instead of opening a Rerun viewer.
+
+    Returns:
+        Motion planners keyed by environment index.
     """
     from autodata_interfaces.motion_planners.curobo.curobo_planner import CuroboPlanner
     from autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
@@ -373,6 +397,7 @@ def _build_motion_planners(
         # Visualization is rerun-based; limit to env_id 0 to keep simulation responsive.
         if env_id == 0:
             planner_config.visualize_plan = planner_config.visualize_plan or visualize_plan
+            planner_config.rerun_output = rerun_output
         else:
             planner_config.visualize_spheres = False
             planner_config.visualize_plan = False
@@ -539,6 +564,7 @@ def main() -> None:
             env_name,
             planner_profile=env_profile.planner if env_profile else None,
             visualize_plan=args_cli.visualize_plan,
+            rerun_output=args_cli.rerun_output,
         )
         alg_kwargs["motion_planners"] = motion_planners
     elif args_cli.alg == "schedulegen":

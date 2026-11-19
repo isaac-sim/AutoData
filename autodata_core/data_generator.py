@@ -56,15 +56,15 @@ class GenerationResult:
     Attributes:
         initial_state: Scene state of every env right after this env's reset.
         success: Whether the task succeeded at any step of the attempt.
-        diagnostics: Scalar algorithm details recorded in the generation result.
         extras: Algorithm-specific facts about the attempt, from
             :meth:`~autodata_core.algorithms.GenerationAlgorithm.attempt_extras`.
+        diagnostics: Scalar algorithm details recorded in the generation result.
     """
 
     initial_state: dict
     success: bool
-    diagnostics: tuple[tuple[str, str], ...] = ()
     extras: dict[str, Any] = field(default_factory=dict)
+    diagnostics: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass

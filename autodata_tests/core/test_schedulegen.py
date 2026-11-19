@@ -174,6 +174,48 @@ def test_grasp_and_carry_permissions_allow_only_the_carrying_hand():
     assert contacts[0].spec.robot_link_names == ("hand",)
 
 
+def test_carried_object_uses_the_same_boundary_as_the_robot():
+    from autodata_core.schedulegen.scheduling import project_object_states
+
+    segment = SegmentId.from_string("left.carry.skill")
+    tools = torch.eye(4).repeat(4, 1, 1)
+    tools[:, 0, 3] = torch.arange(4)
+    event = ScheduledObjectEvent(
+        0,
+        PathObjectEvent(
+            segment, 0, SegmentEventSpec(SegmentEventType.ATTACH, "beaker", attachment_frame="tool"), torch.eye(4)
+        ),
+    )
+    states = project_object_states({"beaker": torch.eye(4)}, {"left": tools}, ("beaker",), (event,), makespan_ticks=3)
+    assert [state.boundary_tick for state in states] == [0, 1, 2, 3]
+    assert [state.env_from_object[0][3] for state in states] == [0, 1, 2, 3]
+
+
+def test_provider_object_samples_follow_the_completed_command():
+    from autodata_core.schedulegen.scheduling import project_object_states
+    from autodata_core.schedulegen.types import PathObjectPose, ScheduledObjectPose
+
+    segment = SegmentId.from_string("left.release.skill")
+    poses = torch.eye(4).repeat(3, 1, 1)
+    poses[:, 0, 3] = torch.arange(3)
+    samples = tuple(
+        ScheduledObjectPose(tick - 1, PathObjectPose(segment, tick, "beaker", poses[tick])) for tick in (1, 2)
+    )
+    events = (
+        ScheduledObjectEvent(
+            0,
+            PathObjectEvent(
+                segment, 0, SegmentEventSpec(SegmentEventType.ATTACH, "beaker", attachment_frame="tool"), torch.eye(4)
+            ),
+        ),
+        ScheduledObjectEvent(1, PathObjectEvent(segment, 1, SegmentEventSpec(SegmentEventType.DETACH, "beaker"))),
+    )
+    states = project_object_states(
+        {"beaker": poses[0]}, {"left": poses}, ("beaker",), events, samples, makespan_ticks=2
+    )
+    assert [state.env_from_object[0][3] for state in states] == [0, 1, 2]
+
+
 def test_buffered_generation_rejects_ignored_reset_settling():
     from autodata_core.schedulegen.batching import generate_buffered
     from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy

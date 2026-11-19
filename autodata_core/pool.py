@@ -24,7 +24,11 @@ if TYPE_CHECKING:
 
 
 class DataGenInfoPool:
-    """Container of source :class:`DatagenInfo` records keyed by EEF subtask boundary."""
+    """Source records and skill boundaries shared by all generation algorithms.
+
+    Stable demo keys support source selection. ScheduleGen additionally reads object-event
+    annotations through :meth:`get_object_event_index`; ordinary skill slicing does not use them.
+    """
 
     def __init__(
         self,
@@ -114,7 +118,7 @@ class DataGenInfoPool:
         return tuple(self._demo_keys)
 
     def get_object_event_index(self, demo_index: int, annotation_key: str) -> int:
-        """Return the annotated source sample for an object event.
+        """Return a ScheduleGen attachment/release annotation without skill-boundary offsets.
 
         Args:
             demo_index: Index of the selected source demonstration in this pool.

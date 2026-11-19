@@ -39,6 +39,7 @@ from autodata_interfaces.tasks.segment_spec import SegmentEventType, SegmentRobo
 def _contact_interval(path: ArmPath, schedule: Schedule, segment_id: SegmentId) -> tuple[int, int]:
     """Include held lane occupancy, including the terminal boundary, in contact permissions."""
 
+    # Contact permission follows lane occupancy, including waits and the terminal hold.
     held_indices = (*get_scheduled_path_indices(path, schedule), len(path.waypoints) - 1)
     start, stop = path.segment_bounds[segment_id]
     active_ticks = tuple(tick for tick, index in enumerate(held_indices) if start <= index < stop)
@@ -69,6 +70,7 @@ def schedule_world_contacts(
     assert not missing, f"world contacts reference segments without paths: {sorted(map(str, missing))}"
     scheduled = []
     for segment_id, specs in contacts_by_segment.items():
+        # Fixture contact stays permitted while this segment's last command is held.
         start_tick, stop_tick = _contact_interval(path_by_segment[segment_id], schedule, segment_id)
         scheduled.extend(ScheduledWorldContact(segment_id, spec, start_tick, stop_tick) for spec in specs)
     return tuple(
@@ -115,6 +117,7 @@ def schedule_robot_contacts(
         for spec in specs:
             start_tick = first_tick
             if spec.start_annotation_key:
+                # A release permission begins at the annotated detach, not at segment entry.
                 matching_events = tuple(
                     event
                     for event in scheduled_object_events
@@ -135,6 +138,7 @@ def schedule_robot_contacts(
                 first_tick <= start_tick < stop_tick
             ), f"robot contact on {segment_id} begins outside segment ownership"
             scheduled.append(ScheduledRobotContact(segment_id, spec, start_tick, stop_tick))
+    # Grasping/carrying permits the owning hand, never the other arm or the robot body.
     for index, event in enumerate(scheduled_object_events):
         if attachment_link_names is None or event.path_event.spec.event_type != SegmentEventType.ATTACH:
             continue
@@ -222,6 +226,7 @@ def schedule_arm_paths(
     arm_path_by_eef = {path.eef_name: path for path in ordered_arm_paths}
     assert len(arm_path_by_eef) == len(ordered_arm_paths), "arm paths must use distinct end-effector lanes"
 
+    # Convert each provider's complete path into scheduler segments without copying geometry.
     bounds_by_eef: dict[str, tuple[tuple[SegmentId, tuple[int, int]], ...]] = {}
     scheduler_paths: list[SchedulePath] = []
     built_segment_ids: set[SegmentId] = set()
@@ -243,6 +248,7 @@ def schedule_arm_paths(
         not unknown_resource_segments
     ), f"segment_resource_ids references segments without paths: {sorted(map(str, unknown_resource_segments))}"
 
+    # Collision detection indexes complete arm paths; the scheduler indexes segment-local waypoints.
     scheduler_conflicts: list[WaypointConflict] = []
     for conflict in sorted(arm_conflicts):
         first = _waypoint_localize(
@@ -308,6 +314,7 @@ def schedule_object_events(
             start, end = path.segment_bounds[event.segment_id]
             ticks = schedule.ticks_for(event.segment_id)
             assert len(ticks) == end - start, f"schedule length differs for segment {event.segment_id}"
+            # A lane's first pose is already occupied during any initial wait.
             if event.local_boundary_index == 0 and start == 0:
                 tick = 0
             elif event.local_boundary_index < len(ticks):
@@ -318,6 +325,7 @@ def schedule_object_events(
             scheduled.append(ScheduledObjectEvent(tick=tick, path_event=event))
     scheduled.sort(key=lambda event: event.tick)
 
+    # Validate the event stream before projecting poses: ownership must be single-valued.
     owner_by_object: dict[str, str] = {}
     object_by_lane: dict[str, str] = {}
     lanes_by_tick_and_object: dict[tuple[int, str], set[str]] = {}
@@ -371,6 +379,7 @@ def get_scheduled_path_indices(path: ArmPath, schedule: Schedule) -> tuple[int, 
     assert len(scheduled) == len(path.waypoints), "schedule must cover every path waypoint"
     timeline: list[int] = []
     cursor = 0
+    # The last issued waypoint remains active during waits; waypoint zero covers the initial hold.
     for tick in range(schedule.makespan_ticks):
         while cursor + 1 < len(scheduled) and scheduled[cursor + 1][0] <= tick:
             cursor += 1
@@ -406,6 +415,7 @@ def schedule_object_poses(
         for path_pose in path.object_pose_keyframes:
             start, _ = path.segment_bounds[path_pose.segment_id]
             global_boundary = start + path_pose.local_boundary_index
+            # Provider poses describe completed commands; -1 denotes the untouched reset state.
             sample_tick = -1 if global_boundary == 0 else waypoint_ticks[global_boundary - 1]
             assert sample_tick < schedule.makespan_ticks, "object pose lies beyond the schedule makespan"
             scheduled.append(ScheduledObjectPose(sample_tick=sample_tick, path_pose=path_pose))
@@ -512,6 +522,22 @@ def project_object_states(
         events_by_tick.setdefault(event.tick, []).append(event)
 
     for tick in range(makespan_ticks + 1):
+        # Boundary t contains the result of command t-1, not the result of command t.
+        for object_ref, attach in active_attach.items():
+            lane = attach.path_event.segment_id.eef_name
+            tool_from_object = attach.path_event.tool_from_object
+            assert tool_from_object is not None
+            current_poses[object_ref] = tool_poses[lane][tick] @ tool_from_object.to(
+                device=reference.device, dtype=reference.dtype
+            )
+        for scheduled_pose in poses_by_sample.get(tick - 1, ()):
+            path_pose = scheduled_pose.path_pose
+            if path_pose.object_ref not in active_attach:
+                current_poses[path_pose.object_ref] = path_pose.env_from_object.to(
+                    device=reference.device, dtype=reference.dtype
+                )
+
+        # Events change ownership at this boundary, before the next command executes.
         attachment_jumps: dict[str, tuple[float, float]] = {}
         for event in events_by_tick.get(tick, ()):
             path_event = event.path_event
@@ -547,25 +573,12 @@ def project_object_states(
                 del active_attach[object_ref]
                 del active_object_by_lane[lane]
 
-        if tick < makespan_ticks:
-            for object_ref, attach in active_attach.items():
-                lane = attach.path_event.segment_id.eef_name
-                tool_from_object = attach.path_event.tool_from_object
-                assert tool_from_object is not None
-                current_poses[object_ref] = tool_poses[lane][tick + 1] @ tool_from_object.to(
-                    device=reference.device, dtype=reference.dtype
-                )
-            for scheduled_pose in poses_by_sample.get(tick, ()):
-                path_pose = scheduled_pose.path_pose
-                if path_pose.object_ref not in active_attach:
-                    current_poses[path_pose.object_ref] = path_pose.env_from_object.to(
-                        device=reference.device, dtype=reference.dtype
-                    )
         for object_ref in tracked_objects:
             pose_history[object_ref].append(current_poses[object_ref].detach().clone())
             owner_history[object_ref].append(active_attach.get(object_ref))
             jump_history[object_ref].append(attachment_jumps.get(object_ref))
 
+    # Copy only after the timeline is complete so saved states cannot alias mutable tensors.
     immutable_poses = {
         object_ref: tuple(
             tuple(tuple(float(value) for value in row) for row in pose) for pose in torch.stack(poses).cpu().tolist()
