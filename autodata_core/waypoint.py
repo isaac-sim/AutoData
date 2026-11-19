@@ -285,6 +285,32 @@ class MultiWaypoint:
     def __init__(self, waypoints: dict[str, Waypoint]) -> None:
         self.waypoints = waypoints
 
+    def to_action(self, datastream: Datastream, env_id: int = 0) -> torch.Tensor:
+        """Encode the multi-EEF target without stepping the environment.
+
+        Args:
+            datastream: Composed datastream providing embodiment-aware action encoding.
+            env_id: Vectorized environment index.
+
+        Returns:
+            One batched environment action with shape ``(1, action_dim)``.
+        """
+
+        target_eef_pose_dict = {eef_name: waypoint.pose for eef_name, waypoint in self.waypoints.items()}
+        action_noise_dict = {eef_name: waypoint.noise for eef_name, waypoint in self.waypoints.items()}
+        passthrough_action_dict: dict[str, torch.Tensor] = {}
+        for eef_name in sorted(self.waypoints):
+            for channel_name, channel_tensor in self.waypoints[eef_name].passthrough_action.items():
+                passthrough_action_dict.setdefault(channel_name, channel_tensor)
+
+        action = datastream.target_eef_pose_to_action(
+            target_eef_pose_dict=target_eef_pose_dict,
+            passthrough_action_dict=passthrough_action_dict,
+            action_noise_dict=action_noise_dict,
+            env_id=env_id,
+        )
+        return action.unsqueeze(0) if action.dim() == 1 else action
+
     async def execute(
         self,
         datastream: Datastream,
@@ -310,22 +336,7 @@ class MultiWaypoint:
         """
         env = datastream.get_env()
 
-        target_eef_pose_dict = {eef_name: waypoint.pose for eef_name, waypoint in self.waypoints.items()}
-        action_noise_dict = {eef_name: waypoint.noise for eef_name, waypoint in self.waypoints.items()}
-        passthrough_action_dict: dict[str, torch.Tensor] = {}
-        for eef_name in sorted(self.waypoints):
-            for channel_name, channel_tensor in self.waypoints[eef_name].passthrough_action.items():
-                passthrough_action_dict.setdefault(channel_name, channel_tensor)
-
-        play_action = datastream.target_eef_pose_to_action(
-            target_eef_pose_dict=target_eef_pose_dict,
-            passthrough_action_dict=passthrough_action_dict,
-            action_noise_dict=action_noise_dict,
-            env_id=env_id,
-        )
-
-        if play_action.dim() == 1:
-            play_action = play_action.unsqueeze(0)
+        play_action = self.to_action(datastream, env_id)
 
         if env_action_queue is None:
             env.step(play_action)

@@ -6,6 +6,7 @@
 import h5py
 import json
 import subprocess
+import yaml
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,38 @@ import pytest
 from autodata_tests.utils.constants import TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
 from autodata_tests.utils.utils import assert_recorded_episodes, assert_valid_dataset
+
+
+@pytest.mark.with_subprocess
+def test_schedulegen_requires_manual_marks_without_legacy_skillgen_flag(tmp_path, capfd):
+    """The selected algorithm, not the legacy policy flag, determines whether skill starts are needed."""
+    task = yaml.safe_load((Path(TestPaths.tasks_dir) / "gr1t2_nut_pour_schedulegen.yaml").read_text())
+    task["generation_policy"]["use_skillgen"] = False
+    descriptor = tmp_path / "task.yaml"
+    descriptor.write_text(yaml.safe_dump(task))
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_subprocess([
+            TestPaths.python_path,
+            str(Path(TestPaths.scripts_dir) / "annotate_demos.py"),
+            "--auto",
+            "--viz",
+            "none",
+            "--device",
+            "cpu",
+            "--env_name",
+            "IsaacContrib-Stack-Cube-Franka-IK-Rel",
+            "--task_descriptor",
+            str(descriptor),
+            "--embodiment",
+            str(Path(TestPaths.embodiments_dir) / "gr1t2_schedulegen.yaml"),
+            "--input_file",
+            str(Path(TestPaths.test_data_dir) / "annotated_dataset_franka_stack_mimicgen.hdf5"),
+            "--output_file",
+            str(tmp_path / "annotated.hdf5"),
+        ])
+    assert error.value.returncode == 1
+    out, err = capfd.readouterr()
+    assert "this task additionally needs skill start signals" in out + err
 
 
 @pytest.mark.with_subprocess

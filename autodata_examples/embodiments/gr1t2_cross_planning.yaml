@@ -1,0 +1,17 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+schema: isaac-autodata.curobo-planning-groups.v1
+extends: gr1t2_planning.yaml
+name: gr1t2_cross
+full_state_collision_scope: planning_groups
+
+# Fixed-waist cross-reach uses optimized transits and the reviewed arm-group collision scope.
+planner:
+  collision_activation_distance: 0.01
+  enable_opt: true
+  approach_distance: 0.0
+  retreat_distance: 0.0
+  surface_sphere_radius: 0.015
+  debug_planner: true
+  ik_candidate_count: 1

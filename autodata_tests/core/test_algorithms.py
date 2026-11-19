@@ -21,6 +21,7 @@ from autodata_core.algorithms import (
 )
 from autodata_core.data_generator import _EEFGenerationState
 from autodata_core.datagen_info import DatagenInfo
+from autodata_core.schedulegen import ScheduleGen
 from autodata_interfaces.tasks.subtask_spec import SoftMimicGenSubtaskAlgoParams, Subtask
 
 
@@ -30,6 +31,7 @@ def test_registry_contents():
         "dexmimicgen": DexMimicGen,
         "softmimicgen": SoftMimicGen,
         "skillgen": SkillGen,
+        "schedulegen": ScheduleGen,
     }
 
 
@@ -40,7 +42,7 @@ def test_base_class_not_registered():
 
 
 def test_iter_algorithms():
-    assert set(iter_algorithms()) == {MimicGen, DexMimicGen, SoftMimicGen, SkillGen}
+    assert set(iter_algorithms()) == {MimicGen, DexMimicGen, SoftMimicGen, SkillGen, ScheduleGen}
 
 
 @pytest.mark.parametrize(

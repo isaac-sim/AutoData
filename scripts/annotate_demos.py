@@ -17,14 +17,14 @@ Controls:
 
 * ``N`` -- begin / resume playback
 * ``B`` -- pause playback
-* ``S`` -- mark a subtask signal at the current step
+* ``S`` -- mark the next skill boundary or object event at the current step
 * ``Q`` -- skip the current episode
 
 Automatic mode:
 
 Pass ``--auto`` to annotate subtask termination signals without keyboard input (``--viz none``
 supported). ``--signal_obs_group`` selects the observation group holding the per-subtask boolean
-terms (default ``subtask_terms``). SkillGen start signals still require manual mode.
+terms (default ``subtask_terms``). SkillGen and ScheduleGen skill starts and object events require manual mode.
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -39,7 +39,7 @@ from autodata_utils.cli import callable_path
 PROCESS_START = time.monotonic()
 
 parser = argparse.ArgumentParser(
-    description="Manually annotate AutoData source demonstrations with subtask signals.",
+    description="Annotate AutoData source demonstrations with skill boundaries and object events.",
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
 parser.add_argument(
@@ -57,6 +57,7 @@ parser.add_argument(
     default=None,
     help="Flush simulation buffers before replay. Defaults to enabled for PhysX and disabled for Newton.",
 )
+parser.add_argument("--env_profile", default=None, help="AutoData environment profile used when recording the source.")
 parser.add_argument(
     "--task_descriptor",
     type=str,
@@ -118,7 +119,6 @@ simulation_app = app_launcher.app
 
 import contextlib  # noqa: E402
 import gymnasium as gym  # noqa: E402
-import math  # noqa: E402
 import numpy as np  # noqa: E402
 import os  # noqa: E402
 import random  # noqa: E402
@@ -133,11 +133,13 @@ from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg  # noqa: E402
 from isaaclab.managers import DatasetExportMode, RecorderTermCfg, TerminationTermCfg  # noqa: E402
 from isaaclab.utils.datasets import EpisodeData, HDF5DatasetFileHandler  # noqa: E402
 
+from autodata_core.algorithms import REGISTERED_ALGORITHMS  # noqa: E402
 from autodata_core.pool import DataGenInfoPool  # noqa: E402
 from autodata_examples.envs import register_environment_for_run  # noqa: E402
 from autodata_interfaces.datastream import Datastream  # noqa: E402
 from autodata_interfaces.embodiments import embodiment_adapter_from_yaml  # noqa: E402
 from autodata_interfaces.env import (  # noqa: E402
+    EnvironmentProfile,
     collect_autodata_entry,
     get_env_name_from_dataset,
     setup_env_config,
@@ -149,7 +151,9 @@ from autodata_interfaces.env.datagen_info_recorder import (  # noqa: E402
 )
 from autodata_interfaces.env.recorders import PreStepCameraObservationsRecorder  # noqa: E402
 from autodata_interfaces.env.registration import register_external_environment  # noqa: E402
+from autodata_interfaces.tasks.segment_spec import SegmentEventPoint  # noqa: E402
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor  # noqa: E402
+from autodata_interfaces.tasks.task_descriptor_utils import resolve_task_algorithm  # noqa: E402
 from autodata_utils.dataset_metadata import exported_dataset_files, merge_autodata_entry  # noqa: E402
 
 is_paused = False
@@ -184,38 +188,37 @@ def mark_subtask_cb() -> None:
 def _build_signal_names(
     task_descriptor: TaskDescriptor,
     annotate_start_signals: bool,
-) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
-    """Resolve the per-EEF subtask term (and start) signal names to annotate.
+) -> dict[str, list[tuple[str, str]]]:
+    """List each arm's skill boundaries and optional object events in replay order.
+
+    Args:
+        task_descriptor: Task defining skill boundaries and named object events.
+        annotate_start_signals: Whether to mark skill starts as well as terminations.
 
     Returns:
-        ``(term_signal_names, start_signal_names)`` dicts, each mapping eef name to an ordered list
-        of signal names.
+        Per-arm ordered pairs of HDF5 signal group and annotation name. Events within
+        a skill follow their declaration order in the task descriptor.
     """
-    term_signal_names: dict[str, list[str]] = {}
-    start_signal_names: dict[str, list[str]] = {}
+    signals: dict[str, list[tuple[str, str]]] = {}
     for eef_name in task_descriptor.get_eef_names():
-        eef_term_names = task_descriptor.get_term_signal_names(eef_name)
-
-        # Start signals (one per subtask, keyed by term-signal name) are needed only for SkillGen.
-        if annotate_start_signals:
-            assert all(name for name in eef_term_names), (
-                f"Missing 'subtask_term_signal' for one or more subtasks of eef '{eef_name}'. When "
-                "annotating for SkillGen, every subtask (including the last) must specify"
-                "'subtask_term_signal' (its name is reused as the start-signal key)."
-            )
-            start_signal_names[eef_name] = list(eef_term_names)
-        else:
-            start_signal_names[eef_name] = []
-
-        # Termination signals: every subtask except the final one (which ends the trajectory).
-        non_final_term_names = eef_term_names[:-1]
-        assert all(name for name in non_final_term_names), (
-            f"Missing 'subtask_term_signal' for a non-final subtask of eef '{eef_name}'. Every "
-            "subtask except the last must specify 'subtask_term_signal'."
-        )
-        term_signal_names[eef_name] = non_final_term_names
-
-    return term_signal_names, start_signal_names
+        signals[eef_name] = []
+        subtasks = task_descriptor.get_subtasks(eef_name)
+        for index, subtask in enumerate(subtasks):
+            if annotate_start_signals:
+                start_name = subtask.subtask_start_signal or subtask.subtask_term_signal
+                assert start_name, f"Missing start signal for {eef_name} subtask {index}."
+                signals[eef_name].append(("subtask_start_signals", start_name))
+            for segment in subtask.segments:
+                signals[eef_name].extend(
+                    ("object_event_signals", event.annotation_key)
+                    for event in segment.events
+                    if event.point == SegmentEventPoint.SOURCE_ANNOTATION
+                )
+            if index < len(subtasks) - 1:
+                assert subtask.subtask_term_signal, f"Missing termination signal for {eef_name} subtask {index}."
+                signals[eef_name].append(("subtask_term_signals", subtask.subtask_term_signal))
+        assert len(signals[eef_name]) == len(set(signals[eef_name])), f"Duplicate annotation names for {eef_name}."
+    return signals
 
 
 def main() -> int:
@@ -250,20 +253,26 @@ def main() -> int:
         presets=args_cli.presets,
     )
 
-    # Start signals are required only by SkillGen.
-    annotate_start_signals = generation_policy.use_skillgen
+    # SkillGen and ScheduleGen mark skill windows rather than only subtask ends.
+    algorithm_name = resolve_task_algorithm(None, args_cli.task_descriptor)
+    annotate_start_signals = REGISTERED_ALGORITHMS[algorithm_name].uses_subtask_start_signals
 
     assert not (args_cli.auto and annotate_start_signals), (
-        "--auto only annotates subtask termination signals; SkillGen additionally needs subtask "
-        "start signals, which have no automatic source yet. Annotate SkillGen datasets in manual "
+        "--auto only annotates subtask termination signals; this task additionally needs skill "
+        "start signals, which have no automatic source yet. Annotate these datasets in manual "
         "mode (drop --auto)."
     )
 
     # Resolve the subtask signals to annotate
-    term_signal_names, start_signal_names = _build_signal_names(task_descriptor, annotate_start_signals)
-    total_signals = sum(len(names) for names in term_signal_names.values()) + sum(
-        len(names) for names in start_signal_names.values()
-    )
+    signal_names = _build_signal_names(task_descriptor, annotate_start_signals)
+    term_signal_names = {
+        eef: [name for group, name in signals if group == "subtask_term_signals"]
+        for eef, signals in signal_names.items()
+    }
+    assert not args_cli.auto or all(
+        group == "subtask_term_signals" for signals in signal_names.values() for group, _ in signals
+    ), "--auto cannot annotate skill starts or object events; use manual mode."
+    total_signals = sum(len(names) for names in signal_names.values())
     assert total_signals > 0, (
         "No subtask signals to annotate: every eef declares only a single end-of-trajectory subtask. "
         "Manual annotation requires at least one non-final subtask with a 'subtask_term_signal'."
@@ -280,6 +289,7 @@ def main() -> int:
         device=args_cli.device,
         generation_policy_params=generation_policy,
         recorder_cfg=DatagenInfoRecorderManagerCfg(),
+        env_profile=EnvironmentProfile.from_yaml(args_cli.env_profile) if args_cli.env_profile else None,
         enable_cameras=args_cli.record_images,
         record_step_success=args_cli.record_metric_inputs,
     )
@@ -360,9 +370,7 @@ def main() -> int:
                         env, episode, success_term, term_signal_names, task_descriptor, args_cli.signal_obs_group
                     )
                 else:
-                    annotated = annotate_episode_in_manual_mode(
-                        env, episode, success_term, term_signal_names, start_signal_names, annotate_start_signals
-                    )
+                    annotated = annotate_episode_in_manual_mode(env, episode, success_term, signal_names)
 
                 if annotated and not skip_episode:
                     env.recorder_manager.set_success_to_episodes(
@@ -454,9 +462,7 @@ def annotate_episode_in_manual_mode(
     env,
     episode: EpisodeData,
     success_term: TerminationTermCfg | None,
-    term_signal_names: dict[str, list[str]],
-    start_signal_names: dict[str, list[str]],
-    annotate_start: bool,
+    signal_names: dict[str, list[tuple[str, str]]],
 ) -> bool:
     """Interactively annotate one episode's subtask signals.
 
@@ -468,36 +474,29 @@ def annotate_episode_in_manual_mode(
         env: The environment to replay in.
         episode: The recorded episode to annotate.
         success_term: Optional success termination term.
-        term_signal_names: Per-EEF ordered subtask termination-signal names to annotate.
-        start_signal_names: Per-EEF ordered subtask start-signal names to annotate (may be empty).
-        annotate_start: Whether subtask start signals are annotated (SkillGen); when True the marks
-            interleave start/termination per subtask, otherwise every mark is a termination.
+        signal_names: Per-arm ordered pairs of HDF5 signal group and annotation name.
 
     Returns:
         True if the episode was fully annotated, False if it was skipped or never succeeded.
     """
     global is_paused, marked_subtask_action_indices, skip_episode
 
-    term_signal_action_indices: dict[str, int] = {}
-    start_signal_action_indices: dict[str, int] = {}
+    annotations: dict[tuple[str, str], int] = {}
 
-    for eef_name, eef_term_names in term_signal_names.items():
-        eef_start_names = start_signal_names[eef_name]
-        # Nothing to annotate for this eef (e.g. a single end-of-trajectory subtask).
-        if len(eef_term_names) == 0 and len(eef_start_names) == 0:
+    for eef_name, signals in signal_names.items():
+        if not signals:
             continue
 
         while True:
             is_paused = True
             skip_episode = False
             print(f'\tPlaying the episode for subtask annotations for eef "{eef_name}".')
-            print("\tSubtask signals to annotate:")
-            if len(eef_start_names) > 0:
-                print(f"\t\t- Start:\t{eef_start_names}")
-            print(f"\t\t- Termination:\t{eef_term_names}")
+            print("\tSignals to mark in order:")
+            for group, name in signals:
+                print(f"\t\t- {group}: {name}")
             print('\n\tPress "N" to begin.')
             print('\tPress "B" to pause.')
-            print('\tPress "S" to annotate subtask signals.')
+            print('\tPress "S" to mark the next annotation.')
             print('\tPress "Q" to skip the episode.\n')
 
             marked_subtask_action_indices = []
@@ -506,25 +505,11 @@ def annotate_episode_in_manual_mode(
                 print("\tSkipping the episode.")
                 return False
 
-            print(f"\tSubtasks marked at action indices: {marked_subtask_action_indices}")
-            expected_count = len(eef_term_names) + len(eef_start_names)
+            print(f"\tAnnotations marked at action indices: {marked_subtask_action_indices}")
+            expected_count = len(signals)
             if task_succeeded and expected_count == len(marked_subtask_action_indices):
                 print(f'\tAll {expected_count} subtask signals for eef "{eef_name}" were annotated.')
-                # When annotating both signal types the marks interleave start, term, start, term, ...
-                # ending with the final subtask's start, otherwise every mark is a termination.
-                for marked_index in range(expected_count):
-                    if not annotate_start:
-                        term_signal_action_indices[eef_term_names[marked_index]] = marked_subtask_action_indices[
-                            marked_index
-                        ]
-                    elif marked_index % 2 == 0:
-                        start_signal_action_indices[eef_start_names[marked_index // 2]] = marked_subtask_action_indices[
-                            marked_index
-                        ]
-                    else:
-                        term_signal_action_indices[eef_term_names[math.floor(marked_index / 2)]] = (
-                            marked_subtask_action_indices[marked_index]
-                        )
+                annotations.update(zip(signals, marked_subtask_action_indices, strict=True))
                 break
 
             if not task_succeeded:
@@ -540,18 +525,10 @@ def annotate_episode_in_manual_mode(
     num_steps = len(episode.data["actions"])
     annotated_episode = env.recorder_manager.get_episode(0)
 
-    for signal_name, action_index in term_signal_action_indices.items():
-        # Termination signal: False until the subtask completes, True from that step onward.
+    for (group, signal_name), action_index in annotations.items():
         signal = torch.ones(num_steps, dtype=torch.bool)
         signal[:action_index] = False
-        # These are complete trajectories; EpisodeData.add() appends a single timestep.
-        annotated_episode.data["obs"]["datagen_info"].setdefault("subtask_term_signals", {})[signal_name] = signal
-
-    if annotate_start:
-        for signal_name, action_index in start_signal_action_indices.items():
-            signal = torch.ones(num_steps, dtype=torch.bool)
-            signal[:action_index] = False
-            annotated_episode.data["obs"]["datagen_info"].setdefault("subtask_start_signals", {})[signal_name] = signal
+        annotated_episode.data["obs"]["datagen_info"].setdefault(group, {})[signal_name] = signal
 
     return True
 

@@ -14,7 +14,10 @@ from isaaclab.utils.datasets import EpisodeData
 from autodata_core.pool import DataGenInfoPool
 from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
 from autodata_interfaces.embodiments.embodiment_types import ActionTargetFrame, NamedJointTrajectory
+from autodata_interfaces.env.scene_state import get_scene_state
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
+from autodata_interfaces.tasks.schedule_constraint_spec import ScheduleSpec, SegmentId
+from autodata_interfaces.tasks.segment_spec import SegmentRobotContactSpec, SegmentWorldContactSpec
 from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint
 from autodata_interfaces.tasks.subtask_spec import Subtask, SubtaskAlgoParams
 from autodata_interfaces.tasks.task_descriptor import TaskDescriptor
@@ -76,7 +79,7 @@ class Datastream:
         asyncio_lock: asyncio.Lock | None = None,
         uses_start_signals: bool = False,
     ) -> None:
-        """Compose the three sources and build (or adopt) the source-demo pool.
+        """Compose the runtime interfaces and build or adopt the source-demo pool.
 
         Args:
             env: Simulation environment.
@@ -85,16 +88,14 @@ class Datastream:
             source_pool: A pre-built DataGenInfoPool to use. Mutually exclusive
                 with ``source_dataset_path``.
             source_dataset_path: HDF5 path to load source demos from. Mutually exclusive with
-                ``source_pool``.
+                ``source_pool``. Both may be omitted when the task has no demonstration segments;
+                an empty pool is then created for the existing generation pipeline.
             asyncio_lock: (Optional) Lock guarding concurrent pool growth across async env tasks.
                 Pass ``None`` (the default) for static pools that are fully loaded before
                 generation starts (no locking overhead is incurred).
             select_demo_keys: (Optional) Subset of episode keys to load when reading from HDF5.
-            uses_start_signals: (For SkillGen) Whether the algorithm reads subtask start signals.
+            uses_start_signals: Whether the algorithm reads explicit skill starts (SkillGen and ScheduleGen).
         """
-        # TODO: Decide on if uses_start_signals parameter should be refactored. Keeping it explicit for now as it's
-        # needed for DataGenInfoPool construction.
-
         self.env = env
         self.task_descriptor = task_descriptor
         self.embodiment_adapter = embodiment_adapter
@@ -122,12 +123,12 @@ class Datastream:
         task_descriptor.validate_embodiment(embodiment_adapter)
 
         # Initialize the source-demo pool.
-        assert (source_pool is None) != (
-            source_dataset_path is None
-        ), "Must provide exactly one of source_pool or source_dataset_path."
+        assert (
+            source_pool is None or source_dataset_path is None
+        ), "source_pool and source_dataset_path are mutually exclusive"
         if source_pool is not None:
             self._pool = source_pool
-        else:
+        elif source_dataset_path is not None:
             self._pool = DataGenInfoPool.from_hdf5(
                 file_path=source_dataset_path,
                 task_descriptor=task_descriptor,
@@ -135,6 +136,17 @@ class Datastream:
                 device=env.device,
                 uses_start_signals=uses_start_signals,
                 select_demo_keys=select_demo_keys,
+                asyncio_lock=asyncio_lock,
+            )
+        else:
+            assert (
+                not task_descriptor.requires_source_demos()
+            ), "task descriptor requires source demonstrations; provide source_pool or source_dataset_path"
+            self._pool = DataGenInfoPool(
+                task_descriptor=task_descriptor,
+                embodiment_adapter=embodiment_adapter,
+                device=env.device,
+                uses_start_signals=uses_start_signals,
                 asyncio_lock=asyncio_lock,
             )
 
@@ -157,6 +169,15 @@ class Datastream:
         """Return the ordered end-effector names declared by the task."""
 
         return self.task_descriptor.get_eef_names()
+
+    def get_path_build_order(self) -> tuple[str, ...]:
+        """Return the path-building order required by cross-arm object-pose dependencies.
+
+        Returns:
+            End-effector names ordered so each object-pose producer is built before its consumers.
+        """
+
+        return self.task_descriptor.get_path_build_order()
 
     # ------------------------------------------------------------------
     # Task queries
@@ -181,6 +202,26 @@ class Datastream:
         """Return the tasks's cross-subtask constraints."""
 
         return self.task_descriptor.get_task_constraints()
+
+    def get_schedule_spec(self) -> ScheduleSpec | None:
+        """Return the task's immutable segment-level schedule policy."""
+
+        return self.task_descriptor.get_schedule_spec()
+
+    def get_segment_world_contacts(self) -> dict[SegmentId, tuple[SegmentWorldContactSpec, ...]]:
+        """Return task-defined object/fixture contacts keyed by scheduled segment."""
+
+        return self.task_descriptor.get_segment_world_contacts()
+
+    def get_segment_robot_contacts(self) -> dict[SegmentId, tuple[SegmentRobotContactSpec, ...]]:
+        """Return task-defined robot/object contacts keyed by scheduled segment."""
+
+        return self.task_descriptor.get_segment_robot_contacts()
+
+    def get_segment_resource_ids(self) -> dict[SegmentId, tuple[str, ...]]:
+        """Return additional task-local resource claims keyed by scheduled segment."""
+
+        return self.task_descriptor.get_segment_resource_ids()
 
     def get_generation_policy(self) -> GenerationPolicy:
         """Return the cross-cutting generation flags (source-demo selection, interpolation seeding)."""
@@ -575,15 +616,19 @@ class Datastream:
         assert poses.ndim == 3 and poses.shape[1:] == (4, 4), "planning-root poses must have shape (N, 4, 4)"
         return poses
 
-    def get_scene_state(self, is_relative: bool = True) -> dict:
+    def get_scene_state(self, is_relative: bool = True, env_ids: Sequence[int] | None = None) -> dict:
         """Return the raw scene-state snapshot from the underlying env.
 
         Used by the data generator to record the env's initial state at episode start. Prefer
         :meth:`get_object_poses` for object pose math; this method is the raw scene-state escape
         hatch for callers that need the full dict (e.g. recorder ``initial_state``).
+
+        Args:
+            is_relative: Whether root positions are relative to environment origins.
+            env_ids: Environment rows to copy, or None to return the full native state.
         """
 
-        return self.env.scene.get_state(is_relative=is_relative)
+        return get_scene_state(self.env.scene, is_relative=is_relative, env_ids=env_ids)
 
     # ------------------------------------------------------------------
     # Collision-world source

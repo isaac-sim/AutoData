@@ -86,6 +86,14 @@ def _datastream():
     return datastream, task, embodiment_adapter, env
 
 
+def test_robot_joint_positions_preserve_requested_order():
+    datastream, _, _, _ = _datastream()
+    assert torch.equal(
+        datastream.get_robot_joint_positions([0], ("j6", "j1")),
+        torch.tensor([[0.6, 0.1]]),
+    )
+
+
 @pytest.mark.parametrize("object_name", ["cube_1", "door"])
 @pytest.mark.parametrize("env_id", [0, 1])
 def test_object_prim_paths_cover_rigid_and_articulated_objects(object_name, env_id):
@@ -130,7 +138,7 @@ def test_requires_exactly_one_demo_source():
         task_descriptor=task, embodiment_adapter=embodiment_adapter, device=env.device, uses_start_signals=False
     )
     # both provided
-    with pytest.raises(AssertionError, match="exactly one of source_pool"):
+    with pytest.raises(AssertionError, match="mutually exclusive"):
         Datastream(
             env=env,
             task_descriptor=task,
@@ -139,7 +147,7 @@ def test_requires_exactly_one_demo_source():
             source_dataset_path="x.hdf5",
         )
     # neither provided
-    with pytest.raises(AssertionError, match="exactly one of source_pool"):
+    with pytest.raises(AssertionError, match="requires source demonstrations"):
         Datastream(
             env=env, task_descriptor=TaskDescriptor.from_dict(_task_dict()), embodiment_adapter=_embodiment_adapter()
         )
@@ -364,9 +372,12 @@ def test_get_scene_state_passthrough():
     assert datastream.get_scene_state(is_relative=True) is _SCENE_STATE_SENTINEL
 
 
-def test_robot_joint_positions_preserve_requested_order():
+def test_get_scene_state_selected_rows_are_independent():
     datastream, _, _, _ = _datastream()
-    assert torch.equal(
-        datastream.get_robot_joint_positions([0], ("j6", "j1")),
-        torch.tensor([[0.6, 0.1]]),
-    )
+    positions = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+    datastream.env.scene.get_state = lambda **kwargs: {"rigid_object": {"bowl": {"root_pose": positions}}}
+    state = datastream.get_scene_state(env_ids=[2, 0])
+    selected = state["rigid_object"]["bowl"]["root_pose"]
+    assert torch.equal(selected, positions[[2, 0]])
+    selected.zero_()
+    assert torch.equal(positions, torch.arange(12, dtype=torch.float32).reshape(3, 4))

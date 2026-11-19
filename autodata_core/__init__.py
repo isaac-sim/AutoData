@@ -5,7 +5,7 @@
 
 Public entrypoints:
 
-* :class:`DataGenerator` — orchestrates a single async generation job.
+* :class:`DataGenerator` — runs one asynchronous generation job.
 * :class:`DataGenInfoPool` — source-demo container; built via :meth:`DataGenInfoPool.from_hdf5`.
 * :class:`GenerationAlgorithm` and concrete subclasses — pluggable algorithm surface.
 * :func:`get_algorithm`, :func:`iter_algorithms` — algorithm registry lookup.
@@ -23,6 +23,7 @@ from autodata_core.algorithms import (
 from autodata_core.data_generator import DataGenerator, GenerationResult
 from autodata_core.datagen_info import DatagenInfo
 from autodata_core.pool import DataGenInfoPool
+from autodata_core.schedulegen import ScheduleGen
 from autodata_core.waypoint import MultiWaypoint, Waypoint, WaypointSequence, WaypointTrajectory
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "MimicGen",
     "MultiWaypoint",
     "SoftMimicGen",
+    "ScheduleGen",
     "SkillGen",
     "Waypoint",
     "WaypointSequence",

@@ -17,6 +17,7 @@ def test_defaults_all_none():
     assert di.subtask_start_signals is None
     assert di.target_eef_pose is None
     assert di.passthrough_action is None
+    assert di.object_event_signals is None
     assert di.to_dict() == {}
 
 
@@ -39,6 +40,7 @@ def test_to_dict_key_names():
         subtask_start_signals={},
         target_eef_pose={},
         passthrough_action={},
+        object_event_signals={},
     )
     assert set(di.to_dict()) == {
         "eef_pose",
@@ -48,6 +50,7 @@ def test_to_dict_key_names():
         "subtask_start_signals",
         "target_eef_pose",
         "passthrough_action",
+        "object_event_signals",
     }
 
 
@@ -83,3 +86,11 @@ def test_to_dict_deepcopies_object_nodal_positions():
     out = di.to_dict()
     out["object_nodal_positions"]["rope"] += 1.0
     assert torch.count_nonzero(di.object_nodal_positions["rope"]) == 0
+
+
+def test_to_dict_deepcopies_object_event_signals():
+    """Source-event annotations are independent of a caller's exported copy."""
+    info = DatagenInfo(object_event_signals={"grasp": torch.tensor([False, True])})
+    exported = info.to_dict()
+    exported["object_event_signals"]["grasp"][1] = False
+    assert info.object_event_signals["grasp"][1]

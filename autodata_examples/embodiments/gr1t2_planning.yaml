@@ -1,0 +1,180 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+schema: isaac-autodata.curobo-planning-groups.v1
+name: gr1t2
+root_link: base_link
+root_pose_source_frame: base_link
+full_state_collision_scope: complete
+
+# Pink targets each hand-pitch frame with seven arm joints. Each hand has six independent joints
+# and five mimic followers. Keep the waist fixed and retain the followers in the collision model.
+inactive_joint_names:
+  - waist_yaw_joint
+  - waist_pitch_joint
+  - waist_roll_joint
+
+planning_groups:
+  left_arm:
+    eef_name: left
+    tool_link: left_hand_pitch_link
+    auxiliary_joint_names:
+      - L_index_proximal_joint
+      - L_middle_proximal_joint
+      - L_pinky_proximal_joint
+      - L_ring_proximal_joint
+      - L_thumb_proximal_yaw_joint
+      - L_thumb_proximal_pitch_joint
+    initial_auxiliary_joint_positions: 0.0
+    # Intended hand contacts supplement the generated topology policy. Other pairs remain checked.
+    self_collision_ignore_pairs:
+      - [L_index_intermediate_link, L_middle_intermediate_link]
+      - [L_index_intermediate_link, L_middle_proximal_link]
+      - [L_index_intermediate_link, L_pinky_intermediate_link]
+      - [L_index_intermediate_link, L_pinky_proximal_link]
+      - [L_index_intermediate_link, L_ring_intermediate_link]
+      - [L_index_intermediate_link, L_ring_proximal_link]
+      - [L_index_intermediate_link, L_thumb_distal_link]
+      - [L_index_intermediate_link, L_thumb_proximal_base_link]
+      - [L_index_intermediate_link, L_thumb_proximal_link]
+      - [L_index_proximal_link, L_middle_intermediate_link]
+      - [L_index_proximal_link, L_pinky_intermediate_link]
+      - [L_index_proximal_link, L_ring_intermediate_link]
+      - [L_index_proximal_link, L_thumb_distal_link]
+      - [L_index_proximal_link, L_thumb_proximal_link]
+      - [L_middle_intermediate_link, L_pinky_intermediate_link]
+      - [L_middle_intermediate_link, L_pinky_proximal_link]
+      - [L_middle_intermediate_link, L_ring_intermediate_link]
+      - [L_middle_intermediate_link, L_ring_proximal_link]
+      - [L_middle_intermediate_link, L_thumb_distal_link]
+      - [L_middle_intermediate_link, L_thumb_proximal_base_link]
+      - [L_middle_intermediate_link, L_thumb_proximal_link]
+      - [L_middle_proximal_link, L_pinky_intermediate_link]
+      - [L_middle_proximal_link, L_ring_intermediate_link]
+      - [L_middle_proximal_link, L_thumb_distal_link]
+      - [L_middle_proximal_link, L_thumb_proximal_link]
+      - [L_pinky_intermediate_link, L_ring_intermediate_link]
+      - [L_pinky_intermediate_link, L_ring_proximal_link]
+      - [L_pinky_intermediate_link, L_thumb_distal_link]
+      - [L_pinky_intermediate_link, L_thumb_proximal_base_link]
+      - [L_pinky_intermediate_link, L_thumb_proximal_link]
+      - [L_pinky_proximal_link, L_ring_intermediate_link]
+      - [L_pinky_proximal_link, L_thumb_distal_link]
+      - [L_pinky_proximal_link, L_thumb_proximal_link]
+      - [L_ring_intermediate_link, L_thumb_distal_link]
+      - [L_ring_intermediate_link, L_thumb_proximal_base_link]
+      - [L_ring_intermediate_link, L_thumb_proximal_link]
+      - [L_ring_proximal_link, L_thumb_distal_link]
+      - [L_ring_proximal_link, L_thumb_proximal_link]
+      - [L_thumb_distal_link, left_hand_pitch_link]
+      - [L_thumb_proximal_base_link, left_hand_yaw_link]
+      - [L_thumb_proximal_link, left_hand_yaw_link]
+  right_arm:
+    eef_name: right
+    tool_link: right_hand_pitch_link
+    auxiliary_joint_names:
+      - R_index_proximal_joint
+      - R_middle_proximal_joint
+      - R_pinky_proximal_joint
+      - R_ring_proximal_joint
+      - R_thumb_proximal_yaw_joint
+      - R_thumb_proximal_pitch_joint
+    initial_auxiliary_joint_positions: 0.0
+    self_collision_ignore_pairs:
+      - [R_index_intermediate_link, R_middle_intermediate_link]
+      - [R_index_intermediate_link, R_middle_proximal_link]
+      - [R_index_intermediate_link, R_pinky_intermediate_link]
+      - [R_index_intermediate_link, R_pinky_proximal_link]
+      - [R_index_intermediate_link, R_ring_intermediate_link]
+      - [R_index_intermediate_link, R_ring_proximal_link]
+      - [R_index_intermediate_link, R_thumb_distal_link]
+      - [R_index_intermediate_link, R_thumb_proximal_base_link]
+      - [R_index_intermediate_link, R_thumb_proximal_link]
+      - [R_index_proximal_link, R_middle_intermediate_link]
+      - [R_index_proximal_link, R_pinky_intermediate_link]
+      - [R_index_proximal_link, R_ring_intermediate_link]
+      - [R_index_proximal_link, R_thumb_distal_link]
+      - [R_index_proximal_link, R_thumb_proximal_link]
+      - [R_middle_intermediate_link, R_pinky_intermediate_link]
+      - [R_middle_intermediate_link, R_pinky_proximal_link]
+      - [R_middle_intermediate_link, R_ring_intermediate_link]
+      - [R_middle_intermediate_link, R_ring_proximal_link]
+      - [R_middle_intermediate_link, R_thumb_distal_link]
+      - [R_middle_intermediate_link, R_thumb_proximal_base_link]
+      - [R_middle_intermediate_link, R_thumb_proximal_link]
+      - [R_middle_proximal_link, R_pinky_intermediate_link]
+      - [R_middle_proximal_link, R_ring_intermediate_link]
+      - [R_middle_proximal_link, R_thumb_distal_link]
+      - [R_middle_proximal_link, R_thumb_proximal_link]
+      - [R_pinky_intermediate_link, R_ring_intermediate_link]
+      - [R_pinky_intermediate_link, R_ring_proximal_link]
+      - [R_pinky_intermediate_link, R_thumb_distal_link]
+      - [R_pinky_intermediate_link, R_thumb_proximal_base_link]
+      - [R_pinky_intermediate_link, R_thumb_proximal_link]
+      - [R_pinky_proximal_link, R_ring_intermediate_link]
+      - [R_pinky_proximal_link, R_thumb_distal_link]
+      - [R_pinky_proximal_link, R_thumb_proximal_link]
+      - [R_ring_intermediate_link, R_thumb_distal_link]
+      - [R_ring_intermediate_link, R_thumb_proximal_base_link]
+      - [R_ring_intermediate_link, R_thumb_proximal_link]
+      - [R_ring_proximal_link, R_thumb_distal_link]
+      - [R_ring_proximal_link, R_thumb_proximal_link]
+      - [R_thumb_distal_link, right_hand_pitch_link]
+      - [R_thumb_proximal_base_link, right_hand_yaw_link]
+      - [R_thumb_proximal_link, right_hand_yaw_link]
+
+sphere_fit:
+  # This is a ceiling, not a target: fitting stops as soon as the quality gate passes. Large fixed
+  # body meshes need more candidates than the small arm/hand links.
+  max_spheres_per_link: 200
+  surface_samples_per_geometry: 1000
+  candidates_per_geometry: 800
+  # Inflate fitted spheres by 5.2 mm; fitting also enforces coverage and native sphere capacity.
+  inflation_m: 0.0052
+  min_coverage_ratio: 0.95
+  max_uncovered_distance_m: 0.01
+  convexify_non_watertight: true
+
+robot_config:
+  attachment_sphere_count: 100
+  self_collision_ignore_depth: 2
+  max_acceleration: 15.0
+  max_jerk: 500.0
+
+planner:
+  world_config_file: collision_table.yml
+  static_objects: [table, scale, bin]
+  # Match the reviewed GR1T2 SkillGen collision world. Its per-arm transit planner omits the
+  # task table; the loose nut starts inside its beaker and is not an independent transit obstacle.
+  world_ignore_substrings:
+    - /Table
+    - /FactoryNut
+    - /Robot
+    - /World/GroundPlane
+    - /World/defaultGroundPlane
+    - /curobo
+  num_trajopt_seeds: 12
+  num_graph_seeds: 12
+  interpolation_dt: 0.05
+  # The base task leaves arm actuator speeds unbounded; cap planning explicitly.
+  max_joint_velocity: 1.0
+  collision_cache_size: {obb: 150, mesh: 150}
+  trajopt_tsteps: 32
+  collision_activation_distance: 0.04
+  approach_distance: 0.0
+  # Release segments author their own distance; this frame maps the standard -Z direction to
+  # world-up while leaving ordinary transits unchanged.
+  retreat_distance: 0.0
+  approach_retreat_frame: world
+  approach_direction: [0.0, 0.0, -1.0]
+  enable_graph: true
+  enable_graph_attempt: 5
+  max_planning_attempts: 15
+  enable_finetune_trajopt: true
+  # Keep optimized timing; the returned trajectory is sampled at the 20 Hz control rate.
+  time_dilation_factor: 1.0
+  surface_sphere_radius: 0.01
+  position_threshold: 0.005
+  rotation_threshold: 0.05
+  ik_candidate_count: 32
+  debug_planner: true

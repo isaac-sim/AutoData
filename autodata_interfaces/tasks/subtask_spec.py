@@ -6,6 +6,8 @@ from __future__ import annotations
 from dataclasses import MISSING, dataclass, field
 from typing import Any, get_origin, get_type_hints
 
+from autodata_interfaces.tasks.segment_spec import SegmentSpec
+
 
 @dataclass
 class SubtaskAlgoParams:
@@ -88,9 +90,11 @@ class Subtask:
     """Configuration object used to specify subtasks used in data generation.
 
     Args:
+        name: Stable local identifier used by segment schedule constraints.
+            Empty for legacy task descriptors.
         object_ref: Reference object involved in the subtask. Empty string
             if no object is involved.
-        description: Human/agent readable description of the subtask.
+        description: Human-readable description of the subtask.
         subtask_start_signal: Boolean start signal name. Empty string if the
             subtask has no explicit start signal.
         subtask_term_signal: Boolean termination signal name. Empty string
@@ -110,10 +114,13 @@ class Subtask:
             executing this subtask's segment.
         apply_noise_during_interpolation: Whether to apply ``action_noise``
             during the interpolation phase as well.
+        segments: Ordered trajectory segments compiled for scheduled generation.
+            Empty for legacy task descriptors.
         algo_params: Algorithm-specific parameters (e.g.
             :class:`SkillGenSubtaskAlgoParams`).
     """
 
+    name: str = ""
     object_ref: str = ""
     description: str = ""
     subtask_start_signal: str = ""
@@ -126,6 +133,7 @@ class Subtask:
     num_interpolation_steps: int = 0
     num_fixed_steps: int = 0
     apply_noise_during_interpolation: bool = False
+    segments: tuple[SegmentSpec, ...] = field(default_factory=tuple)
     algo_params: SubtaskAlgoParams = MISSING
 
 
@@ -134,6 +142,7 @@ ALGO_PARAMS_REGISTRY: dict[str, type[SubtaskAlgoParams]] = {
     "dexmimicgen": DexMimicGenSubtaskAlgoParams,
     "skillgen": SkillGenSubtaskAlgoParams,
     "softmimicgen": SoftMimicGenSubtaskAlgoParams,
+    "schedulegen": SkillGenSubtaskAlgoParams,
 }
 """Maps the ``algo:`` discriminator in a YAML task config to the
 corresponding :class:`SubtaskAlgoParams` subclass.

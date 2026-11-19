@@ -5,8 +5,14 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
-from autodata_utils.generation_result import AttemptLog, attempts_file_for, write_generation_result
+from autodata_utils.generation_result import (
+    AttemptLog,
+    attempts_file_for,
+    record_generation_attempt,
+    write_generation_result,
+)
 
 
 def test_write_generation_result_writes_completed_stats_atomically(tmp_path):
@@ -44,6 +50,8 @@ def test_write_generation_result_records_env_profile_when_given(tmp_path):
             "path": "autodata_examples/env_profiles/franka_bin_stack.yaml",
             "planner": "franka_stack_cube_bin",
         },
+        environment={"name": "example", "physics_manager": "example:Physics", "control_dt_s": 0.05},
+        execution={"mode": "buffered", "num_envs": 2, "timings_s": {"replay_s": 1.5}},
     )
 
     with result_file.open(encoding="utf-8") as result_handle:
@@ -53,6 +61,28 @@ def test_write_generation_result_records_env_profile_when_given(tmp_path):
         "path": "autodata_examples/env_profiles/franka_bin_stack.yaml",
         "planner": "franka_stack_cube_bin",
     }
+    assert result["environment"] == {
+        "name": "example",
+        "physics_manager": "example:Physics",
+        "control_dt_s": 0.05,
+    }
+    assert result["execution"] == {"mode": "buffered", "num_envs": 2, "timings_s": {"replay_s": 1.5}}
+
+
+def test_record_generation_attempt_counts_pre_replay_failures():
+    stats = {"num_success": 0, "num_failures": 0, "num_attempts": 0}
+    attempts = []
+    for env_id, success in ((0, False), (1, True)):
+        record_generation_attempt(
+            SimpleNamespace(success=success, diagnostics=(("stage", "complete" if success else "planning"),)),
+            env_id,
+            stats,
+            attempts,
+        )
+    assert stats == {"num_success": 1, "num_failures": 1, "num_attempts": 2}
+    assert [attempt["attempt"] for attempt in attempts] == [1, 2]
+    assert [attempt["env_id"] for attempt in attempts] == [0, 1]
+    assert attempts[0]["diagnostics"] == {"stage": "planning"}
 
 
 def test_rerun_with_the_same_result_file_keeps_the_earlier_attempt_log(tmp_path: Path) -> None:
@@ -63,3 +93,29 @@ def test_rerun_with_the_same_result_file_keeps_the_earlier_attempt_log(tmp_path:
 
     earlier = Path(attempts_file_for(result_file, "run-a")).read_text().splitlines()
     assert [json.loads(line)["run_id"] for line in earlier] == ["run-a"]
+
+
+def test_attempt_log_accepts_scoped_and_batched_initial_states(tmp_path):
+    """Metrics select row zero for a scoped snapshot and the environment row for a batch."""
+    import torch
+
+    for count in (1, 3):
+        path = tmp_path / f"{count}.jsonl"
+        poses = torch.arange(count * 7).reshape(count, 7)
+        result = SimpleNamespace(
+            success=True,
+            diagnostics=(),
+            extras={"planning_failed": False},
+            initial_state={"rigid_object": {"bowl": {"root_pose": poses}}},
+        )
+        record_generation_attempt(
+            result,
+            2,
+            {"num_success": 0, "num_failures": 0, "num_attempts": 0},
+            [],
+            attempt_log=AttemptLog(str(path), "test"),
+            start_time_s=0.0,
+        )
+        record = json.loads(path.read_text())
+        assert record["initial_object_positions"]["bowl"] == poses[0 if count == 1 else 2, :2].tolist()
+        assert record["extras"] == {"planning_failed": False}

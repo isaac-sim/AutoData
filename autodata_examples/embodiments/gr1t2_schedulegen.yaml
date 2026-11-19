@@ -1,0 +1,68 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Embodiment descriptor for the GR1 (IK, Absolute-pose).
+#
+# Action vector layout (36-D):
+#   [0..3)    left EEF position [m]
+#   [3..7)    left EEF quaternion (x, y, z, w)
+#   [7..10)   right EEF position [m]
+#   [10..14)  right EEF quaternion (x, y, z, w)
+#   [14..36)  22 interleaved left/right hand joint positions
+#
+# Pose is absolute; tracked by the whole-body PinkIK controller.
+# EEF observations use the upstream hand-roll frames; Pink targets the hand-pitch frames.
+
+type: absolute_pose_whole_body_bimanual
+name: gr1t2
+description: GR1 humanoid with whole-body IK and dexterous hands, absolute-pose control.
+planning_model_action_term: gr1_action
+
+eefs:
+  left:
+    pose_obs_keys:
+      pos: left_eef_pos
+      quat: left_eef_quat
+    # 11 left-hand joints: 5 proximal + 5 intermediate + 1 distal
+    gripper_action_indices: [0, 1, 2, 3, 4, 10, 11, 12, 13, 14, 20]
+    joint_names:
+      - L_index_proximal_joint
+      - L_middle_proximal_joint
+      - L_pinky_proximal_joint
+      - L_ring_proximal_joint
+      - L_thumb_proximal_yaw_joint
+      - L_index_intermediate_joint
+      - L_middle_intermediate_joint
+      - L_pinky_intermediate_joint
+      - L_ring_intermediate_joint
+      - L_thumb_proximal_pitch_joint
+      - L_thumb_distal_joint
+    passthrough_presets:
+      open: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+  right:
+    pose_obs_keys:
+      pos: right_eef_pos
+      quat: right_eef_quat
+    # 11 right-hand joints: 5 proximal + 5 intermediate + 1 distal
+    gripper_action_indices: [5, 6, 7, 8, 9, 15, 16, 17, 18, 19, 21]
+    joint_names:
+      - R_index_proximal_joint
+      - R_middle_proximal_joint
+      - R_pinky_proximal_joint
+      - R_ring_proximal_joint
+      - R_thumb_proximal_yaw_joint
+      - R_index_intermediate_joint
+      - R_middle_intermediate_joint
+      - R_pinky_intermediate_joint
+      - R_ring_intermediate_joint
+      - R_thumb_proximal_pitch_joint
+      - R_thumb_distal_joint
+    passthrough_presets:
+      open: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+action_layout:
+  left_pose_slice: [0, 7]
+  right_pose_slice: [7, 14]
+  hand_joints_slice: [14, 36]
+  canonicalize_quat: true
