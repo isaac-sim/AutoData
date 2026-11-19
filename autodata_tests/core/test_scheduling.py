@@ -43,6 +43,18 @@ from autodata_interfaces.tasks.schedule_constraint_spec import (
 
 
 @pytest.mark.parametrize("strategy", tuple(SchedulerStrategy))
+def test_colliding_final_poses_are_infeasible(strategy):
+    left, right = (SegmentId.from_string(f"{arm}.move.transit") for arm in ("left", "right"))
+    result = schedule_paths(
+        (SchedulePath(left, "left", 2), SchedulePath(right, "right", 2)),
+        (WaypointConflict(SegmentWaypoint(left, 1), SegmentWaypoint(right, 1)),),
+        strategy=strategy,
+    )
+    assert isinstance(result, ScheduleFailure)
+    assert result.reason == "infeasible"
+
+
+@pytest.mark.parametrize("strategy", tuple(SchedulerStrategy))
 @pytest.mark.parametrize("minimize_max_wait", (False, True))
 def test_collision_conflicts_preserve_precedence_and_non_preemption(strategy, minimize_max_wait):
     left = SegmentId.from_string("left.pour.transit")

@@ -56,7 +56,6 @@ class _Layout:
 
 def schedule_paths(
     paths: tuple[SchedulePath, ...],
-    *,
     conflicts: tuple[WaypointConflict, ...] = (),
     precedence: tuple[PrecedenceConstraintSpec, ...] = (),
     non_overlap: tuple[NonOverlapConstraintSpec, ...] = (),
@@ -117,6 +116,7 @@ def schedule_paths(
     assert time_limit_s is None or time_limit_s > 0.0, "time_limit_s must be positive"
     assert isinstance(minimize_max_wait, bool), "minimize_max_wait must be a bool"
 
+    # A group has one start-time variable; waypoints inside it retain fixed one-tick spacing.
     group_size = 1 if strategy == SchedulerStrategy.WAYPOINT_RETIMING else max_block_size
     layout = _layout_create(paths, max_group_size=group_size)
     conflicts = _conflicts_validate_and_deduplicate(layout, conflicts)
@@ -134,6 +134,7 @@ def schedule_paths(
         )
     non_overlap = _non_overlap_resolve(layout, non_overlap)
 
+    # Lay out the integer start times, makespan, optional wait cost, and binary order choices.
     horizon_ticks = _horizon_ticks(layout, precedence)
     makespan_variable = layout.time_variable_count
     max_wait_variable = makespan_variable + 1 if minimize_max_wait else None
@@ -143,6 +144,7 @@ def schedule_paths(
     time_lower_bounds, time_upper_bounds = _time_variable_bounds(layout, horizon_ticks)
     rows: list[_ConstraintRow] = []
 
+    # Preserve lane order. Non-preemptive pairs are consecutive; other pairs may acquire waits.
     for lane_waypoints in layout.waypoints_by_lane.values():
         for first, second in zip(lane_waypoints, lane_waypoints[1:], strict=False):
             if layout.group_by_waypoint[first] == layout.group_by_waypoint[second]:
@@ -170,6 +172,7 @@ def schedule_paths(
         )
         _constraint_add(rows, terminal_progress, lower=1.0)
 
+    # Task ordering constrains segment boundary times, independent of collision ordering.
     for constraint in precedence:
         lag = _expressions_combine(
             (1.0, _anchor_expression(layout, constraint.after)),
@@ -182,6 +185,7 @@ def schedule_paths(
             upper=None if constraint.max_lag_steps is None else float(constraint.max_lag_steps),
         )
 
+    # Each binary chooses which colliding held-state interval must finish first.
     for conflict_index, (first_group, second_group, first_conflicts, second_conflicts) in enumerate(conflict_groups):
         order_variable = binary_offset + conflict_index
         first_start, first_end = _conflict_group_interval(
@@ -208,6 +212,7 @@ def schedule_paths(
             time_upper_bounds=time_upper_bounds,
         )
 
+    # Resource/task mutexes apply the same ordering choice to whole segments.
     for constraint_index, constraint in enumerate(non_overlap):
         first_id, second_id = constraint.segments
         order_variable = non_overlap_binary_offset + constraint_index
@@ -222,6 +227,7 @@ def schedule_paths(
             time_upper_bounds=time_upper_bounds,
         )
 
+    # An extra tick of makespan costs more than any possible improvement in the wait term.
     objective = np.zeros(variable_count, dtype=np.float64)
     objective[makespan_variable] = 1.0
     if max_wait_variable is not None:
@@ -265,6 +271,7 @@ def schedule_paths(
         message = str(result.message).strip() or f"MILP returned status {result.status}"
         return ScheduleFailure(reason=reason, message=message)
 
+    # Recheck the integer candidate independently before returning an executable schedule.
     values = np.asarray(result.x, dtype=np.float64)
     rounded = np.rint(values)
     if not bool(np.allclose(values, rounded, atol=1.0e-6, rtol=0.0)):
@@ -294,7 +301,7 @@ def schedule_paths(
     return schedule
 
 
-def _layout_create(paths: tuple[SchedulePath, ...], *, max_group_size: int) -> _Layout:
+def _layout_create(paths: tuple[SchedulePath, ...], max_group_size: int) -> _Layout:
     """Assign time variables to fixed-rate groups and link consecutive lane commands.
 
     Args:
