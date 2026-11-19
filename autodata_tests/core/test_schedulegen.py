@@ -144,6 +144,48 @@ def test_projected_objects_are_checked_against_each_other():
         )
 
 
+@pytest.mark.parametrize("rejection", (None, "world", "projected"))
+def test_object_pairs_switch_from_live_meshes_to_projected_spheres(rejection):
+    """Keep native mesh checks before manipulation and pair checks after both meshes leave."""
+    first = torch.tensor([[[-2.0, 0, 0, 0.1]], [[0.0, 0, 0, 0.1]], [[-2.0, 0, 0, 0.1]]])
+    if rejection == "projected":
+        first[2, 0, 0] = 0
+    second = first.clone()
+    second[:, :, 0] *= -1
+    queries = []
+
+    def world_clear(spheres, margin, *, excluded_obstacle_paths):
+        """Distinguish a real mesh collision from overlap of its sampled approximation."""
+        queries.append(excluded_obstacle_paths)
+        clear = torch.ones(len(spheres), dtype=torch.bool)
+        if rejection == "world" and excluded_obstacle_paths == ("/first",):
+            clear[-1] = False
+        return clear
+
+    robot = SimpleNamespace(
+        joint_positions=torch.zeros(2, 1), collision_joint_positions=torch.zeros(3, 1), collision_sample_ticks=(0, 1, 2)
+    )
+    planner = SimpleNamespace(
+        update_world=lambda: None,
+        joint_positions_world_collision_free=lambda states, *args, **kwargs: torch.ones(len(states), dtype=torch.bool),
+        environment_spheres_world_collision_free=world_clear,
+    )
+    arguments = (
+        planner,
+        robot,
+        {"first": first, "second": second},
+        {name: SimpleNamespace(obstacle_path=f"/{name}") for name in ("first", "second")},
+    )
+    options = {"collision_margin_m": 0, "object_manipulation_starts": {"first": 0, "second": 2}}
+    if rejection is None:
+        assert scheduled_world_validate(*arguments, **options) == (3, 6, 0)
+    else:
+        tick = "1/2" if rejection == "world" else "2"
+        with pytest.raises(EpisodeGenerationError, match=f"boundary tick {tick}"):
+            scheduled_world_validate(*arguments, **options)
+    assert ("/first",) in queries, "The stationary second object's original mesh must remain checked."
+
+
 def test_grasp_and_carry_permissions_allow_only_the_carrying_hand():
     grasp, release = (SegmentId.from_string(f"left.{name}.skill") for name in ("grasp", "release"))
     path = ArmPath("left", (Waypoint(torch.eye(4), {}),) * 5, torch.zeros(5, 1), {grasp: (0, 3), release: (3, 5)})

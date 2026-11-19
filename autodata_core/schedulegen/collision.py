@@ -634,17 +634,21 @@ def scheduled_world_validate(
                     f"boundary tick {tick}/{len(spheres) - 1}{witness_message}",
                 )
             start = stop
-    _object_pairs_validate(object_spheres, collision_margin_m, batch_size)
+    _object_pairs_validate(object_spheres, object_manipulation_starts, collision_margin_m, batch_size)
     return len(robot_states), object_sample_count, waived_contact_sample_count
 
 
 def _object_pairs_validate(
-    object_spheres: Mapping[str, torch.Tensor], collision_margin_m: float, batch_size: int
+    object_spheres: Mapping[str, torch.Tensor],
+    object_manipulation_starts: Mapping[str, int],
+    collision_margin_m: float,
+    batch_size: int,
 ) -> None:
     """Reject collisions between projected object timelines.
 
     Args:
         object_spheres: Environment-frame spheres with shape ``(T, N, 4)`` per object [m].
+        object_manipulation_starts: Boundary where each projected object replaces its original world mesh.
         collision_margin_m: Additional required surface separation [m].
         batch_size: Maximum number of states per collision query.
     """
@@ -652,7 +656,10 @@ def _object_pairs_validate(
     for first_name, second_name in combinations(sorted(object_spheres), 2):
         first, second = object_spheres[first_name], object_spheres[second_name]
         assert len(first) == len(second), "projected object timelines must align"
-        for start in range(0, len(first), batch_size):
+        # Until both original meshes are excluded, the native object/world queries above
+        # cover this pair without substituting another surface-sphere approximation.
+        pair_start = max(object_manipulation_starts[first_name], object_manipulation_starts[second_name])
+        for start in range(pair_start, len(first), batch_size):
             clearances = _minimum_clearance(first[start : start + batch_size], second[start : start + batch_size], 64)
             rejected = torch.nonzero(clearances <= collision_margin_m, as_tuple=False)
             if len(rejected):
