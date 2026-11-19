@@ -64,7 +64,12 @@ def randomize_light(
     """
     if len(env_ids) == 0:
         return
-    prims = _find_light_prims(env, env_ids, asset_cfg)
+    prims, unselected = _find_light_prims(env, env_ids, asset_cfg)
+    # Preserve inherited values before editing a source light in another environment.
+    for prim in unselected:
+        for name in ("inputs:intensity", "inputs:color"):
+            attribute = prim.GetAttribute(name)
+            attribute.Set(attribute.Get())
     for prim in prims:
         intensity = sample_uniform_scalar(intensity_range, env.device)
         color_temperature = sample_uniform_scalar(color_temperature_range, env.device)
@@ -72,7 +77,10 @@ def randomize_light(
         prim.GetAttribute("inputs:color").Set(color_temperature_to_rgb(color_temperature))
 
 
-def _find_light_prims(env: ManagerBasedEnv, env_ids: torch.Tensor, asset_cfg: SceneEntityCfg) -> list[Any]:
+def _find_light_prims(
+    env: ManagerBasedEnv, env_ids: torch.Tensor, asset_cfg: SceneEntityCfg
+) -> tuple[list[Any], list[Any]]:
+    """Find selected lights and the remaining configured lights."""
     from isaaclab.sim.utils import find_matching_prims
     from pxr import UsdLux
 
@@ -85,7 +93,7 @@ def _find_light_prims(env: ManagerBasedEnv, env_ids: torch.Tensor, asset_cfg: Sc
         assert (
             len(candidates) == 1
         ), f"Lighting DR requires exactly one light for {asset_cfg.name!r}; found {len(candidates)}."
-        return candidates
+        return candidates, []
     assert not any(
         prim.IsA(UsdLux.DomeLight) for prim in candidates
     ), "Dome-light DR requires num_envs=1. Use per-environment non-dome lights for parallel lighting DR."
@@ -98,4 +106,5 @@ def _find_light_prims(env: ManagerBasedEnv, env_ids: torch.Tensor, asset_cfg: Sc
             f"found {len(matches)}. Global lights cannot be randomized independently per environment."
         )
         selected.append(matches[0])
-    return selected
+    selected_paths = {prim.GetPath() for prim in selected}
+    return selected, [prim for prim in candidates if prim.GetPath() not in selected_paths]

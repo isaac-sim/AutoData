@@ -96,6 +96,9 @@ class _Attribute:
     def Set(self, value):
         self.value = value
 
+    def DisconnectSource(self):
+        return True
+
 
 class _LightPrim:
     def __init__(self):
@@ -107,7 +110,7 @@ class _LightPrim:
 
 def test_lighting_event_uses_seeded_torch_rng(monkeypatch):
     selected_prim = [_LightPrim()]
-    monkeypatch.setattr(lighting, "_find_light_prims", lambda *_: selected_prim)
+    monkeypatch.setattr(lighting, "_find_light_prims", lambda *_: (selected_prim, []))
     env = SimpleNamespace(device="cpu")
 
     torch.manual_seed(7)
@@ -555,7 +558,9 @@ def test_material_scalar_sampling_is_seeded_and_updates_all_matches(monkeypatch)
     assert all(0.25 <= value <= 0.75 for value in first)
 
 
-def test_material_overrides_isolate_targets_sharing_a_source_and_are_reused():
+@pytest.mark.parametrize("static_asset", [False, True])
+def test_material_overrides_isolate_targets_sharing_a_source_and_are_reused(static_asset):
+    from isaaclab.assets import AssetBaseCfg
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
     class Scene(dict):
@@ -573,7 +578,9 @@ def test_material_overrides_isolate_targets_sharing_a_source_and_are_reused():
     meshes = [UsdGeom.Cube.Define(stage, f"{root}/{name}").GetPrim() for name in ("mesh_A", "mesh_B")]
     for mesh in meshes:
         UsdShade.MaterialBindingAPI.Apply(mesh).Bind(material)
-    scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path=root)))
+    object_cfg = AssetBaseCfg(prim_path=root)
+    scene = Scene(object=object_cfg if static_asset else SimpleNamespace(cfg=object_cfg))
+    scene.cfg = SimpleNamespace(object=object_cfg)
     scene.stage = stage
     scene.env_prim_paths = ["/World/envs/env_0"]
     env = SimpleNamespace(scene=scene, device="cpu")
@@ -605,7 +612,293 @@ def test_material_overrides_isolate_targets_sharing_a_source_and_are_reused():
         assert stage.GetRootLayer().ExportToString() == before
 
 
-def test_material_overrides_do_not_reuse_an_inherited_override():
+@pytest.mark.parametrize("event", ["scalar", "color"])
+def test_material_randomization_replaces_connections_only_on_selected_targets(event):
+    from pxr import Sdf, Usd, UsdGeom, UsdShade
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    source = UsdShade.Material.Define(stage, "/World/Looks/Source")
+    shader = UsdShade.Shader.Define(stage, str(source.GetPath()) + "/Shader")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    texture = UsdShade.Shader.Define(stage, str(source.GetPath()) + "/Texture")
+    texture.CreateIdAttr("UsdUVTexture")
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).ConnectToSource(
+        texture.CreateOutput("r", Sdf.ValueTypeNames.Float)
+    )
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+        texture.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+    )
+    source.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    env_paths = [f"/World/envs/env_{index}" for index in range(2)]
+    meshes = []
+    for env_path in env_paths:
+        UsdGeom.Xform.Define(stage, env_path + "/Object")
+        mesh = UsdGeom.Cube.Define(stage, env_path + "/Object/mesh").GetPrim()
+        UsdShade.MaterialBindingAPI.Apply(mesh).Bind(source)
+        meshes.append(mesh)
+    scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/envs/env_.*/Object")))
+    scene.cfg = SimpleNamespace(object=scene["object"].cfg)
+    scene.stage = stage
+    scene.env_prim_paths = env_paths
+    env = SimpleNamespace(scene=scene, device="cpu")
+    asset = SimpleNamespace(name="object")
+
+    def reset_material():
+        if event == "scalar":
+            materials.randomize_material_scalar(env, torch.tensor([0]), asset, ("mesh",), "roughness", (0.8, 0.8))
+        else:
+            materials.randomize_material_color(
+                env, torch.tensor([0]), asset, ("mesh",), "diffuseColor", ((0.1, 0.2, 0.3),)
+            )
+
+    reset_material()
+    bound, _ = UsdShade.MaterialBindingAPI(meshes[0]).ComputeBoundMaterial()
+    assert bound.GetPath() != source.GetPath()
+    result_shader = UsdShade.Shader(stage.GetPrimAtPath(str(bound.GetPath()) + "/Shader"))
+    input_name = "roughness" if event == "scalar" else "diffuseColor"
+    result = result_shader.GetInput(input_name)
+    assert not result.GetConnectedSources()[0]
+    assert [attribute.GetPath() for attribute in result.GetValueProducingAttributes()] == [result.GetAttr().GetPath()]
+    value = result.Get() if event == "scalar" else tuple(result.Get())
+    assert value == pytest.approx(0.8 if event == "scalar" else (0.1, 0.2, 0.3))
+    other_input = "diffuseColor" if event == "scalar" else "roughness"
+    assert result_shader.GetInput(other_input).GetConnectedSources()[0]
+    for name in ("roughness", "diffuseColor"):
+        assert shader.GetInput(name).GetConnectedSources()[0]
+        assert shader.GetInput(name).Get() is None
+    assert UsdShade.MaterialBindingAPI(meshes[1]).ComputeBoundMaterial()[0].GetPath() == source.GetPath()
+
+    before = stage.GetRootLayer().ExportToString()
+    for _ in range(3):
+        reset_material()
+        assert stage.GetRootLayer().ExportToString() == before
+
+
+@pytest.mark.parametrize("event", ["scalar", "color"])
+def test_material_randomization_excludes_generated_materials_and_reuses_root_override(monkeypatch, event):
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    source = UsdShade.Material.Define(stage, "/World/Looks/Source")
+    shader = UsdShade.Shader.Define(stage, "/World/Looks/Source/Shader")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(1.0))
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+    source.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    root_path = "/World/envs/env_0/MaterialPanel"
+    root = UsdGeom.Cube.Define(stage, root_path).GetPrim()
+    UsdShade.MaterialBindingAPI.Apply(root).Bind(source)
+    scene = Scene(panel=SimpleNamespace(cfg=SimpleNamespace(prim_path=root_path)))
+    scene.cfg = SimpleNamespace(panel=scene["panel"].cfg)
+    scene.stage = stage
+    scene.env_prim_paths = ["/World/envs/env_0"]
+    env = SimpleNamespace(scene=scene, device="cpu")
+    ids = torch.tensor([0])
+    asset_cfg = SimpleNamespace(name="panel")
+    materials.randomize_material_scalar(env, ids, asset_cfg, ("MaterialPanel",), "roughness", (0.2, 0.2))
+    initial_material, _ = UsdShade.MaterialBindingAPI(root).ComputeBoundMaterial()
+    overrides_path = root.GetPath().AppendChild("DomainRandomizationMaterials")
+    compute_bound_material = UsdShade.MaterialBindingAPI.ComputeBoundMaterial
+
+    def compute_visual_material(binding_api, *args, **kwargs):
+        # Fail before a regression can create overrides indefinitely during traversal.
+        assert not binding_api.GetPrim().GetPath().HasPrefix(overrides_path)
+        return compute_bound_material(binding_api, *args, **kwargs)
+
+    monkeypatch.setattr(UsdShade.MaterialBindingAPI, "ComputeBoundMaterial", compute_visual_material)
+
+    def reset_materials():
+        if event == "scalar":
+            materials.randomize_material_scalar(env, ids, asset_cfg, ("Material",), "roughness", (0.8, 0.8))
+        else:
+            materials.randomize_material_color(env, ids, asset_cfg, ("Material",), "diffuseColor", ((0.1, 0.2, 0.3),))
+
+    reset_materials()
+    bound_material, _ = UsdShade.MaterialBindingAPI(root).ComputeBoundMaterial()
+    assert bound_material.GetPath() == initial_material.GetPath()
+    bound_shader = UsdShade.Shader(stage.GetPrimAtPath(str(bound_material.GetPath()) + "/Shader"))
+    if event == "scalar":
+        assert bound_shader.GetInput("roughness").Get() == pytest.approx(0.8)
+    else:
+        assert tuple(bound_shader.GetInput("diffuseColor").Get()) == pytest.approx((0.1, 0.2, 0.3))
+    assert sum(prim.IsA(UsdShade.Material) for prim in stage.Traverse()) == 2
+    assert all(
+        not prim.GetRelationship("material:binding") for prim in Usd.PrimRange(stage.GetPrimAtPath(overrides_path))
+    )
+
+    before = stage.GetRootLayer().ExportToString()
+    for _ in range(3):
+        reset_materials()
+        assert stage.GetRootLayer().ExportToString() == before
+
+
+@pytest.mark.parametrize(
+    "binding_kind",
+    ["direct", "collection", "explicit_collection", "expression", "descendant_collection", "descendant_expression"],
+)
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize("clone_source", [False, True])
+@pytest.mark.parametrize("global_ancestor", [False, True])
+def test_material_dr_overrides_strong_ancestors_without_changing_siblings(
+    binding_kind, nested, clone_source, global_ancestor
+):
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    sources = []
+    for name, color, roughness in (
+        ("Red", (1.0, 0.0, 0.0), 0.2),
+        ("Blue", (0.0, 0.0, 1.0), 0.4),
+        ("Gray", (0.5, 0.5, 0.5), 0.5),
+    ):
+        material = UsdShade.Material.Define(stage, f"/World/Looks/{name}")
+        shader = UsdShade.Shader.Define(stage, str(material.GetPath()) + "/Shader")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(roughness)
+        material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        sources.append(material)
+
+    roots = [f"/World/envs/env_{index}/Object" for index in range(2)]
+
+    def define_root(path):
+        root = UsdGeom.Xform.Define(stage, path).GetPrim()
+        branch = UsdGeom.Xform.Define(stage, path + "/branch").GetPrim()
+        UsdGeom.Xform.Define(stage, path + "/branch/target")
+        for suffix in (
+            "/branch/target/leaf",
+            "/branch/peer",
+            "/sibling/protected_child",
+            "/sibling/protected_child/reincluded",
+            "/untouched",
+        ):
+            UsdGeom.Cube.Define(stage, path + suffix)
+        for suffix in ("/branch/target/authored", "/sibling"):
+            prim = UsdGeom.Cube.Define(stage, path + suffix).GetPrim()
+            UsdShade.MaterialBindingAPI.Apply(prim).Bind(sources[1])
+        root_api = UsdShade.MaterialBindingAPI.Apply(root)
+        if binding_kind == "direct":
+            root_api.Bind(sources[0], bindingStrength=UsdShade.Tokens.strongerThanDescendants)
+            collection = Usd.CollectionAPI.Apply(root, "sibling_override")
+            collection.CreateIncludesRel().SetTargets([root.GetPath().AppendChild("sibling")])
+            collection.CreateExpansionRuleAttr().Set(Usd.Tokens.expandPrims)
+            root_api.Bind(collection, sources[1], bindingName="sibling_override")
+        else:
+            descendant_only = binding_kind.startswith("descendant_")
+            root_api.Bind(
+                sources[0] if descendant_only else sources[2],
+                bindingStrength=(
+                    UsdShade.Tokens.strongerThanDescendants
+                    if descendant_only and nested
+                    else UsdShade.Tokens.weakerThanDescendants
+                ),
+            )
+            collection = Usd.CollectionAPI.Apply(root, "painted")
+            paths = [branch.GetPath(), root.GetPath().AppendChild("sibling")]
+            if descendant_only:
+                # Block children without including the selected parent in the collection.
+                paths = [
+                    Sdf.Path(path + suffix)
+                    for suffix in ("/branch/target/leaf", "/branch/target/authored", "/branch/peer", "/sibling")
+                ]
+            excluded = Sdf.Path(path + "/sibling/protected_child")
+            if binding_kind == "explicit_collection":
+                collection.CreateExpansionRuleAttr().Set(Usd.Tokens.explicitOnly)
+                collection.CreateIncludesRel().SetTargets([Sdf.Path(path + "/branch/target")])
+            elif binding_kind in ("collection", "descendant_collection"):
+                collection.CreateExpansionRuleAttr().Set(Usd.Tokens.expandPrims)
+                collection.CreateIncludesRel().SetTargets(paths + [excluded.AppendChild("reincluded")])
+                collection.CreateExcludesRel().SetTargets([excluded])
+            else:
+                expression = Sdf.PathExpression.Nothing()
+                for included in paths:
+                    expression = Sdf.PathExpression.MakeOp(
+                        Sdf.PathExpression.Union, expression, Sdf.PathExpression(str(included) + "//")
+                    )
+                expression = Sdf.PathExpression.MakeOp(
+                    Sdf.PathExpression.Difference, expression, Sdf.PathExpression(str(excluded) + "//")
+                )
+                collection.CreateMembershipExpressionAttr().Set(expression)
+            root_api.Bind(
+                collection,
+                sources[2] if descendant_only else sources[0],
+                bindingName="painted",
+                bindingStrength=UsdShade.Tokens.strongerThanDescendants,
+            )
+        if nested:
+            UsdShade.MaterialBindingAPI.Apply(branch).Bind(
+                sources[1], bindingStrength=UsdShade.Tokens.strongerThanDescendants
+            )
+
+    define_root(roots[0])
+    if clone_source:
+        UsdGeom.Xform.Define(stage, roots[1])
+        Sdf.CopySpec(stage.GetRootLayer(), roots[0], stage.GetRootLayer(), roots[1])
+    else:
+        define_root(roots[1])
+    if global_ancestor:
+        UsdShade.MaterialBindingAPI.Apply(stage.GetPrimAtPath("/World/envs")).Bind(
+            sources[0], bindingStrength=UsdShade.Tokens.strongerThanDescendants
+        )
+    scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/envs/env_.*/Object")))
+    scene.cfg = SimpleNamespace(object=scene["object"].cfg)
+    scene.stage = stage
+    scene.env_prim_paths = [f"/World/envs/env_{index}" for index in range(2)]
+    env = SimpleNamespace(scene=scene, device="cpu")
+    asset = SimpleNamespace(name="object")
+    target_path = roots[0] + "/branch/target"
+
+    def values(path):
+        material, _ = UsdShade.MaterialBindingAPI(stage.GetPrimAtPath(path)).ComputeBoundMaterial()
+        shader = UsdShade.Shader(stage.GetPrimAtPath(str(material.GetPath()) + "/Shader"))
+        return material.GetPath(), tuple(shader.GetInput("diffuseColor").Get()), shader.GetInput("roughness").Get()
+
+    outside = {
+        prim.GetPath(): values(prim.GetPath())
+        for prim in stage.Traverse()
+        if prim.IsA(UsdGeom.Imageable)
+        and not prim.GetPath().HasPrefix(Sdf.Path(target_path))
+        and UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()[0]
+    }
+    ids = torch.tensor([0])
+    materials.randomize_material_scalar(env, ids, asset, ("target",), "roughness", (0.8, 0.8))
+    assert values(target_path)[1] == (1.0, 0.0, 0.0)
+    assert values(target_path)[2] == pytest.approx(0.8)
+    assert values(target_path + "/leaf") == values(target_path)
+    assert values(target_path + "/authored")[0] == sources[1].GetPath()
+    for path, original in outside.items():
+        assert values(path) == original
+
+    materials.randomize_material_color(env, ids, asset, ("leaf",), "diffuseColor", ((0.0, 1.0, 0.0),))
+    materials.randomize_material_scalar(env, ids, asset, ("target",), "roughness", (0.9, 0.9))
+    assert values(target_path + "/leaf")[1] == (0.0, 1.0, 0.0)
+    assert values(target_path + "/leaf")[2] == pytest.approx(0.9)
+    assert values(target_path + "/authored")[0] == sources[1].GetPath()
+    for path, original in outside.items():
+        assert values(path) == original
+
+    materials.randomize_material_scalar(env, torch.tensor([1]), asset, ("target",), "roughness", (0.7, 0.7))
+    assert values(roots[1] + "/branch/target")[2] == pytest.approx(0.7)
+    assert values(target_path)[2] == pytest.approx(0.9)
+    before = stage.GetRootLayer().ExportToString()
+    for _ in range(3):
+        materials.randomize_material_scalar(env, ids, asset, ("target",), "roughness", (0.9, 0.9))
+        materials.randomize_material_scalar(env, torch.tensor([1]), asset, ("target",), "roughness", (0.7, 0.7))
+        assert stage.GetRootLayer().ExportToString() == before
+
+
+@pytest.mark.parametrize("parent_first", [True, False])
+@pytest.mark.parametrize("clone_source", [True, False])
+def test_material_overrides_preserve_parent_properties_across_creation_orders(parent_first, clone_source):
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
     class Scene(dict):
@@ -621,47 +914,327 @@ def test_material_overrides_do_not_reuse_an_inherited_override():
     root = "/World/envs/env_0/Object"
     UsdGeom.Xform.Define(stage, root)
     group = UsdGeom.Xform.Define(stage, f"{root}/panel_group").GetPrim()
-    insert = UsdGeom.Cube.Define(stage, f"{root}/panel_group/insert").GetPrim()
-    sibling = UsdGeom.Cube.Define(stage, f"{root}/panel_group/sibling").GetPrim()
+    UsdGeom.Xform.Define(stage, f"{root}/panel_group/middle")
+    UsdGeom.Cube.Define(stage, f"{root}/panel_group/middle/insert")
+    direct_insert = UsdGeom.Cube.Define(stage, f"{root}/panel_group/middle/direct_insert").GetPrim()
+    UsdGeom.Cube.Define(stage, f"{root}/panel_group/sibling")
+    UsdGeom.Cube.Define(stage, f"{root}/panel_group/color_only")
     UsdShade.MaterialBindingAPI.Apply(group).Bind(material)
+    UsdShade.MaterialBindingAPI.Apply(direct_insert).Bind(material)
+    scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/envs/env_.*/Object")))
+    scene.cfg = SimpleNamespace(object=scene["object"].cfg)
+    scene.stage = stage
+    scene.env_prim_paths = ["/World/envs/env_0"]
+    env = SimpleNamespace(scene=scene, device="cpu")
+    asset_cfg = SimpleNamespace(name="object")
+    materials.randomize_material_color(
+        env, torch.tensor([0]), asset_cfg, ("color_only",), "diffuseColor", ((0.1, 0.2, 0.3),)
+    )
+
+    def reset_materials(env_id):
+        ids = torch.tensor([env_id])
+        if not parent_first:
+            materials.randomize_material_scalar(env, ids, asset_cfg, ("insert",), "roughness", (0.8, 0.8))
+        materials.randomize_material_scalar(env, ids, asset_cfg, ("panel_group",), "roughness", (0.2, 0.2))
+        materials.randomize_material_color(env, ids, asset_cfg, ("panel_group",), "diffuseColor", ((0.9, 0.4, 0.1),))
+        if parent_first:
+            materials.randomize_material_scalar(env, ids, asset_cfg, ("insert",), "roughness", (0.8, 0.8))
+
+    if clone_source:
+        reset_materials(0)
+        root = "/World/envs/env_1/Object"
+        UsdGeom.Xform.Define(stage, root)
+        Sdf.CopySpec(stage.GetRootLayer(), "/World/envs/env_0/Object", stage.GetRootLayer(), root)
+        scene.env_prim_paths.append("/World/envs/env_1")
+    env_id = int(clone_source)
+    ids = torch.tensor([env_id])
+    reset_materials(env_id)
+
+    def bound(node):
+        prim = stage.GetPrimAtPath(f"{root}/panel_group{node}")
+        bound_material, _ = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()
+        bound_shader = UsdShade.Shader(stage.GetPrimAtPath(str(bound_material.GetPath()) + "/Shader"))
+        return bound_material, bound_shader
+
+    group_material, group_shader = bound("")
+    insert_material, insert_shader = bound("/middle/insert")
+    assert group_material.GetPath() != insert_material.GetPath()
+    assert bound("/sibling")[0].GetPath() == group_material.GetPath()
+    assert insert_shader.GetInput("roughness").Get() == pytest.approx(0.8)
+    assert group_shader.GetInput("roughness").Get() == pytest.approx(0.2)
+    assert tuple(insert_shader.GetInput("diffuseColor").Get()) == pytest.approx((0.9, 0.4, 0.1))
+    color_only = bound("/color_only")[1]
+    assert tuple(color_only.GetInput("diffuseColor").Get()) == pytest.approx((0.1, 0.2, 0.3))
+    assert color_only.GetInput("roughness").Get() == pytest.approx(0.2)
+    materials.randomize_material_scalar(env, ids, asset_cfg, ("panel_group",), "roughness", (0.6, 0.6))
+    assert color_only.GetInput("roughness").Get() == pytest.approx(0.6)
+    assert insert_shader.GetInput("roughness").Get() == pytest.approx(0.8)
+    # An authored child binding keeps its own color even when it shares the source material.
+    assert tuple(bound("/middle/direct_insert")[1].GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
+
+    # Inserting an override between the group and child must preserve the chain.
+    materials.randomize_material_scalar(env, ids, asset_cfg, ("middle",), "roughness", (0.4, 0.4))
+    assert bound("/middle")[1].GetInput("roughness").Get() == pytest.approx(0.4)
+    assert insert_shader.GetInput("roughness").Get() == pytest.approx(0.8)
+    materials.randomize_material_color(env, ids, asset_cfg, ("panel_group",), "diffuseColor", ((0.0, 1.0, 0.0),))
+    assert tuple(insert_shader.GetInput("diffuseColor").Get()) == (0.0, 1.0, 0.0)
+    materials.randomize_material_color(env, ids, asset_cfg, ("middle",), "diffuseColor", ((0.7, 0.1, 0.9),))
+    materials.randomize_material_color(env, ids, asset_cfg, ("panel_group",), "diffuseColor", ((1.0, 1.0, 0.0),))
+    assert tuple(insert_shader.GetInput("diffuseColor").Get()) == pytest.approx((0.7, 0.1, 0.9))
+    assert tuple(bound("/middle/direct_insert")[1].GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
+
+    materials.randomize_material_color(env, ids, asset_cfg, ("insert",), "diffuseColor", ((0.1, 0.2, 0.3),))
+    materials.randomize_material_color(env, ids, asset_cfg, ("panel_group",), "diffuseColor", ((1.0, 0.0, 0.0),))
+    assert bound("/middle/insert")[0].GetPath() == insert_material.GetPath()
+    assert tuple(insert_shader.GetInput("diffuseColor").Get()) == pytest.approx((0.1, 0.2, 0.3))
+    assert tuple(group_shader.GetInput("diffuseColor").Get()) == (1.0, 0.0, 0.0)
+    assert insert_shader.GetInput("roughness").Get() == pytest.approx(0.8)
+    assert shader.GetInput("roughness").Get() == 0.5
+    assert tuple(shader.GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
+
+    reset_materials(env_id)
+    before = stage.GetRootLayer().ExportToString()
+    for _ in range(3):
+        reset_materials(env_id)
+        assert stage.GetRootLayer().ExportToString() == before
+    if clone_source:
+        reset_materials(0)
+        assert tuple(insert_shader.GetInput("diffuseColor").Get()) == pytest.approx((0.1, 0.2, 0.3))
+        assert insert_shader.GetInput("roughness").Get() == pytest.approx(0.8)
+
+
+@pytest.mark.parametrize("has_base_material", [False, True])
+def test_authored_materials_in_override_scope_remain_valid_sources(has_base_material):
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    root = "/World/envs/env_0/Object"
+    UsdGeom.Xform.Define(stage, root)
+    UsdGeom.Scope.Define(stage, root + "/DomainRandomizationMaterials")
+    material = UsdShade.Material.Define(stage, root + "/DomainRandomizationMaterials/Paint")
+    if has_base_material:
+        base = UsdShade.Material.Define(stage, "/World/Looks/Base")
+        base_shader = UsdShade.Shader.Define(stage, "/World/Looks/Base/Shader")
+        base_shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.25)
+        material.GetPrim().GetSpecializes().AddSpecialize(base.GetPath())
+    shader = UsdShade.Shader.Define(stage, str(material.GetPath()) + "/Shader")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(1.0, 0.0, 0.0))
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    mesh = UsdGeom.Cube.Define(stage, root + "/mesh").GetPrim()
+    UsdShade.MaterialBindingAPI.Apply(mesh).Bind(material)
     scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path=root)))
+    scene.cfg = SimpleNamespace(object=scene["object"].cfg)
+    scene.stage = stage
+    scene.env_prim_paths = ["/World/envs/env_0"]
+    env = SimpleNamespace(scene=scene, device="cpu")
+
+    def reset_material():
+        materials.randomize_material_scalar(
+            env, torch.tensor([0]), SimpleNamespace(name="object"), ("mesh",), "roughness", (0.8, 0.8)
+        )
+
+    reset_material()
+    bound_material, _ = UsdShade.MaterialBindingAPI(mesh).ComputeBoundMaterial()
+    assert bound_material.GetPath() != material.GetPath()
+    assert bound_material.GetBaseMaterialPath() == material.GetPath()
+    bound_shader = UsdShade.Shader(stage.GetPrimAtPath(str(bound_material.GetPath()) + "/Shader"))
+    assert bound_shader.GetInput("roughness").Get() == pytest.approx(0.8)
+    assert tuple(bound_shader.GetInput("diffuseColor").Get()) == (1.0, 0.0, 0.0)
+    assert shader.GetInput("roughness").Get() == 0.5
+
+    before = stage.GetRootLayer().ExportToString()
+    for _ in range(3):
+        reset_material()
+        assert stage.GetRootLayer().ExportToString() == before
+
+
+@pytest.mark.parametrize("event", ["scalar", "color"])
+def test_material_randomization_preserves_inherited_binding_when_input_is_missing(event):
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    source_materials = []
+    shader_input = "roughness" if event == "scalar" else "specularColor"
+    for name, has_input in (("White", False), ("Supported", True)):
+        path = f"/World/Looks/{name}"
+        material = UsdShade.Material.Define(stage, path)
+        shader = UsdShade.Shader.Define(stage, path + "/Shader")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(1.0))
+        if has_input:
+            value_type = Sdf.ValueTypeNames.Float if event == "scalar" else Sdf.ValueTypeNames.Color3f
+            shader.CreateInput(shader_input, value_type).Set(0.5 if event == "scalar" else Gf.Vec3f(0.5))
+        material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        source_materials.append(material)
+
+    root = "/World/envs/env_0/Object"
+    group = UsdGeom.Xform.Define(stage, root + "/panel_group").GetPrim()
+    insert_a = UsdGeom.Cube.Define(stage, root + "/panel_group/insert_A").GetPrim()
+    insert_b = UsdGeom.Cube.Define(stage, root + "/panel_group/insert_B").GetPrim()
+    UsdShade.MaterialBindingAPI.Apply(group).Bind(source_materials[0])
+    UsdShade.MaterialBindingAPI.Apply(insert_b).Bind(source_materials[1])
+    scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path=root)))
+    scene.cfg = SimpleNamespace(object=scene["object"].cfg)
     scene.stage = stage
     scene.env_prim_paths = ["/World/envs/env_0"]
     env = SimpleNamespace(scene=scene, device="cpu")
     ids = torch.tensor([0])
     asset_cfg = SimpleNamespace(name="object")
+    materials.randomize_material_color(env, ids, asset_cfg, ("panel_group",), "diffuseColor", ((1.0, 0.0, 0.0),))
+    inherited_material, _ = UsdShade.MaterialBindingAPI(insert_a).ComputeBoundMaterial()
 
     def reset_materials():
-        materials.randomize_material_scalar(env, ids, asset_cfg, ("panel_group",), "roughness", (0.2, 0.2))
-        materials.randomize_material_color(env, ids, asset_cfg, ("panel_group",), "diffuseColor", ((0.9, 0.4, 0.1),))
-        materials.randomize_material_scalar(env, ids, asset_cfg, ("insert",), "roughness", (0.8, 0.8))
+        if event == "scalar":
+            materials.randomize_material_scalar(env, ids, asset_cfg, ("insert",), shader_input, (0.8, 0.8))
+        else:
+            materials.randomize_material_color(env, ids, asset_cfg, ("insert",), shader_input, ((0.1, 0.2, 0.3),))
 
     reset_materials()
-    bound_materials = [UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()[0] for prim in (group, insert, sibling)]
-    bound_shaders = [
-        UsdShade.Shader(stage.GetPrimAtPath(str(bound.GetPath()) + "/Shader")) for bound in bound_materials
-    ]
-    assert [bound.GetInput("roughness").Get() for bound in bound_shaders] == pytest.approx((0.2, 0.8, 0.2))
-    assert bound_materials[0].GetPath() == bound_materials[2].GetPath()
-    assert bound_materials[1].GetPath() != bound_materials[0].GetPath()
-    assert bound_materials[1].GetBaseMaterialPath() == material.GetPath()
-    assert tuple(bound_shaders[1].GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
-
-    materials.randomize_material_color(env, ids, asset_cfg, ("insert",), "diffuseColor", ((0.1, 0.2, 0.3),))
-    insert_material, _ = UsdShade.MaterialBindingAPI(insert).ComputeBoundMaterial()
-    assert insert_material.GetPath() == bound_materials[1].GetPath()
-    assert tuple(bound_shaders[1].GetInput("diffuseColor").Get()) == pytest.approx((0.1, 0.2, 0.3))
-    assert tuple(bound_shaders[0].GetInput("diffuseColor").Get()) == pytest.approx((0.9, 0.4, 0.1))
-    assert bound_shaders[1].GetInput("roughness").Get() == pytest.approx(0.8)
-    assert shader.GetInput("roughness").Get() == 0.5
-    assert tuple(shader.GetInput("diffuseColor").Get()) == (1.0, 1.0, 1.0)
-    assert sum(prim.IsA(UsdShade.Material) for prim in stage.Traverse()) == 3
+    skipped_material, _ = UsdShade.MaterialBindingAPI(insert_a).ComputeBoundMaterial()
+    assert skipped_material.GetPath() == inherited_material.GetPath()
+    assert not insert_a.GetRelationship("material:binding")
+    skipped_shader = UsdShade.Shader(stage.GetPrimAtPath(str(skipped_material.GetPath()) + "/Shader"))
+    assert tuple(skipped_shader.GetInput("diffuseColor").Get()) == (1.0, 0.0, 0.0)
+    bound_material, _ = UsdShade.MaterialBindingAPI(insert_b).ComputeBoundMaterial()
+    assert bound_material.GetPath() != source_materials[1].GetPath()
+    assert bound_material.GetBaseMaterialPath() == source_materials[1].GetPath()
+    bound_shader = UsdShade.Shader(stage.GetPrimAtPath(str(bound_material.GetPath()) + "/Shader"))
+    assert bound_shader.GetInput(shader_input).Get() == pytest.approx(0.8 if event == "scalar" else (0.1, 0.2, 0.3))
+    assert sum(prim.IsA(UsdShade.Material) for prim in stage.Traverse()) == 4
 
     before = stage.GetRootLayer().ExportToString()
     for _ in range(3):
         reset_materials()
-        materials.randomize_material_color(env, ids, asset_cfg, ("insert",), "diffuseColor", ((0.1, 0.2, 0.3),))
         assert stage.GetRootLayer().ExportToString() == before
+
+
+@pytest.mark.parametrize("event", ["scalar", "color"])
+def test_partial_material_resets_preserve_unselected_parent_properties(event):
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    material = UsdShade.Material.Define(stage, "/World/Looks/Source")
+    shader = UsdShade.Shader.Define(stage, str(material.GetPath()) + "/Shader")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(1.0))
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    roots = [f"/World/envs/env_{index}/Object" for index in range(2)]
+    UsdGeom.Xform.Define(stage, roots[0])
+    box = UsdGeom.Xform.Define(stage, roots[0] + "/box").GetPrim()
+    UsdGeom.Cube.Define(stage, roots[0] + "/box/handle")
+    UsdShade.MaterialBindingAPI.Apply(box).Bind(material)
+    UsdGeom.Xform.Define(stage, roots[1])
+    Sdf.CopySpec(stage.GetRootLayer(), roots[0], stage.GetRootLayer(), roots[1])
+    scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/envs/env_.*/Object")))
+    scene.cfg = SimpleNamespace(object=scene["object"].cfg)
+    scene.stage = stage
+    scene.env_prim_paths = [f"/World/envs/env_{index}" for index in range(2)]
+    env = SimpleNamespace(scene=scene, device="cpu")
+    asset = SimpleNamespace(name="object")
+    all_ids = torch.tensor([0, 1])
+
+    def reset_material(ids, marker, value):
+        if event == "scalar":
+            materials.randomize_material_scalar(env, ids, asset, (marker,), "roughness", (value, value))
+        else:
+            materials.randomize_material_color(env, ids, asset, (marker,), "diffuseColor", ((value, 0.2, 0.1),))
+
+    # Give each handle its own override while leaving the tested input inherited.
+    if event == "scalar":
+        materials.randomize_material_color(env, all_ids, asset, ("handle",), "diffuseColor", ((0.1, 0.2, 0.3),))
+    else:
+        materials.randomize_material_scalar(env, all_ids, asset, ("handle",), "roughness", (0.8, 0.8))
+    reset_material(all_ids, "box", 0.3)
+
+    def unselected_specs():
+        layer = Sdf.Layer.CreateAnonymous()
+        Sdf.CreatePrimInLayer(layer, roots[1])
+        Sdf.CopySpec(stage.GetRootLayer(), roots[1], layer, roots[1])
+        return layer.ExportToString()
+
+    before = unselected_specs()
+    reset_material(torch.tensor([0]), "handle", 0.9)
+    assert unselected_specs() == before
+
+    # The unselected handle must still follow its own parent's next update.
+    reset_material(torch.tensor([1]), "box", 0.7)
+    handle = stage.GetPrimAtPath(roots[1] + "/box/handle")
+    bound, _ = UsdShade.MaterialBindingAPI(handle).ComputeBoundMaterial()
+    result = UsdShade.Shader(stage.GetPrimAtPath(str(bound.GetPath()) + "/Shader"))
+    assert result.GetInput("roughness").Get() == pytest.approx(0.7 if event == "scalar" else 0.8)
+    assert tuple(result.GetInput("diffuseColor").Get()) == pytest.approx(
+        (0.1, 0.2, 0.3) if event == "scalar" else (0.7, 0.2, 0.1)
+    )
+
+
+@pytest.mark.parametrize("event", ["scalar", "color"])
+@pytest.mark.parametrize("randomize_before_cloning", [False, True])
+def test_partial_material_resets_preserve_copied_environments(event, randomize_before_cloning):
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    material = UsdShade.Material.Define(stage, "/World/Looks/Source")
+    shader = UsdShade.Shader.Define(stage, "/World/Looks/Source/Shader")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.4, 0.5, 0.6))
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    root = UsdGeom.Xform.Define(stage, "/World/envs/env_0/Object").GetPrim()
+    mesh = UsdGeom.Cube.Define(stage, str(root.GetPath()) + "/mesh").GetPrim()
+    UsdShade.MaterialBindingAPI.Apply(mesh).Bind(material)
+    scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/envs/env_.*/Object")))
+    scene.cfg = SimpleNamespace(object=scene["object"].cfg)
+    scene.stage = stage
+    scene.env_prim_paths = ["/World/envs/env_0"]
+    env = SimpleNamespace(scene=scene, device="cpu")
+    ids, asset = torch.tensor([0]), SimpleNamespace(name="object")
+
+    def reset_material(value):
+        if event == "scalar":
+            materials.randomize_material_scalar(env, ids, asset, ("mesh",), "roughness", (value, value))
+        else:
+            materials.randomize_material_color(env, ids, asset, ("mesh",), "diffuseColor", ((value, 0.2, 0.1),))
+
+    if randomize_before_cloning:
+        reset_material(0.3)
+    UsdGeom.Xform.Define(stage, "/World/envs/env_1/Object")
+    Sdf.CopySpec(stage.GetRootLayer(), root.GetPath(), stage.GetRootLayer(), "/World/envs/env_1/Object")
+    scene.env_prim_paths.append("/World/envs/env_1")
+    copied = stage.GetPrimAtPath("/World/envs/env_1/Object/mesh")
+
+    def values(prim):
+        bound, _ = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()
+        bound_shader = UsdShade.Shader(stage.GetPrimAtPath(str(bound.GetPath()) + "/Shader"))
+        return bound_shader.GetInput("roughness").Get(), tuple(bound_shader.GetInput("diffuseColor").Get())
+
+    before = values(copied)
+    rng = torch.get_rng_state().clone()
+    reset_material(0.8)
+    assert values(copied) == before
+    assert values(mesh)[0 if event == "scalar" else 1] == pytest.approx(0.8 if event == "scalar" else (0.8, 0.2, 0.1))
+    stage_after_reset = stage.GetRootLayer().ExportToString()
+    for _ in range(3):
+        reset_material(0.8)
+        assert values(copied) == before
+        assert stage.GetRootLayer().ExportToString() == stage_after_reset
+    assert torch.equal(rng, torch.get_rng_state())
+    assert shader.GetInput("roughness").Get() == 0.5
+    assert tuple(shader.GetInput("diffuseColor").Get()) == pytest.approx((0.4, 0.5, 0.6))
 
 
 def test_material_resets_sample_independently_and_isolate_shared_source_material():
@@ -685,6 +1258,7 @@ def test_material_resets_sample_independently_and_isolate_shared_source_material
         UsdShade.MaterialBindingAPI.Apply(mesh).Bind(material)
         meshes.append(mesh)
     scene = Scene(object=SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/envs/env_.*/Object")))
+    scene.cfg = SimpleNamespace(object=scene["object"].cfg)
     scene.stage = stage
     scene.env_prim_paths = env_paths
     env = SimpleNamespace(scene=scene, device="cpu")
@@ -930,6 +1504,39 @@ def test_parallel_dome_randomization_is_rejected_before_modifying_the_scene(glob
         )
     assert stage.GetRootLayer().ExportToString() == original
     assert torch.equal(rng, torch.get_rng_state())
+
+
+def test_partial_light_reset_preserves_existing_inherited_light_values():
+    from isaaclab.assets import AssetBaseCfg
+    from pxr import Usd, UsdLux
+
+    stage = Usd.Stage.CreateInMemory()
+    roots = ["/World/envs/env_0", "/World/envs/env_1"]
+    source = UsdLux.RectLight.Define(stage, roots[0] + "/Light")
+    source.GetIntensityAttr().Set(200.0)
+    source.GetColorAttr().Set((0.4, 0.5, 0.6))
+    inherited = stage.DefinePrim(roots[1] + "/Light")
+    inherited.GetInherits().AddInherit(source.GetPath())
+    names = ("inputs:intensity", "inputs:color")
+    initial = [inherited.GetAttribute(name).Get() for name in names]
+    assert all(
+        stage.GetRootLayer().GetAttributeAtPath(inherited.GetPath().AppendProperty(name)) is None for name in names
+    )
+    scene = SimpleNamespace(
+        cfg=SimpleNamespace(light=AssetBaseCfg(prim_path="/World/envs/env_.*/Light")),
+        stage=stage,
+        env_prim_paths=roots,
+    )
+    env = SimpleNamespace(scene=scene, device="cpu")
+    paths = [prim.GetPath() for prim in stage.Traverse()]
+
+    lighting.randomize_light(env, torch.tensor([0]), (500.0, 500.0), (5500.0, 5500.0), SimpleNamespace(name="light"))
+
+    assert source.GetIntensityAttr().Get() == 500.0
+    assert tuple(source.GetColorAttr().Get()) == pytest.approx(color_temperature_to_rgb(5500.0))
+    assert inherited.GetAttribute("inputs:intensity").Get() == initial[0]
+    assert inherited.GetAttribute("inputs:color").Get() == initial[1]
+    assert [prim.GetPath() for prim in stage.Traverse()] == paths
 
 
 def test_existing_non_dome_lights_are_seeded_and_only_selected_environments_change():

@@ -256,6 +256,90 @@ def test_camera_resets_use_nominal_mount_and_only_selected_environment():
     assert first[0] != first[1]
 
 
+@pytest.mark.parametrize(
+    "spawn_camera,inherit_camera,authored_mount",
+    [(False, False, True), (False, True, True), (True, True, False), (True, True, True)],
+)
+def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
+    spawn_camera, inherit_camera, authored_mount
+):
+    import numpy as np
+
+    from isaaclab.sensors import CameraCfg
+    from isaaclab.sim import PinholeCameraCfg
+    from pxr import Gf, Usd, UsdGeom
+
+    class Scene(dict):
+        pass
+
+    stage = Usd.Stage.CreateInMemory()
+    paths = [f"/World/envs/env_{index}/Camera" for index in range(2)]
+    source = UsdGeom.Camera.Define(stage, paths[0])
+    source.GetFocalLengthAttr().Set(15.0)
+    source.GetHorizontalApertureAttr().Set(16.0)
+    if authored_mount:
+        xform = UsdGeom.Xformable(source)
+        xform.AddTranslateOp().Set((0.08, 0.03, 0.4))
+        xform.AddRotateXYZOp().Set((15.0, -10.0, 25.0))
+    if inherit_camera:
+        stage.DefinePrim(paths[1]).GetInherits().AddInherit(source.GetPath())
+    else:
+        UsdGeom.Camera.Define(stage, paths[1])
+    nominal = Gf.Transform(UsdGeom.Xformable(source).GetLocalTransformation())
+    quaternion = nominal.GetRotation().GetQuat()
+    cfg = CameraCfg(
+        prim_path="/World/envs/env_.*/Camera",
+        spawn=PinholeCameraCfg(focal_length=15.0, horizontal_aperture=16.0) if spawn_camera else None,
+        offset=CameraCfg.OffsetCfg(
+            pos=tuple(nominal.GetTranslation()) if spawn_camera else (0.0, 0.0, 0.0),
+            rot=(*quaternion.GetImaginary(), quaternion.GetReal()) if spawn_camera else (0.0, 0.0, 0.0, 1.0),
+            convention="opengl",
+        ),
+        width=320,
+        height=240,
+    )
+    matrices = torch.tensor([[300.0, 0.0, 160.0], [0.0, 300.0, 120.0], [0.0, 0.0, 1.0]]).repeat(2, 1, 1)
+    sensor = SimpleNamespace(
+        cfg=cfg,
+        image_shape=(240, 320),
+        _data=SimpleNamespace(intrinsic_matrices=matrices.clone()),
+        set_intrinsic_matrices=lambda *args, **kwargs: pytest.fail("Extrinsics-only DR must leave intrinsics alone."),
+    )
+    scene = Scene(cam=sensor)
+    scene.stage = stage
+    scene.env_prim_paths = [f"/World/envs/env_{index}" for index in range(2)]
+    env = SimpleNamespace(scene=scene, device="cpu", cfg=SimpleNamespace(sim=SimpleNamespace(use_fabric=False)))
+    before = np.array(UsdGeom.Xformable(stage.GetPrimAtPath(paths[1])).GetLocalTransformation())
+    expected = np.array(UsdGeom.Xformable(source).GetLocalTransformation())
+    expected[3, 0] += 0.01
+    lens_values = [
+        (prim.GetAttribute("focalLength").Get(), prim.GetAttribute("horizontalAperture").Get())
+        for prim in (stage.GetPrimAtPath(path) for path in paths)
+    ]
+    rng = torch.get_rng_state().clone()
+    for _ in range(3):
+        result = camera.randomize_camera(
+            env,
+            torch.tensor([0]),
+            SimpleNamespace(name="cam"),
+            (1.0, 1.0),
+            (0.01, 0.0, 0.0),
+            (0.01, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+        )
+        assert result[0]["focal_length_px"] == (300.0,)
+        assert result[0]["position_xyz"] == pytest.approx(expected[3, :3])
+        np.testing.assert_allclose(UsdGeom.Xformable(source).GetLocalTransformation(), expected, atol=1e-7)
+        np.testing.assert_array_equal(UsdGeom.Xformable(stage.GetPrimAtPath(paths[1])).GetLocalTransformation(), before)
+        assert [
+            (prim.GetAttribute("focalLength").Get(), prim.GetAttribute("horizontalAperture").Get())
+            for prim in (stage.GetPrimAtPath(path) for path in paths)
+        ] == lens_values
+        torch.testing.assert_close(sensor._data.intrinsic_matrices, matrices, atol=0.0, rtol=0.0)
+        assert torch.equal(rng, torch.get_rng_state())
+
+
 def test_camera_yaml_preserves_renderer_configuration_and_other_sensors(tmp_path):
     from isaaclab_physx.renderers.isaac_rtx_renderer_cfg import IsaacRtxRendererCfg
 

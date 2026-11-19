@@ -9,6 +9,7 @@ import torch
 from typing import TYPE_CHECKING, Any
 
 from autodata_utils import pose_math
+from autodata_utils.tensor_utils import as_torch
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -28,10 +29,9 @@ def randomize_camera(
 ) -> dict[int, dict[str, tuple[float, ...]]]:
     """Perturb one camera's calibration once per environment reset.
 
-    Both perturbations are drawn per environment and applied relative to the *nominal* values on
-    the sensor config rather than to the previous episode's values, so repeated resets never
-    accumulate drift. The draws use Torch's process RNG so Isaac Lab's environment seed controls
-    reproducibility.
+    Perturbations use the nominal sensor config, or the initial authored mount for cameras loaded
+    from USD, rather than the previous episode's values, so repeated resets never accumulate drift.
+    The draws use Torch's process RNG so Isaac Lab's environment seed controls reproducibility.
 
     Extrinsics are written as the camera prim's local transform w.r.t. the link it is mounted on,
     which is the same quantity :class:`~isaaclab.sensors.CameraCfg.OffsetCfg` sets at spawn; the
@@ -73,7 +73,12 @@ def randomize_camera(
         rotation_rpy_min_deg,
         rotation_rpy_max_deg,
     )
-    focal_lengths = _randomize_intrinsics(env, selected_env_ids, sensor, focal_length_scale_range)
+    if focal_length_scale_range == (1.0, 1.0):
+        # Read the cached calibration without rendering or changing the lens model.
+        matrices = as_torch(sensor._data.intrinsic_matrices)
+        focal_lengths = {env_id: float(matrices[env_id, 0, 0]) for env_id in selected_env_ids}
+    else:
+        focal_lengths = _randomize_intrinsics(env, selected_env_ids, sensor, focal_length_scale_range)
     if env.cfg.sim.use_fabric:
         _sync_camera_mounts_to_fabric(env, selected_env_ids, sensor)
     return {env_id: {"focal_length_px": (focal_lengths[env_id],), **extrinsics[env_id]} for env_id in selected_env_ids}
@@ -89,16 +94,43 @@ def _randomize_extrinsics(
     rotation_rpy_max_deg: tuple[float, float, float],
 ) -> dict[int, dict[str, tuple[float, ...]]]:
     from isaaclab.sim.utils import standardize_xform_ops
+    from pxr import Gf, UsdGeom
 
     offset = sensor.cfg.offset
     nominal_position = torch.tensor(offset.pos, dtype=torch.float64)
     nominal_rotation = pose_math.convert_camera_frame_orientation_convention(
         torch.tensor(offset.rot, dtype=torch.float64), offset.convention, "ros"
     )
-    camera_prims = _find_camera_prims_by_env(env, env_ids, sensor)
+    camera_prims = _find_camera_prims_by_env(env, list(range(len(env.scene.env_prim_paths))), sensor)
+    nominal_mounts = getattr(sensor, "_autodata_dr_nominal_mounts", {})
+    if sensor.cfg.spawn is None and not nominal_mounts:
+        # CameraCfg.offset is not applied to cameras loaded from USD.
+        nominal_mounts = {
+            env_id: Gf.Transform(UsdGeom.Xformable(prim).GetLocalTransformation())
+            for env_id, prim in camera_prims.items()
+        }
+        setattr(sensor, "_autodata_dr_nominal_mounts", nominal_mounts)
+
+    # Pin the full local op stack before an inherited source camera is edited.
+    selected = set(env_ids)
+    for env_id, prim in camera_prims.items():
+        if env_id not in selected:
+            xform = UsdGeom.Xformable(prim)
+            for op in xform.GetOrderedXformOps():
+                attribute = op.GetAttr()
+                attribute.Set(attribute.Get())
+            order = xform.GetXformOpOrderAttr()
+            order.Set(order.Get() or [])
 
     applied = {}
     for env_id in env_ids:
+        if sensor.cfg.spawn is None:
+            mount = nominal_mounts[env_id]
+            nominal_position = torch.tensor(tuple(mount.GetTranslation()), dtype=torch.float64)
+            quaternion = mount.GetRotation().GetQuat()
+            nominal_rotation = pose_math.convert_camera_frame_orientation_convention(
+                torch.tensor((*quaternion.GetImaginary(), quaternion.GetReal()), dtype=torch.float64), "opengl", "ros"
+            )
         position_offset = pose_math.sample_uniform_vector(position_xyz_min, position_xyz_max, env.device)
         rotation_offset_deg = pose_math.sample_uniform_vector(rotation_rpy_min_deg, rotation_rpy_max_deg, env.device)
         position = nominal_position + position_offset
