@@ -87,3 +87,16 @@ def test_object_overlay_uses_the_custom_robot_timeline(visualizer):
     index = visualizer.animate_collision_spheres(spheres, timeline_prefix="inspection")
     visualizer.animate_object_collision_spheres(spheres, schedule_index=index)
     assert {call.args[0] for call in module.rr.set_time.call_args_list} == {"inspection_0"}
+
+
+def test_idle_clear_follows_a_static_only_preview(visualizer):
+    times, clears = [], []
+    module.rr.set_time.side_effect = lambda *args, **kwargs: times.append(kwargs["sequence"])
+    module.rr.log.side_effect = lambda path, value, **kwargs: (
+        clears.append(times[-1]) if isinstance(value, module.rr.Clear) else None
+    )
+    visualizer.visualize_plan(SimpleNamespace(position=torch.zeros(2, 1)), torch.eye(4))
+    preview_tick = max(times)
+    clears.clear()
+    visualizer.mark_idle()
+    assert clears and min(clears) > preview_tick

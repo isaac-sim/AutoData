@@ -428,6 +428,7 @@ class CuroboPlanner(MotionPlannerBase):
                 recording_id=f"curobo_plan_{env_id}",
                 debug=config.debug_planner,
                 base_pose_in_env=self._base_pose_in_env,
+                save_path=self.config.rerun_output,
             )
             self.plan_visualizer.set_motion_generator_reference(self.motion_gen)
 
@@ -501,6 +502,10 @@ class CuroboPlanner(MotionPlannerBase):
         base pose (env-relative) and caches the forward and inverse transforms used to map
         object, goal, and planned poses between the two frames.
         """
+        reference_pose = self.datastream.embodiment_adapter.get_reference_frame_pose(env_ids=[self.env_id])
+        assert (
+            reference_pose is None
+        ), "cuRobo requires environment-relative poses; configured embodiment reference frames are not supported"
         if self.root_pose_source_frame_name is None:
             self._base_pose_in_env = self.datastream.get_robot_root_pose(env_ids=[self.env_id])[0]
         else:
@@ -874,12 +879,9 @@ class CuroboPlanner(MotionPlannerBase):
             dtype=torch.long,
             device=self.tensor_args.device,
         )
-        buffers = self._kinematic_robot_cfg["kinematics"]["self_collision_buffer"]
-        sphere_offsets = torch.tensor(
-            [float(buffers[name]) for name in link_names],
-            dtype=self.tensor_args.dtype,
-            device=self.tensor_args.device,
-        )
+        # Native offsets remove world-only padding before adding the self-collision margin.
+        sphere_offsets = self._kinematics.self_collision_config.offset.detach().clone().reshape(-1)
+        assert sphere_offsets.shape == (sphere_count,), "cuRobo self-collision offsets must match its spheres"
         self._self_collision_pair_cache = pair_indices, sphere_offsets, link_names
         return self._self_collision_pair_cache
 
@@ -2422,10 +2424,7 @@ class CuroboPlanner(MotionPlannerBase):
             self.logger.debug(f"IK candidate FK failed: {error}")
             return None
         target_poses = target_pose.to(device=actual_poses.device, dtype=actual_poses.dtype).expand_as(actual_poses)
-        position_error = torch.linalg.vector_norm(actual_poses[:, :3, 3] - target_poses[:, :3, 3], dim=-1)
-        relative_rotation = actual_poses[:, :3, :3].transpose(-1, -2) @ target_poses[:, :3, :3]
-        cosine = torch.clamp((relative_rotation.diagonal(dim1=-2, dim2=-1).sum(-1) - 1.0) * 0.5, -1.0, 1.0)
-        rotation_error = torch.acos(cosine)
+        position_error, rotation_error = PoseUtils.pose_errors(actual_poses, target_poses)
         accepted = (
             torch.isfinite(solutions).all(dim=-1)
             & torch.isfinite(actual_poses).all(dim=(-2, -1))

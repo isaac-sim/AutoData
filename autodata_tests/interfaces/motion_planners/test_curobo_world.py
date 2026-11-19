@@ -70,6 +70,51 @@ def test_nested_exclusions_restore_the_original_enable_flags():
     assert flags.tolist() == [[0, 1]]
 
 
+@pytest.mark.parametrize("root_name", [None, "base"])
+def test_configured_embodiment_frame_is_rejected_before_world_conversion(root_name):
+    planner, _ = _planner(WorldConfig())
+    planner.root_pose_source_frame_name = root_name
+    planner.datastream.embodiment_adapter = SimpleNamespace(
+        get_reference_frame_pose=lambda **kwargs: torch.eye(4).unsqueeze(0)
+    )
+    with pytest.raises(AssertionError, match="configured embodiment reference frames"):
+        planner._refresh_base_frame_transform()
+
+
+def test_self_collision_offsets_remove_native_world_padding(tmp_path):
+    from curobo.cuda_robot_model.cuda_robot_generator import CudaRobotGenerator, CudaRobotGeneratorConfig
+
+    urdf = tmp_path / "two_links.urdf"
+    urdf.write_text(
+        '<robot name="test"><link name="base"/><link name="tip"/>'
+        '<joint name="joint" type="revolute"><parent link="base"/><child link="tip"/>'
+        '<axis xyz="0 0 1"/><limit lower="-1" upper="1" effort="1" velocity="1"/></joint></robot>'
+    )
+    generator = CudaRobotGenerator(
+        CudaRobotGeneratorConfig(
+            base_link="base",
+            ee_link="tip",
+            urdf_path=str(urdf),
+            tensor_args=TensorDeviceType(device=torch.device("cpu")),
+            collision_link_names=["base", "tip"],
+            collision_spheres={name: [{"center": [0, 0, 0], "radius": 0.1}] for name in ("base", "tip")},
+            collision_sphere_buffer=0.05,
+            self_collision_buffer={},
+            self_collision_ignore={"base": [], "tip": []},
+        )
+    )
+    planner, _ = _planner(WorldConfig())
+    planner._kinematics = SimpleNamespace(self_collision_config=generator.self_collision_config)
+    planner._self_collision_pair_cache = None
+    planner._self_collision_ignore = {"base": (), "tip": ()}
+    planner.collision_sphere_link_names = lambda count: ("base", "tip")
+    spheres = torch.tensor([
+        [[0, 0, 0, 0.15], [0.25, 0, 0, 0.15]],
+        [[0, 0, 0, 0.15], [0.15, 0, 0, 0.15]],
+    ])
+    assert planner._collision_spheres_self_collisions(spheres, 0).tolist() == [False, True]
+
+
 def test_shared_context_keeps_the_owner_world_and_disabled_obstacles():
     world = WorldConfig(cuboid=[Cuboid(name="held", pose=[0, 0, 0, 1, 0, 0, 0], dims=[1, 1, 1])])
     owner, flags = _planner(world)

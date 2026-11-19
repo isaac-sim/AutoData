@@ -40,7 +40,12 @@ class CuroboPlannerCfg:
     """cuRobo robot configuration file (path defined by curobo api)."""
 
     kinematic_robot_config_file: str | None = None
-    """Optional state-query model with auxiliary joints held fixed during motion planning."""
+    """Optional FK/collision model that retains movable auxiliary joints, such as fingers.
+
+    ``robot_config_file`` supplies the motion-planning model, where these joints may be locked.
+    This model instead evaluates their recorded positions without adding them to the planning
+    search. ``None`` uses the motion-planning model for both planning and state queries.
+    """
 
     robot_name: str = ""
     """Robot name for visualization and identification."""
@@ -55,6 +60,7 @@ class CuroboPlannerCfg:
     """Live articulation link corresponding to the cuRobo kinematic root.
 
     ``None`` preserves the legacy behavior of using the articulation root.
+    Planner poses must be environment-relative; configured embodiment reference frames are not supported.
     """
 
     initial_auxiliary_joint_positions: dict[str, float] = {}
@@ -116,6 +122,9 @@ class CuroboPlannerCfg:
 
     interpolate_plan: bool = False
     """Return controller-rate samples; False preserves legacy SkillGen optimizer waypoints."""
+
+    rerun_output: str | None = None
+    """Optional Rerun recording path; None opens the viewer when plan visualization is enabled."""
 
     max_joint_velocity: float | None = None
     """Optional planning speed cap [rad/s, m/s], also bounded by the live actuator limits."""

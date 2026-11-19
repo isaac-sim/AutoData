@@ -233,7 +233,6 @@ class Datastream:
     def get_robot_joint_positions(
         self,
         env_ids: Sequence[int] | None = None,
-        *,
         joint_names: Sequence[str] | None = None,
     ) -> torch.Tensor:
         """Read joint positions [rad, m] through the embodiment adapter.
@@ -417,7 +416,7 @@ class Datastream:
     def passthrough_actions_to_joint_positions(
         self, passthrough_action_dict: dict[str, torch.Tensor]
     ) -> dict[str, torch.Tensor]:
-        """Apply passthrough commands as externally controlled articulation positions."""
+        """Convert passthrough commands to named joint positions without changing robot state."""
 
         return self.embodiment_adapter.passthrough_actions_to_joint_positions(passthrough_action_dict)
 
@@ -610,24 +609,32 @@ class Datastream:
         return f"/World/envs/env_{env_id}"
 
     def get_object_prim_path(self, object_ref: str, env_id: int) -> str:
-        """Return the exact environment-specific root prim for one rigid scene object.
+        """Return the environment-specific root prim for a rigid object or non-robot articulation.
 
         Args:
-            object_ref: Exact key in the live scene's rigid-object mapping.
+            object_ref: Scene object name, using the same inventory as :meth:`get_object_poses`.
             env_id: Environment index.
+
+        Returns:
+            Absolute USD prim path for the selected object's root.
         """
 
         scene = self.env.scene
         assert type(env_id) is int and 0 <= env_id < len(scene.env_prim_paths), "env_id is out of range"
-        if object_ref not in scene.rigid_objects:
-            raise KeyError(f"unknown rigid scene object {object_ref!r}")
-        prim_pattern = scene.rigid_objects[object_ref].cfg.prim_path
-        assert isinstance(prim_pattern, str) and prim_pattern, "rigid-object prim path must be non-empty"
+        robot_name = getattr(self.embodiment_adapter, "robot_asset_name", "robot")
+        if object_ref in scene.rigid_objects:
+            asset = scene.rigid_objects[object_ref]
+        elif object_ref != robot_name and object_ref in getattr(scene, "articulations", {}):
+            asset = scene.articulations[object_ref]
+        else:
+            raise KeyError(f"unknown scene object {object_ref!r}")
+        prim_pattern = asset.cfg.prim_path
+        assert isinstance(prim_pattern, str) and prim_pattern, "object prim path must be non-empty"
         if prim_pattern == scene.env_regex_ns or prim_pattern.startswith(f"{scene.env_regex_ns}/"):
             prim_path = scene.env_prim_paths[env_id] + prim_pattern[len(scene.env_regex_ns) :]
         else:
             prim_path = prim_pattern
-        assert scene.stage.GetPrimAtPath(prim_path).IsValid(), f"rigid-object prim does not exist: {prim_path}"
+        assert scene.stage.GetPrimAtPath(prim_path).IsValid(), f"object prim does not exist: {prim_path}"
         return prim_path
 
     def get_robot_prim_path(self, env_id: int) -> str:

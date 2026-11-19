@@ -86,6 +86,25 @@ def _datastream():
     return datastream, task, embodiment_adapter, env
 
 
+@pytest.mark.parametrize("object_name", ["cube_1", "door"])
+@pytest.mark.parametrize("env_id", [0, 1])
+def test_object_prim_paths_cover_rigid_and_articulated_objects(object_name, env_id):
+    datastream, _, _, env = _datastream()
+    scene = env.scene
+    scene.env_prim_paths = ["/World/envs/env_0", "/World/envs/env_1"]
+    scene.env_regex_ns = "/World/envs/env_.*"
+    scene.stage = SimpleNamespace(GetPrimAtPath=lambda path: SimpleNamespace(IsValid=lambda: True))
+    scene.rigid_objects["cube_1"].cfg = SimpleNamespace(prim_path=f"{scene.env_regex_ns}/Cube")
+    scene.articulations = {
+        "robot": scene["robot"],
+        "door": SimpleNamespace(cfg=SimpleNamespace(prim_path=f"{scene.env_regex_ns}/Door")),
+    }
+    expected = "Cube" if object_name == "cube_1" else "Door"
+    assert datastream.get_object_prim_path(object_name, env_id) == f"/World/envs/env_{env_id}/{expected}"
+    with pytest.raises(KeyError, match="unknown scene object"):
+        datastream.get_object_prim_path("robot", env_id)
+
+
 # ---------------------------------------------------------------------------------------------------
 # Construction invariants
 # ---------------------------------------------------------------------------------------------------
@@ -348,6 +367,6 @@ def test_get_scene_state_passthrough():
 def test_robot_joint_positions_preserve_requested_order():
     datastream, _, _, _ = _datastream()
     assert torch.equal(
-        datastream.get_robot_joint_positions(env_ids=[0], joint_names=("j6", "j1")),
+        datastream.get_robot_joint_positions([0], ("j6", "j1")),
         torch.tensor([[0.6, 0.1]]),
     )
