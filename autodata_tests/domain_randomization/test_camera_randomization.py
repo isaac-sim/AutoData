@@ -257,11 +257,17 @@ def test_camera_resets_use_nominal_mount_and_only_selected_environment():
 
 
 @pytest.mark.parametrize(
-    "spawn_camera,inherit_camera,authored_mount",
-    [(False, False, True), (False, True, True), (True, True, False), (True, True, True)],
+    "spawn_camera,inherit_camera,authored_mount,optical_rotation_deg",
+    [
+        (False, False, True, 0.0),
+        (False, True, True, 0.0),
+        (True, True, False, 0.0),
+        (True, True, True, 0.0),
+        (False, True, True, 10.0),
+    ],
 )
 def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
-    spawn_camera, inherit_camera, authored_mount
+    spawn_camera, inherit_camera, authored_mount, optical_rotation_deg
 ):
     import numpy as np
 
@@ -280,7 +286,7 @@ def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
     if authored_mount:
         xform = UsdGeom.Xformable(source)
         xform.AddTranslateOp().Set((0.08, 0.03, 0.4))
-        xform.AddRotateXYZOp().Set((15.0, -10.0, 25.0))
+        xform.AddRotateXYZOp().Set((0.0, 0.0, 90.0) if optical_rotation_deg else (15.0, -10.0, 25.0))
     if inherit_camera:
         stage.DefinePrim(paths[1]).GetInherits().AddInherit(source.GetPath())
     else:
@@ -312,6 +318,14 @@ def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
     before = np.array(UsdGeom.Xformable(stage.GetPrimAtPath(paths[1])).GetLocalTransformation())
     expected = np.array(UsdGeom.Xformable(source).GetLocalTransformation())
     expected[3, 0] += 0.01
+    if optical_rotation_deg:
+        angle = np.deg2rad(optical_rotation_deg)
+        rotation_z = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+        rotation_x = np.array(
+            [[1.0, 0.0, 0.0], [0.0, np.cos(angle), -np.sin(angle)], [0.0, np.sin(angle), np.cos(angle)]]
+        )
+        # The optical X offset follows the authored Z rotation; USD uses row vectors.
+        expected[:3, :3] = (rotation_z @ rotation_x).T
     lens_values = [
         (prim.GetAttribute("focalLength").Get(), prim.GetAttribute("horizontalAperture").Get())
         for prim in (stage.GetPrimAtPath(path) for path in paths)
@@ -325,8 +339,8 @@ def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
             (1.0, 1.0),
             (0.01, 0.0, 0.0),
             (0.01, 0.0, 0.0),
-            (0.0, 0.0, 0.0),
-            (0.0, 0.0, 0.0),
+            (optical_rotation_deg, 0.0, 0.0),
+            (optical_rotation_deg, 0.0, 0.0),
         )
         assert result[0]["focal_length_px"] == (300.0,)
         assert result[0]["position_xyz"] == pytest.approx(expected[3, :3])
@@ -338,6 +352,60 @@ def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
         ] == lens_values
         torch.testing.assert_close(sensor._data.intrinsic_matrices, matrices, atol=0.0, rtol=0.0)
         assert torch.equal(rng, torch.get_rng_state())
+
+
+@pytest.mark.parametrize("camera_count", [0, 1, 2])
+def test_camera_prim_lookup_preserves_selection_and_uniqueness(camera_count):
+    from pxr import Usd, UsdGeom
+
+    stage = Usd.Stage.CreateInMemory()
+    env_paths = ["/World/envs/env_1", "/World/envs/env_10"]
+    mount = "/Robot/head/Cameras/"
+    selected = UsdGeom.Camera.Define(stage, env_paths[0] + mount + "front").GetPrim()
+    others = [
+        UsdGeom.Camera.Define(stage, env_paths[1] + mount + name).GetPrim() for name in ("front", "rear")[:camera_count]
+    ]
+    UsdGeom.Camera.Define(stage, "/World/envs/env_100" + mount + "front")
+    env = SimpleNamespace(scene=SimpleNamespace(stage=stage, env_prim_paths=env_paths))
+    sensor = SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/envs/env_.*/Robot/head/Cameras/.*"))
+
+    # An unrelated environment with zero or two cameras must not affect a selected one.
+    assert camera._find_camera_prims_by_env(env, [0], sensor) == {0: selected}
+    if camera_count == 1:
+        found = camera._find_camera_prims_by_env(env, [1, 0], sensor)
+        assert list(found) == [1, 0]
+        assert found == {1: others[0], 0: selected}
+    else:
+        with pytest.raises(AssertionError, match=rf"under '/World/envs/env_10'.*found {camera_count}"):
+            camera._find_camera_prims_by_env(env, [1, 0], sensor)
+
+
+@pytest.mark.parametrize("num_envs", [16, 128])
+def test_camera_prim_lookup_reads_paths_linearly(monkeypatch, num_envs):
+    from pxr import Sdf
+
+    path_reads = 0
+
+    class Prim:
+        def __init__(self, path):
+            self.path = Sdf.Path(path)
+
+        def GetPath(self):
+            nonlocal path_reads
+            path_reads += 1
+            return self.path
+
+    env_paths = [f"/World/rooms/room_{index}" for index in range(num_envs)]
+    prims = [Prim(path + "/Robot/head/Camera") for path in env_paths]
+    monkeypatch.setattr("isaaclab.sim.utils.find_matching_prims", lambda *args, **kwargs: prims)
+    env = SimpleNamespace(scene=SimpleNamespace(stage=None, env_prim_paths=env_paths))
+    sensor = SimpleNamespace(cfg=SimpleNamespace(prim_path="/World/rooms/room_.*/Robot/head/Camera"))
+    env_ids = list(reversed(range(num_envs)))
+
+    found = camera._find_camera_prims_by_env(env, env_ids, sensor)
+    assert list(found) == env_ids
+    assert all(found[index] is prims[index] for index in env_ids)
+    assert path_reads <= 2 * num_envs
 
 
 def test_camera_yaml_preserves_renderer_configuration_and_other_sensors(tmp_path):

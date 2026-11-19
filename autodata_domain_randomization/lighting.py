@@ -65,16 +65,50 @@ def randomize_light(
     if len(env_ids) == 0:
         return
     prims, unselected = _find_light_prims(env, env_ids, asset_cfg)
-    # Preserve inherited values before editing a source light in another environment.
-    for prim in unselected:
-        for name in ("inputs:intensity", "inputs:color"):
-            attribute = prim.GetAttribute(name)
-            attribute.Set(attribute.Get())
+    if unselected:
+        from pxr import Sdf
+
+        edit_target = unselected[0].GetStage().GetEditTarget()
+        edited_paths = {edit_target.MapToSpecPath(prim.GetPath()) for prim in prims}
+        for prim in unselected:
+            for name in ("inputs:intensity", "inputs:color"):
+                attribute = prim.GetAttribute(name)
+                if not _light_attribute_depends_on_reset(attribute, edit_target.GetLayer(), edited_paths):
+                    continue
+                # Read animation before a stronger default can hide its time samples.
+                samples = [(time, attribute.Get(time)) for time in attribute.GetTimeSamples()]
+                default = attribute.Get()
+                attribute.Set(default if default is not None else Sdf.ValueBlock())
+                for time, value in samples:
+                    attribute.Set(value if value is not None else Sdf.ValueBlock(), time)
     for prim in prims:
         intensity = sample_uniform_scalar(intensity_range, env.device)
         color_temperature = sample_uniform_scalar(color_temperature_range, env.device)
-        prim.GetAttribute("inputs:intensity").Set(intensity)
-        prim.GetAttribute("inputs:color").Set(color_temperature_to_rgb(color_temperature))
+        for name, value in (
+            ("inputs:intensity", intensity),
+            ("inputs:color", color_temperature_to_rgb(color_temperature)),
+        ):
+            attribute = prim.GetAttribute(name)
+            # Replace animation pinned while this light was unselected in a previous reset.
+            attribute.Clear()
+            attribute.Set(value)
+
+
+def _light_attribute_depends_on_reset(attribute: Any, edit_layer: Any, edited_paths: set[Any]) -> bool:
+    """Check whether a selected light's authored default can affect this attribute."""
+    from pxr import Usd
+
+    for arc in Usd.PrimCompositionQuery(attribute.GetPrim()).GetCompositionArcs():
+        node = arc.GetTargetNode()
+        property_path = node.path.AppendProperty(attribute.GetName())
+        for layer in node.layerStack.layers:
+            if layer == edit_layer and node.path in edited_paths:
+                return True
+            spec = layer.GetAttributeAtPath(property_path)
+            # A stronger default shields both default and animated values from the reset.
+            if spec and spec.HasInfo("default"):
+                return False
+    return False
 
 
 def _find_light_prims(

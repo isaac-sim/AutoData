@@ -233,12 +233,22 @@ def _sync_camera_mounts_to_fabric(env: ManagerBasedEnv, env_ids: list[int], sens
 def _find_camera_prims_by_env(env: ManagerBasedEnv, env_ids: list[int], sensor: Camera) -> dict[int, Any]:
     """Map each selected environment index to its cloned camera prim."""
     from isaaclab.sim.utils import find_matching_prims
+    from pxr import Sdf
 
     prims = find_matching_prims(sensor.cfg.prim_path, stage=env.scene.stage)
+    env_ids_by_path = {Sdf.Path(env.scene.env_prim_paths[env_id]): env_id for env_id in env_ids}
+    matches_by_env = {env_id: [] for env_id in env_ids}
+    for prim in prims:
+        # Match complete ancestor paths, including cameras mounted beneath robot links.
+        for ancestor in prim.GetPath().GetParentPath().GetPrefixes():
+            env_id = env_ids_by_path.get(ancestor)
+            if env_id is not None:
+                matches_by_env[env_id].append(prim)
+
     prims_by_env = {}
     for env_id in env_ids:
         env_path = env.scene.env_prim_paths[env_id]
-        matches = [prim for prim in prims if str(prim.GetPath()).startswith(f"{env_path}/")]
+        matches = matches_by_env[env_id]
         assert (
             len(matches) == 1
         ), f"Expected exactly one camera prim under {env_path!r} for {sensor.cfg.prim_path!r}, found {len(matches)}."
