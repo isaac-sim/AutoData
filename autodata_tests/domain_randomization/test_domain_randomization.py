@@ -655,7 +655,7 @@ def test_scalar_sampling_uses_the_types_matched_in_each_environment():
     assert not hasattr(env, "_autodata_material_generators")
 
     materials.randomize_material_scalar(*args, (1, 3))
-    float_only, mixed = [binding.ComputeBoundMaterial()[0].GetPath() for binding in bindings]
+    float_only, mixed = (binding.ComputeBoundMaterial()[0].GetPath() for binding in bindings)
 
     def value(material_path, shader_name):
         return UsdShade.Shader.Get(stage, material_path.AppendChild(shader_name)).GetInput("value").Get()
