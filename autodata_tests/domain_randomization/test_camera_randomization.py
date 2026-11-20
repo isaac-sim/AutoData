@@ -259,17 +259,19 @@ def test_camera_resets_use_nominal_mount_and_only_selected_environment():
 @pytest.mark.parametrize(
     "spawn_camera,inherit_camera,authored_mount,optical_rotation_deg",
     [
-        (False, False, True, 0.0),
-        (False, True, True, 0.0),
-        (True, True, False, 0.0),
-        (True, True, True, 0.0),
-        (False, True, True, 10.0),
+        (False, False, True, (0, 0, 0)),
+        (False, True, True, (0, 0, 0)),
+        (True, True, False, (0, 0, 0)),
+        (True, True, True, (0, 0, 0)),
+        pytest.param(False, True, True, (10, 0, 0), id="authored-optical-x"),
+        pytest.param(False, True, True, (0, 10, 0), id="authored-optical-y"),
     ],
 )
 def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
     spawn_camera, inherit_camera, authored_mount, optical_rotation_deg
 ):
     import numpy as np
+    from scipy.spatial.transform import Rotation
 
     from isaaclab.sensors import CameraCfg
     from isaaclab.sim import PinholeCameraCfg
@@ -286,7 +288,7 @@ def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
     if authored_mount:
         xform = UsdGeom.Xformable(source)
         xform.AddTranslateOp().Set((0.08, 0.03, 0.4))
-        xform.AddRotateXYZOp().Set((0.0, 0.0, 90.0) if optical_rotation_deg else (15.0, -10.0, 25.0))
+        xform.AddRotateXYZOp().Set((0.0, 0.0, 90.0) if any(optical_rotation_deg) else (15.0, -10.0, 25.0))
     if inherit_camera:
         stage.DefinePrim(paths[1]).GetInherits().AddInherit(source.GetPath())
     else:
@@ -318,14 +320,12 @@ def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
     before = np.array(UsdGeom.Xformable(stage.GetPrimAtPath(paths[1])).GetLocalTransformation())
     expected = np.array(UsdGeom.Xformable(source).GetLocalTransformation())
     expected[3, 0] += 0.01
-    if optical_rotation_deg:
-        angle = np.deg2rad(optical_rotation_deg)
+    if any(optical_rotation_deg):
         rotation_z = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
-        rotation_x = np.array(
-            [[1.0, 0.0, 0.0], [0.0, np.cos(angle), -np.sin(angle)], [0.0, np.sin(angle), np.cos(angle)]]
-        )
-        # The optical X offset follows the authored Z rotation; USD uses row vectors.
-        expected[:3, :3] = (rotation_z @ rotation_x).T
+        x, y, z = optical_rotation_deg
+        # Optical Y points down and Z points forward. Both are reversed in OpenGL.
+        local_offset = Rotation.from_euler("XYZ", (x, -y, -z), degrees=True).as_matrix()
+        expected[:3, :3] = (rotation_z @ local_offset).T  # USD uses row vectors.
     lens_values = [
         (prim.GetAttribute("focalLength").Get(), prim.GetAttribute("horizontalAperture").Get())
         for prim in (stage.GetPrimAtPath(path) for path in paths)
@@ -339,8 +339,8 @@ def test_extrinsics_only_resets_preserve_calibration_and_unselected_mounts(
             (1.0, 1.0),
             (0.01, 0.0, 0.0),
             (0.01, 0.0, 0.0),
-            (optical_rotation_deg, 0.0, 0.0),
-            (optical_rotation_deg, 0.0, 0.0),
+            optical_rotation_deg,
+            optical_rotation_deg,
         )
         assert result[0]["focal_length_px"] == (300.0,)
         assert result[0]["position_xyz"] == pytest.approx(expected[3, :3])

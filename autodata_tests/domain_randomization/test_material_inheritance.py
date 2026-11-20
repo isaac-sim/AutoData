@@ -13,7 +13,7 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 from autodata_domain_randomization import materials
 
 
-def make_env(binding_kind="direct", seed=23):
+def make_env(binding_kind="direct", seed=23, inherited=False):
     torch.manual_seed(seed)
     stage = Usd.Stage.CreateInMemory()
     sources = []
@@ -51,8 +51,11 @@ def make_env(binding_kind="direct", seed=23):
         )
     paths = [f"/World/envs/env_{index}" for index in range(3)]
     for path in paths[1:]:
-        UsdGeom.Xform.Define(stage, path + "/Object")
-        Sdf.CopySpec(stage.GetRootLayer(), root, stage.GetRootLayer(), path + "/Object")
+        if inherited:
+            UsdGeom.Xform.Define(stage, path).GetPrim().GetInherits().AddInherit(paths[0])
+        else:
+            UsdGeom.Xform.Define(stage, path + "/Object")
+            Sdf.CopySpec(stage.GetRootLayer(), root, stage.GetRootLayer(), path + "/Object")
     scene = SimpleNamespace(
         stage=stage,
         env_prim_paths=paths,
@@ -301,8 +304,9 @@ def test_environment_seed_controls_late_streams_after_global_reseeding(event):
 
 
 @pytest.mark.parametrize("binding_kind", ["direct", "collection", "strong"])
-def test_mixed_reset_sequences_match_nearest_property_settings(binding_kind):
-    env = make_env(binding_kind)
+@pytest.mark.parametrize("inherited", [False, True])
+def test_mixed_reset_sequences_match_nearest_property_settings(binding_kind, inherited):
+    env = make_env(binding_kind, inherited=inherited)
     paths = ("body", "body/plain", "body/trim", "body/trim/plain", "body/trim/fastener", "sibling")
     original = {path: values(env, path) for path in paths}
     settings = [{} for _ in env.scene.env_prim_paths]

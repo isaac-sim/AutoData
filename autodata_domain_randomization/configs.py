@@ -79,8 +79,9 @@ class MaterialColorRandomizationCfg:
 class MaterialScalarRandomizationCfg:
     """Scalar shader-property settings, such as roughness or specular level.
 
-    Values are sampled uniformly from ``value_range``. Equal bounds pin the input to
-    a fixed value for matching a known material.
+    Floating-point inputs are sampled continuously from ``value_range``. If any matched
+    input in an environment is integral, sample one of the representable integers between
+    the bounds, inclusive. Equal bounds pin the input to a fixed value.
 
     Attributes:
         asset_name: Scene-asset name containing the target prims.

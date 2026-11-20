@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import torch
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -18,6 +20,15 @@ _OVERRIDE_MARKER = "autodata:domain_randomization_override"
 _OVERRIDE_TARGET = "autodata:domain_randomization_target"
 _EXPLICIT_INPUTS = "autodata:domain_randomization_inputs"
 _BINDING_EXCEPTIONS = "autodata:domain_randomization_exceptions"
+_PRIVATE_SCOPE = "/DomainRandomizationMaterials"
+_INTEGER_LIMITS = {
+    "bool": (0, 1),
+    "uchar": (0, 2**8 - 1),
+    "int": (-(2**31), 2**31 - 1),
+    "uint": (0, 2**32 - 1),
+    "int64": (-(2**63), 2**63 - 1),
+    "uint64": (0, 2**64 - 1),
+}
 
 
 def randomize_material_color(
@@ -74,8 +85,9 @@ def randomize_material_scalar(
 ) -> None:
     """Apply an independently sampled scalar to each resetting environment.
 
-    Matching shaders within one environment share the sampled value. Equal bounds pin the
-    input without consuming random numbers.
+    Matching shaders within one environment share the sampled value. If any input is integral,
+    sample uniformly among the integers in range that fit all integral inputs. A single possible
+    value pins the input without consuming random numbers.
     Connections on the selected input are replaced on the target's private material.
 
     Args:
@@ -89,24 +101,63 @@ def randomize_material_scalar(
 
     Raises:
         TypeError: A selected shader input cannot accept a scalar value.
+        ValueError: The range contains no representable integer for a selected input.
         RuntimeError: No matching input exists or a replacement cannot be written.
     """
     if len(env_ids) == 0:
         return
-    inputs_by_env = _find_shader_inputs(env, env_ids, asset_cfg, prim_name_markers, shader_input, "scalar")
+    integer_ranges: dict[int, tuple[int, int]] = {}
+
+    def check_integer_range(env_id: int, material_input: Any) -> None:
+        usd_type = str(material_input.GetTypeName())
+        limits = _INTEGER_LIMITS.get(usd_type)
+        if limits is None:
+            return
+        low, high = integer_ranges.get(env_id, limits)
+        low = max(low, limits[0], math.ceil(value_range[0]))
+        high = min(high, limits[1], math.floor(value_range[1]))
+        if low > high:
+            raise ValueError(
+                f"value_range {value_range} contains no representable integer for "
+                f"{material_input.GetAttr().GetPath()} ({usd_type})."
+            )
+        integer_ranges[env_id] = (low, high)
+
+    inputs_by_env = _find_shader_inputs(
+        env, env_ids, asset_cfg, prim_name_markers, shader_input, "scalar", check_integer_range
+    )
     for env_id, shader_inputs in inputs_by_env.items():
-        low, high = value_range
-        value = (
-            float(low)
-            if low == high
-            else torch.empty((), device=env.device)
-            .uniform_(low, high, generator=_material_generator(env, env_id))
-            .item()
-        )
+        if env_id in integer_ranges:
+            low, high = integer_ranges[env_id]
+            value = low if low == high else _sample_integer(low, high, _material_generator(env, env_id))
+        else:
+            low, high = value_range
+            value = (
+                float(low)
+                if low == high
+                else torch.empty((), device=env.device)
+                .uniform_(low, high, generator=_material_generator(env, env_id))
+                .item()
+            )
         for material_input in shader_inputs:
             if not material_input.Set(value):
                 raise RuntimeError(f"Failed to write material shader input {material_input.GetAttr().GetPath()}.")
             material_input.DisconnectSource()
+
+
+def _sample_integer(low: int, high: int, generator: torch.Generator) -> int:
+    """Sample an inclusive USD integer range, including unsigned 64-bit endpoints."""
+    count = high - low + 1
+    if count <= torch.iinfo(torch.int64).max:
+        return low + torch.randint(count, (), device=generator.device, generator=generator).item()
+
+    # randint's upper bound must fit a signed int64. For wider intervals, draw two
+    # 32-bit words and reject out-of-range offsets to keep every value equally likely.
+    while True:
+        upper, lower = torch.randint(2**32, (2,), device=generator.device, generator=generator).tolist()
+        offset = (upper << 32) | lower
+        if offset < count:
+            return low + offset
 
 
 def sample_palette_color(
@@ -155,6 +206,7 @@ def _find_shader_inputs(
     prim_name_markers: tuple[str, ...],
     shader_input: str,
     input_kind: Literal["scalar", "color"],
+    validate_scalar_range: Callable[[int, Any], None] | None = None,
 ) -> dict[int, list[Any]]:
     """Find inherited inputs, preserving separately authored materials and child DR."""
     from pxr import Sdf, Usd, UsdShade
@@ -165,12 +217,18 @@ def _find_shader_inputs(
         else ("Bool", "UChar", "Int", "UInt", "Int64", "UInt64", "Half", "Float", "Double", "TimeCode")
     )
     compatible_types = {getattr(Sdf.ValueTypeNames, name).type for name in type_names}
+
     scene_asset_cfg = getattr(env.scene.cfg, asset_cfg.name)
     root_pattern = re.compile(f"^{scene_asset_cfg.prim_path}$")
     selected_env_paths = {int(env_id): env.scene.env_prim_paths[int(env_id)] for env_id in env_ids.tolist()}
     env_ids_by_path = {Sdf.Path(path): env_id for env_id, path in enumerate(env.scene.env_prim_paths)}
+    parallel = len(env_ids_by_path) > 1
     roots = []
-    for prim in env.scene.stage.Traverse():
+    iterator = iter(env.scene.stage.Traverse())
+    for prim in iterator:
+        if prim.GetPath() == _PRIVATE_SCOPE:
+            iterator.PruneChildren()
+            continue
         if not root_pattern.fullmatch(str(prim.GetPath())):
             continue
         env_id = next((env_ids_by_path[path] for path in prim.GetPath().GetPrefixes() if path in env_ids_by_path), None)
@@ -196,6 +254,12 @@ def _find_shader_inputs(
                 continue
             explicit = any(marker in prim.GetName() for marker in prim_name_markers)
             settings = prim.GetCustomDataByKey(_EXPLICIT_INPUTS) or {}
+            if parallel:
+                # Include settings authored before cloning, but keep subsequent settings
+                # at absolute, environment-specific paths outside the clone hierarchy.
+                record = env.scene.stage.GetPrimAtPath(_private_target_path(prim))
+                if record:
+                    settings = settings | (record.GetCustomDataByKey(_EXPLICIT_INPUTS) or {})
             inherited_target = active.get(prim.GetParent().GetPath())
             target = prim if explicit else (None if shader_input in settings else inherited_target)
             active[prim.GetPath()] = target
@@ -204,11 +268,7 @@ def _find_shader_inputs(
             material, _ = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()
             if not material:
                 continue
-            shader_inputs = [
-                UsdShade.Shader(item).GetInput(shader_input)
-                for item in Usd.PrimRange(material.GetPrim())
-                if item.IsA(UsdShade.Shader) and UsdShade.Shader(item).GetInput(shader_input)
-            ]
+            shader_inputs = _material_inputs(material, shader_input)
             for material_input in shader_inputs:
                 if material_input.GetTypeName().type not in compatible_types:
                     expected = "an RGB" if input_kind == "color" else "a scalar"
@@ -216,6 +276,8 @@ def _find_shader_inputs(
                         f"material_{input_kind}s requires {expected} shader input, but "
                         f"{material_input.GetAttr().GetPath()} has USD type {material_input.GetTypeName()}."
                     )
+                if validate_scalar_range is not None:
+                    validate_scalar_range(env_id, material_input)
             if shader_inputs:
                 assert not prim.IsInstanceProxy(), "Material DR requires non-instanceable target visual prims."
                 targets.append((env_id, root, prim, material, explicit))
@@ -229,6 +291,8 @@ def _find_shader_inputs(
             )
 
     for prim in explicit_targets.values():
+        if parallel:
+            prim = env.scene.stage.DefinePrim(_private_target_path(prim))
         settings = prim.GetCustomDataByKey(_EXPLICIT_INPUTS) or {}
         prim.SetCustomDataByKey(_EXPLICIT_INPUTS, settings | {shader_input: True})
 
@@ -236,28 +300,28 @@ def _find_shader_inputs(
     edited_materials = {}
     for env_id, root, prim, material, explicit in targets:
         source = material
-        overrides_path = root.GetPath().AppendChild("DomainRandomizationMaterials")
+        target_path = _private_target_path(prim) if parallel else prim.GetPath()
         material_prim = material.GetPrim()
         owner = material_prim.GetCustomDataByKey(_OVERRIDE_TARGET)
-        # Relative ownership survives copied environments and also permits nested scene
-        # assets to update the same target without replacing one another's overrides.
+        # Keep ownership relative to the asset in both namespaces so nested scene
+        # assets can update the same override and single-environment assets can be copied.
         owns_material = (
             material_prim.GetCustomDataByKey(_OVERRIDE_MARKER)
             and owner is not None
-            and material.GetPath().GetParentPath().GetParentPath().AppendPath(owner) == prim.GetPath()
+            and material.GetPath().GetParentPath().GetParentPath().AppendPath(owner) == target_path
         )
         parent = edited_materials.get(prim.GetParent().GetPath())
         if not explicit and parent and parent[0].GetPath() == source.GetPath():
             # Unchanged inherited materials can share an ancestor's override. An
             # explicit child event takes the separate-override path below.
             material = parent[1]
-            _bind_material_override(prim, material)
         elif not owns_material:
             original = material
             while original.GetPrim().GetCustomDataByKey(_OVERRIDE_MARKER):
                 original = original.GetBaseMaterial()
             identifier = hashlib.sha256(f"{prim.GetPath()}|{original.GetPath()}".encode()).hexdigest()[:16]
-            local_path = overrides_path.AppendChild(f"Material_{identifier}")
+            storage_root = _private_target_path(root) if parallel else root.GetPath()
+            local_path = storage_root.AppendChild("DomainRandomizationMaterials").AppendChild(f"Material_{identifier}")
             local_material = UsdShade.Material.Get(env.scene.stage, local_path)
             if not local_material:
                 local_material = UsdShade.Material.Define(env.scene.stage, local_path)
@@ -266,15 +330,62 @@ def _find_shader_inputs(
                 local_material.GetPrim().SetCustomDataByKey(
                     _OVERRIDE_TARGET, str(prim.GetPath().MakeRelativePath(root.GetPath()))
                 )
-            _bind_material_override(prim, local_material)
             material = local_material
+        if material != source:
+            if parallel:
+                _bind_parallel_material(prim, material, target_path)
+            else:
+                _bind_material_override(prim, material)
         edited_materials[prim.GetPath()] = (source, material)
-        for material_prim in Usd.PrimRange(material.GetPrim()):
-            if material_prim.IsA(UsdShade.Shader):
-                material_input = UsdShade.Shader(material_prim).GetInput(shader_input)
-                if material_input:
-                    inputs_by_env[env_id][str(material_input.GetAttr().GetPath())] = material_input
+        for material_input in _material_inputs(material, shader_input):
+            inputs_by_env[env_id][str(material_input.GetAttr().GetPath())] = material_input
     return {env_id: list(inputs.values()) for env_id, inputs in inputs_by_env.items()}
+
+
+def _material_inputs(material: Any, name: str) -> list[Any]:
+    """Find the same named shader inputs when validating a material and writing its override."""
+    from pxr import Usd, UsdShade
+
+    inputs = []
+    for prim in Usd.PrimRange(material.GetPrim()):
+        if prim.IsA(UsdShade.Shader):
+            material_input = UsdShade.Shader(prim).GetInput(name)
+            if material_input:
+                inputs.append(material_input)
+    return inputs
+
+
+def _private_target_path(prim: Any) -> Any:
+    """Mirror the scene path outside the environments so cloned prims cannot compose these opinions."""
+    from pxr import Sdf
+
+    return prim.GetPath().ReplacePrefix(Sdf.Path.absoluteRootPath, Sdf.Path(_PRIVATE_SCOPE))
+
+
+def _bind_parallel_material(prim: Any, material: Any, target_path: Any) -> None:
+    """Bind only this absolute path, even when other environments inherit the prim."""
+    from pxr import Usd, UsdShade
+
+    path = prim.GetPath()
+    stage = prim.GetStage()
+    record = stage.DefinePrim(target_path)
+    collection = Usd.CollectionAPI.Apply(record, "target")
+    collection.CreateExpansionRuleAttr().Set(Usd.Tokens.explicitOnly)
+    collection.CreateIncludesRel().SetTargets([path])
+    name = "autodata_" + hashlib.sha256(str(path).encode()).hexdigest()[:16]
+    api = UsdShade.MaterialBindingAPI.Apply(prim)
+    api.Bind(collection, material, bindingName=name)
+    if api.ComputeBoundMaterial()[0] == material:
+        return
+
+    # Only blocked targets need a strong collection on the top ancestor. It matches
+    # exactly one prim, preserving the authored precedence everywhere else.
+    owner = stage.GetPrimAtPath(path.GetPrefixes()[0])
+    api = UsdShade.MaterialBindingAPI.Apply(owner)
+    api.Bind(collection, material, bindingName=name, bindingStrength=UsdShade.Tokens.strongerThanDescendants)
+    rel_name = api.GetCollectionBindingRel(name).GetName()
+    if rel_name not in owner.GetPropertyOrder():
+        owner.SetPropertyOrder([rel_name, *owner.GetPropertyOrder()])
 
 
 def _bind_material_override(prim: Any, material: Any) -> None:
