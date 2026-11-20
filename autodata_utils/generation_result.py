@@ -106,13 +106,15 @@ def input_record(path: str | None) -> dict[str, str] | None:
 
 
 def code_revision() -> str | None:
-    """Git commit of the AutoData checkout, or None without git or outside a checkout."""
-    if shutil.which("git") is None:
-        return None
-    result = subprocess.run(
-        ["git", "-C", str(Path(__file__).resolve().parent), "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.stdout.strip() if result.returncode == 0 else None
+    """Git commit of the AutoData checkout; without git or outside a checkout, ``$AUTODATA_REVISION`` (the commit an
+    image was built from), else None."""
+    if shutil.which("git") is not None:
+        result = subprocess.run(
+            ["git", "-C", str(Path(__file__).resolve().parent), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    return os.environ.get("AUTODATA_REVISION") or None

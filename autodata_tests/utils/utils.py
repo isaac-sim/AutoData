@@ -3,9 +3,13 @@
 
 """Shared assertion helpers for the AutoData test suite."""
 
+import contextlib
 import h5py
 import json
 import os
+import shutil
+import tempfile
+from collections.abc import Iterator
 
 from autodata_metrics.records import ATTEMPT, RESULT, parse, parse_env_args
 from autodata_tests.utils.constants import TestPaths
@@ -92,13 +96,11 @@ def assert_recorded_run(dataset_file: str, result_file: str) -> list[dict]:
     return attempts
 
 
-def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]) -> None:
-    """Report a generation run's metrics with ``validate_dataset.py``; assert every episode passes the checks and
-    exactly ``expected_ok`` computed a value, with ``start_layout_spread`` and ``workspace_spread`` too when the run
-    exported two episodes or more.
+def report_metrics(dataset_file: str, result_file: str) -> dict:
+    """Report a generation run's metrics with ``validate_dataset.py`` into ``report.json`` beside the dataset.
 
-    A renamed recorded key or an adapter that stops recording a stream turns a metric not applicable, which
-    this catches.
+    Returns:
+        The report.
     """
 
     report_file = os.path.join(os.path.dirname(dataset_file), "report.json")
@@ -113,15 +115,66 @@ def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]
         report_file,
     ])
     with open(report_file, encoding="utf-8") as report_handle:
-        report = json.load(report_handle)
+        return json.load(report_handle)
+
+
+def assert_ok_metrics(dataset_file: str, result_file: str, expected_ok: set[str]) -> None:
+    """Report a generation run's metrics, assert every episode passes the checks, then
+    :func:`assert_computed_metrics`."""
+
+    report = report_metrics(dataset_file, result_file)
     assert (
         report["num_valid_episodes"] == report["num_episodes"]
     ), f"{report['num_episodes'] - report['num_valid_episodes']} episodes failed checks: {report['check_failures']}"
+    assert_computed_metrics(report, expected_ok)
+
+
+def assert_computed_metrics(report: dict, expected_ok: set[str], optional: frozenset[str] = frozenset()) -> None:
+    """Assert exactly ``expected_ok`` computed a value, with ``start_layout_spread`` and ``workspace_spread`` too when
+    two episodes or more are valid; the metrics in ``optional`` may compute or not.
+
+    A renamed recorded key or an adapter that stops recording a stream turns a metric not applicable, which
+    this catches.
+    """
+
     rows = report["metrics"]
-    ok = {name for name, row in rows.items() if row["status"] == "ok"}
+    ok = {name for name, row in rows.items() if row["status"] == "ok"} - optional
     spreads = {"start_layout_spread", "workspace_spread"} if report["num_valid_episodes"] >= 2 else set()
-    expected = expected_ok | spreads
+    expected = (expected_ok | spreads) - optional
     assert ok == expected, f"Computed {sorted(ok)}, expected {sorted(expected)}: {rows}"
+
+
+@contextlib.contextmanager
+def benchmark_temp_dir(name: str) -> Iterator[str]:
+    """Yield a temporary directory for the benchmark ``name``. On exit, also after a failure, export its files other than
+    HDF5 datasets (the generation result, its attempt log and the metrics report) to ``$AUTODATA_BENCHMARK_DIR/<name>``
+    when that variable is set. A failed export fails a passing benchmark, but does not replace a failing one's error.
+    """
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        try:
+            yield temp_dir
+        except BaseException:
+            with contextlib.suppress(OSError):
+                _export_benchmark_files(temp_dir, name)
+            raise
+        _export_benchmark_files(temp_dir, name)
+
+
+def _export_benchmark_files(source_dir: str, name: str) -> None:
+    """Replace ``$AUTODATA_BENCHMARK_DIR/<name>``, if that variable is set, with the files of ``source_dir`` other than
+    HDF5 datasets, so the directory never mixes two runs."""
+
+    if not os.environ.get("AUTODATA_BENCHMARK_DIR"):
+        return
+    export_dir = os.path.join(os.environ["AUTODATA_BENCHMARK_DIR"], name)
+    shutil.rmtree(export_dir, ignore_errors=True)
+    os.makedirs(export_dir)
+    for file_name in os.listdir(source_dir):
+        path = os.path.join(source_dir, file_name)
+        if os.path.isfile(path) and not file_name.endswith(".hdf5"):
+            # copyfile, not copy2: the result file is written 0600, and another user may upload the copy.
+            shutil.copyfile(path, os.path.join(export_dir, file_name))
 
 
 def assert_no_metric_inputs(dataset_file: str) -> None:
