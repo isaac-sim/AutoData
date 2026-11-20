@@ -118,6 +118,7 @@ Table of Contents
    pages/workflows/franka_rope_softmimicgen/index
    pages/workflows/humanoid_dexmimicgen/index
    pages/workflows/skillgen/index
+   pages/workflows/sim2real_workflow
 
 .. toctree::
    :maxdepth: 1
