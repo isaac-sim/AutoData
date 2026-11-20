@@ -5,13 +5,15 @@ from __future__ import annotations
 
 import asyncio
 import torch
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
 from isaaclab.utils.datasets import EpisodeData
 
 from autodata_core.pool import DataGenInfoPool
 from autodata_interfaces.embodiments.embodiment_adapter import EmbodimentAdapter
+from autodata_interfaces.embodiments.embodiment_types import ActionTargetFrame, NamedJointTrajectory
 from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from autodata_interfaces.tasks.subtask_constraint_spec import SubtaskConstraint
 from autodata_interfaces.tasks.subtask_spec import Subtask, SubtaskAlgoParams
@@ -228,20 +230,162 @@ class Datastream:
 
         return self.embodiment_adapter.get_eef_poses(env_ids=env_ids)[eef_name]
 
-    def get_robot_joint_positions(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
-        """Read the robot's current joint positions [rad] via the embodiment adapter.
+    def get_robot_joint_positions(
+        self,
+        env_ids: Sequence[int] | None = None,
+        joint_names: Sequence[str] | None = None,
+    ) -> torch.Tensor:
+        """Read joint positions [rad, m] through the embodiment adapter.
 
-        Returns a tensor of shape ``(len(env_ids), num_dof)`` in the articulation's native joint
-        order (see :meth:`get_robot_joint_names`). Consumed by motion planners as a planning
-        start state.
+        Args:
+            env_ids: Environment indices; None selects all environments.
+            joint_names: Ordered subset of articulation joints. None preserves native order.
+
+        Returns:
+            Positions shaped ``(num_selected_envs, num_selected_joints)``.
         """
 
-        return self.embodiment_adapter.get_joint_positions(env_ids=env_ids)
+        if joint_names is None:
+            return self.embodiment_adapter.get_joint_positions(env_ids=env_ids)
+        return self.embodiment_adapter.get_joint_positions(env_ids=env_ids, joint_names=joint_names)
+
+    def get_robot_joint_position_limits(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
+        """Read live lower and upper joint position limits [rad, m] via the embodiment adapter.
+
+        Args:
+            env_ids: Environment indices; None selects all environments.
+
+        Returns:
+            Limits shaped ``(num_selected_envs, num_joints, 2)`` in articulation order.
+        """
+
+        return self.embodiment_adapter.get_joint_position_limits(env_ids=env_ids)
+
+    def get_robot_joint_velocity_limits(self, env_ids: Sequence[int] | None = None) -> torch.Tensor:
+        """Read live maximum joint speeds [rad/s, m/s] through the embodiment adapter.
+
+        Args:
+            env_ids: Environment indices; None selects all environments.
+
+        Returns:
+            Maximum speeds shaped ``(num_selected_envs, num_joints)`` in articulation order.
+        """
+        return self.embodiment_adapter.get_joint_velocity_limits(env_ids=env_ids)
 
     def get_robot_joint_names(self) -> list[str]:
-        """Return the robot articulation's joint names, ordered to match :meth:`get_robot_joint_positions`."""
+        """Return articulation joint names in native order."""
 
         return self.embodiment_adapter.get_joint_names()
+
+    def get_robot_eef_joint_names(self, eef_name: str) -> tuple[str, ...]:
+        """Return positional passthrough joints owned by one end effector.
+
+        Args:
+            eef_name: End effector to query.
+
+        Returns:
+            Joint names in passthrough-action order.
+        """
+
+        return self.embodiment_adapter.get_eef_joint_names(eef_name)
+
+    def get_eef_passthrough_preset(self, eef_name: str, preset_name: str) -> tuple[float, ...]:
+        """Return an embodiment-owned passthrough preset.
+
+        Args:
+            eef_name: End effector to query.
+            preset_name: Configured posture name.
+
+        Returns:
+            Joint positions in the end effector's passthrough-action order [rad, m].
+        """
+
+        return self.embodiment_adapter.get_eef_passthrough_preset(eef_name, preset_name)
+
+    def get_passthrough_actions(
+        self,
+        env_ids: Sequence[int] | None = None,
+    ) -> dict[str, torch.Tensor] | None:
+        """Return current passthrough actions when the embodiment can recover them.
+
+        Args:
+            env_ids: Environment indices, or None for all environments.
+
+        Returns:
+            Batched tensors per action channel, or None if a required channel is unavailable.
+        """
+
+        return self.embodiment_adapter.get_passthrough_actions(env_ids)
+
+    def get_robot_action_target_frames(self) -> tuple[ActionTargetFrame, ...]:
+        """Return exact controlled frames in pose-action block order, when available."""
+
+        return self.embodiment_adapter.get_action_target_frames()
+
+    def get_robot_planning_model_path(self) -> Path | None:
+        """Return the exact local model used by the live embodiment controller, when exposed."""
+
+        return self.embodiment_adapter.get_planning_model_path()
+
+    def solve_robot_joint_trajectory(
+        self,
+        target_eef_poses: dict[str, torch.Tensor],
+        joint_seed_trajectories: dict[str, NamedJointTrajectory],
+        initial_joint_positions: torch.Tensor,
+        position_tolerance_m: float,
+        rotation_tolerance_rad: float,
+        joint_state_is_valid: Callable[[tuple[str, ...], torch.Tensor, int], bool] | None = None,
+        env_id: int = 0,
+    ) -> NamedJointTrajectory | None:
+        """Solve shared-joint end-effector targets through the embodiment controller.
+
+        Args:
+            target_eef_poses: Target poses per end effector with shape (T, 4, 4) [m].
+            joint_seed_trajectories: Named planner joint proposals per end effector.
+            initial_joint_positions: Initial state in live articulation joint order [rad, m].
+            position_tolerance_m: Required tool-position accuracy [m].
+            rotation_tolerance_rad: Required tool-rotation accuracy [rad].
+            joint_state_is_valid: Optional feasibility check for each joint sample.
+            env_id: Environment controller to use.
+
+        Returns:
+            Named joint trajectory, or None when the embodiment does not support coupled solving.
+        """
+
+        return self.embodiment_adapter.solve_joint_trajectory(
+            target_eef_poses,
+            joint_seed_trajectories,
+            initial_joint_positions,
+            position_tolerance_m,
+            rotation_tolerance_rad,
+            joint_state_is_valid,
+            env_id,
+        )
+
+    def set_robot_joint_posture_target(
+        self,
+        joint_names: tuple[str, ...],
+        joint_positions: torch.Tensor,
+        env_id: int = 0,
+    ) -> None:
+        """Set the embodiment controller's posture reference for the next step.
+
+        Args:
+            joint_names: Names aligned with the position values.
+            joint_positions: Posture target with shape (J,) [rad, m].
+            env_id: Environment controller to update.
+        """
+
+        self.embodiment_adapter.set_joint_posture_target(joint_names, joint_positions, env_id)
+
+    def reset_robot_joint_posture_target(self, env_id: int = 0) -> None:
+        """Restore the embodiment controller's default posture reference.
+
+        Args:
+            env_id: Environment controller to update.
+        """
+
+        self.embodiment_adapter.reset_joint_posture_target(env_id)
 
     def target_eef_pose_to_action(
         self,
@@ -268,6 +412,25 @@ class Datastream:
         """Extract passthrough actions (eef grippers + any non-eef channels) from an env action."""
 
         return self.embodiment_adapter.actions_to_passthrough_actions(actions)
+
+    def passthrough_actions_to_joint_positions(
+        self, passthrough_action_dict: dict[str, torch.Tensor]
+    ) -> dict[str, torch.Tensor]:
+        """Convert passthrough commands to named joint positions without changing robot state."""
+
+        return self.embodiment_adapter.passthrough_actions_to_joint_positions(passthrough_action_dict)
+
+    def joint_positions_to_passthrough_actions(
+        self,
+        joint_position_dict: dict[str, torch.Tensor],
+        passthrough_action_dict: dict[str, torch.Tensor],
+    ) -> dict[str, torch.Tensor]:
+        """Project named planned joints into positional passthrough channels."""
+
+        return self.embodiment_adapter.joint_positions_to_passthrough_actions(
+            joint_position_dict,
+            passthrough_action_dict,
+        )
 
     # ------------------------------------------------------------------
     # Other runtime queries
@@ -373,6 +536,7 @@ class Datastream:
         :meth:`get_object_poses`. Without a configured controller frame, both queries return
         environment-relative poses. Motion planners use this pose to transform between the
         embodiment frame and the robot base frame their solver plans in.
+        Planning-root queries use :meth:`get_robot_planning_root_pose` for named links.
         """
 
         index: slice | Sequence[int] = slice(None) if env_ids is None else env_ids
@@ -384,6 +548,32 @@ class Datastream:
         pose = pose_math.make_pose(pos_rel, pose_math.matrix_from_quat(quat))
         reference_inverse = self._reference_frame_inverse(env_ids)
         return reference_inverse @ pose if reference_inverse is not None else pose
+
+    def get_robot_planning_root_pose(
+        self,
+        root_pose_source_frame_name: str,
+        env_ids: Sequence[int] | None = None,
+    ) -> torch.Tensor:
+        """Get the named kinematic planning-root pose in the env-relative frame.
+
+        This is the frame-safe query for motion planning and ScheduleGen. It delegates to the
+        embodiment adapter so a controller-specific adapter can return the exact transform used
+        by its live controller. :meth:`get_robot_root_pose` remains the articulation-root query
+        used by legacy callers and is not assumed to equal this frame.
+
+        Args:
+            root_pose_source_frame_name: Exact live controller/articulation lookup key declared by
+                the robot planning description.
+            env_ids: Environments to read; ``None`` reads all.
+
+        Returns:
+            Planning-root transforms with shape ``(N, 4, 4)`` [m].
+        """
+
+        poses = self.embodiment_adapter.get_planning_root_pose(root_pose_source_frame_name, env_ids)
+        assert isinstance(poses, torch.Tensor), "planning-root poses must be a torch.Tensor"
+        assert poses.ndim == 3 and poses.shape[1:] == (4, 4), "planning-root poses must have shape (N, 4, 4)"
+        return poses
 
     def get_scene_state(self, is_relative: bool = True) -> dict:
         """Return the raw scene-state snapshot from the underlying env.
@@ -407,8 +597,8 @@ class Datastream:
         """Return the live USD stage backing the scene.
 
         Sanctioned collision-geometry source for motion planners that extract obstacles via a USD
-        parser. Planners scope extraction with :meth:`get_env_prim_path` and
-        :meth:`get_robot_prim_path`.
+        parser. Planners scope extraction with :meth:`get_env_prim_path`; frame-sensitive poses
+        are reconciled with the live planning root rather than authored robot-prim transforms.
         """
 
         return self.env.scene.stage
@@ -417,6 +607,35 @@ class Datastream:
         """Return the root USD prim path of the given environment's subtree (e.g. ``/World/envs/env_0``)."""
 
         return f"/World/envs/env_{env_id}"
+
+    def get_object_prim_path(self, object_ref: str, env_id: int) -> str:
+        """Return the environment-specific root prim for a rigid object or non-robot articulation.
+
+        Args:
+            object_ref: Scene object name, using the same inventory as :meth:`get_object_poses`.
+            env_id: Environment index.
+
+        Returns:
+            Absolute USD prim path for the selected object's root.
+        """
+
+        scene = self.env.scene
+        assert type(env_id) is int and 0 <= env_id < len(scene.env_prim_paths), "env_id is out of range"
+        robot_name = getattr(self.embodiment_adapter, "robot_asset_name", "robot")
+        if object_ref in scene.rigid_objects:
+            asset = scene.rigid_objects[object_ref]
+        elif object_ref != robot_name and object_ref in getattr(scene, "articulations", {}):
+            asset = scene.articulations[object_ref]
+        else:
+            raise KeyError(f"unknown scene object {object_ref!r}")
+        prim_pattern = asset.cfg.prim_path
+        assert isinstance(prim_pattern, str) and prim_pattern, "object prim path must be non-empty"
+        if prim_pattern == scene.env_regex_ns or prim_pattern.startswith(f"{scene.env_regex_ns}/"):
+            prim_path = scene.env_prim_paths[env_id] + prim_pattern[len(scene.env_regex_ns) :]
+        else:
+            prim_path = prim_pattern
+        assert scene.stage.GetPrimAtPath(prim_path).IsValid(), f"object prim does not exist: {prim_path}"
+        return prim_path
 
     def get_robot_prim_path(self, env_id: int) -> str:
         """Return the USD prim path of the robot articulation root for the given environment.

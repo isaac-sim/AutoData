@@ -4,33 +4,96 @@
 from __future__ import annotations
 
 import logging
+import math
 import numpy as np
 import torch
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import warp as wp
-from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModelState
-from curobo.geom.sdf.world import CollisionCheckerType
+from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
+from curobo.cuda_robot_model.types import JointLimits
+from curobo.geom.sdf.world import CollisionCheckerType, CollisionQueryBuffer
 from curobo.geom.sphere_fit import SphereFitType
 from curobo.geom.types import WorldConfig
 from curobo.types.base import TensorDeviceType
 from curobo.types.math import Pose
+from curobo.types.robot import RobotConfig
 from curobo.types.state import JointState
 from curobo.util.logger import setup_curobo_logger
 from curobo.util.usd_helper import UsdHelper
 from curobo.util_file import load_yaml
-from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
+from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig, MotionGenStatus
 from isaaclab.sim.spawners.materials import PreviewSurfaceCfg
 from isaaclab.sim.spawners.meshes import MeshSphereCfg, spawn_mesh_sphere
 
+from autodata_interfaces.embodiments.embodiment_types import NamedJointTrajectory
+from autodata_interfaces.motion_planners.curobo.collision_spheres import CollisionSphere, ObjectCollisionSpheres
 from autodata_interfaces.motion_planners.curobo.curobo_planner_cfg import CuroboPlannerCfg
 from autodata_interfaces.motion_planners.motion_planner_base import MotionPlannerBase
 from autodata_utils import pose_math as PoseUtils
 
 if TYPE_CHECKING:
     from autodata_interfaces.datastream.datastream import Datastream
+    from autodata_interfaces.motion_planners.curobo.plan_visualizer import PlanVisualizer
+
+
+def _usd_mesh_missing_scales_fill(stage: Any) -> None:
+    """Supply identity scale where cuRobo's USD reader requires an authored mesh value."""
+
+    from pxr import Gf, Sdf, UsdGeom
+
+    for prim in stage.Traverse():
+        if not prim.IsA(UsdGeom.Mesh):
+            continue
+        scale = prim.GetAttribute("xformOp:scale")
+        if scale and scale.Get() is not None:
+            continue
+        if not scale:
+            scale = prim.CreateAttribute("xformOp:scale", Sdf.ValueTypeNames.Float3)
+        scale.Set(Gf.Vec3f(1.0))
+
+
+def _self_collision_fallback_buffers_reset_install(motion_gen: MotionGen) -> None:
+    """Clear pinned cuRobo fallback outputs before every self-collision evaluation."""
+
+    visited: set[int] = set()
+    for rollout in motion_gen.get_all_rollout_instances():
+        for attribute in ("robot_self_collision_cost", "robot_self_collision_constraint"):
+            cost = getattr(rollout, attribute, None)
+            if cost is None or id(cost) in visited:
+                continue
+            visited.add(id(cost))
+            config = getattr(cost, "self_collision_kin_config", None)
+            if config is None or config.experimental_kernel:
+                continue
+            if getattr(cost, "_autodata_buffer_reset_installed", False):
+                continue
+            original_forward = cost.forward
+
+            def forward(robot_spheres: torch.Tensor, *, _cost=cost, _original=original_forward):
+                """Clear reused self-collision buffers before evaluating the sphere batch."""
+                _cost.update_batch_size(robot_spheres)
+                batch, horizon, sphere_count, width = robot_spheres.shape
+                expected_shapes = {
+                    "_out_distance": (batch, horizon),
+                    "_out_vec": (batch, horizon, sphere_count, width),
+                    "_sparse_sphere_idx": (batch, horizon, sphere_count),
+                }
+                for name, shape in expected_shapes.items():
+                    buffer = getattr(_cost, name, None)
+                    assert (
+                        isinstance(buffer, torch.Tensor) and buffer.shape == shape
+                    ), f"cuRobo self-collision buffer {name!r} changed contract"
+                    buffer.zero_()
+                return _original(robot_spheres)
+
+            cost.forward = forward
+            cost._autodata_buffer_reset_installed = True
+
 
 # cuRobo ebb71702 still uses this namespace in WorldMeshCollision. Warp 1.16
 # exposes the same bridge at the top level and no longer provides warp.torch.
@@ -128,6 +191,14 @@ class Attachment:
     parent: str  # Parent link name
 
 
+@dataclass(frozen=True)
+class _CollisionOnlyBackend:
+    """cuRobo kinematics paired with an already initialized collision world."""
+
+    kinematics: CudaRobotModel
+    world_coll_checker: Any
+
+
 class CuroboPlanner(MotionPlannerBase):
     """Motion planner for robot manipulation using cuRobo.
 
@@ -143,6 +214,8 @@ class CuroboPlanner(MotionPlannerBase):
     multi-phase planning for contact scenarios like grasping and placing objects.
     """
 
+    plan_visualizer: PlanVisualizer | None
+
     def __init__(
         self,
         datastream: Datastream,
@@ -153,6 +226,7 @@ class CuroboPlanner(MotionPlannerBase):
         num_trajopt_seeds: int = 12,
         num_graph_seeds: int = 12,
         interpolation_dt: float = 0.05,
+        collision_world_source: CuroboPlanner | None = None,
     ) -> None:
         """Initialize the motion planner for a specific environment.
 
@@ -164,12 +238,14 @@ class CuroboPlanner(MotionPlannerBase):
             datastream: Read interface over the env, task, and embodiment. World state (collision
                 geometry source, object poses, joint configuration) is read through it.
             config: Configuration object containing planner parameters and settings
-            task_name: Task name for auto-configuration
+            task_name: Legacy argument retained for compatibility; configure the planner through ``config``.
             env_id: Environment ID for multi-environment setups (0 to num_envs-1)
-            collision_checker: Type of collision checker
-            num_trajopt_seeds: Number of seeds for trajectory optimization
-            num_graph_seeds: Number of seeds for graph search
-            interpolation_dt: Time step for interpolating waypoints
+            collision_checker: Legacy argument; use ``config.collision_checker_type``.
+            num_trajopt_seeds: Legacy argument; use ``config.num_trajopt_seeds``.
+            num_graph_seeds: Legacy argument; use ``config.num_graph_seeds``.
+            interpolation_dt: Legacy argument; use ``config.interpolation_dt`` [s].
+            collision_world_source: Initialized planner whose synchronized world is reused by a
+                collision-only context.
 
         Raises:
             ValueError: If ``robot_config_file`` is not provided
@@ -188,28 +264,14 @@ class CuroboPlanner(MotionPlannerBase):
         self.step_size: float | None = self.config.motion_step_size
         self.visualize_plan: bool = self.config.visualize_plan
         self.visualize_spheres: bool = self.config.visualize_spheres
+        self.plan_visualizer: PlanVisualizer | None = None
 
         # Log the config parameter values
         self.logger.info(f"Config parameter values: {self.config}")
 
-        # Initialize plan visualizer if enabled
-        if self.visualize_plan:
-            from autodata_interfaces.motion_planners.curobo.plan_visualizer import PlanVisualizer
-
-            # Debug-visualization only (gated by ``visualize_plan``, off by default). Reads the
-            # raw env/robot handles directly to compute an env-local render offset; not part of
-            # the planning pipeline, which reads exclusively through ``self.datastream``.
-            env_origin = self.env.scene.env_origins[env_id, :3]
-            base_translation = (wp.to_torch(self.robot.data.root_pos_w)[env_id, :3] - env_origin).detach().cpu().numpy()
-            self.plan_visualizer = PlanVisualizer(
-                robot_name=self.config.robot_name,
-                recording_id=f"curobo_plan_{env_id}",
-                debug=config.debug_planner,
-                base_translation=base_translation,
-            )
-
         # Store attached objects as Attachment objects
         self.attached_objects: dict[str, Attachment] = {}  # object_name -> Attachment
+        self._object_collision_spheres: dict[str, ObjectCollisionSpheres] = {}
 
         # Initialize cuRobo components - FORCE CUDA DEVICE FOR ISOLATION
         setup_curobo_logger("warn")
@@ -241,37 +303,93 @@ class CuroboPlanner(MotionPlannerBase):
         if self.config.extra_collision_spheres:
             robot_cfg["kinematics"]["extra_collision_spheres"] = self.config.extra_collision_spheres
 
+        configured_self_collision_ignore = {
+            str(name): tuple(str(ignored_name) for ignored_name in ignored_names)
+            for name, ignored_names in robot_cfg["kinematics"]["self_collision_ignore"].items()
+        }
+        self._self_collision_ignore = MappingProxyType(configured_self_collision_ignore)
+        if not self.config.use_native_self_collision:
+            collision_links = tuple(str(name) for name in robot_cfg["kinematics"]["collision_link_names"])
+            robot_cfg["kinematics"]["self_collision_ignore"] = {name: list(collision_links) for name in collision_links}
+
         self.robot_cfg: dict[str, Any] = robot_cfg
-
-        # Load world configuration using the config's method
-        world_cfg: WorldConfig = self.config.get_world_config()
-
-        # Create motion generator config with parameters from configuration
-        motion_gen_config: MotionGenConfig = MotionGenConfig.load_from_robot_config(
-            robot_cfg,
-            world_cfg,
-            tensor_args=self.tensor_args,
-            collision_checker_type=self.config.collision_checker_type,
-            num_trajopt_seeds=self.config.num_trajopt_seeds,
-            num_graph_seeds=self.config.num_graph_seeds,
-            interpolation_dt=self.config.interpolation_dt,
-            collision_cache=self.config.collision_cache_size,
-            trajopt_tsteps=self.config.trajopt_tsteps,
-            collision_activation_distance=self.config.collision_activation_distance,
-            position_threshold=self.config.position_threshold,
-            rotation_threshold=self.config.rotation_threshold,
+        self._locked_joint_positions = MappingProxyType(
+            {str(name): float(value) for name, value in robot_cfg["kinematics"].get("lock_joints", {}).items()}
         )
+        self.planning_root_frame_name = str(robot_cfg["kinematics"]["base_link"])
+        self.root_pose_source_frame_name = config.root_pose_source_frame_name
 
-        # Create motion generator
-        self.motion_gen: MotionGen = MotionGen(motion_gen_config)
+        # Named robot groups use the live stage unless a configured world is explicitly requested.
+        world_cfg: WorldConfig = (
+            self.config.get_world_config() if self.config.include_configured_world else WorldConfig()
+        )
+        self._configured_world_config = world_cfg.get_collision_check_world()
 
-        # Set motion generator reference for plan visualizer if enabled
-        if self.visualize_plan:
-            self.plan_visualizer.set_motion_generator_reference(self.motion_gen)
+        # Synchronize before rollout construction: exported zero velocities are not valid bounds.
+        robot_configuration = RobotConfig.from_dict(robot_cfg, self.tensor_args)
+        self._joint_limits_sync(robot_configuration.kinematics.get_joint_limits())
+
+        if collision_world_source is None:
+            assert self.config.planning_enabled, "collision-only contexts require an initialized world source"
+            motion_gen_config = MotionGenConfig.load_from_robot_config(
+                robot_configuration,
+                world_cfg,
+                tensor_args=self.tensor_args,
+                collision_checker_type=self.config.collision_checker_type,
+                num_trajopt_seeds=self.config.num_trajopt_seeds,
+                num_graph_seeds=self.config.num_graph_seeds,
+                interpolation_dt=self.config.interpolation_dt,
+                collision_cache=self.config.collision_cache_size,
+                trajopt_tsteps=self.config.trajopt_tsteps,
+                collision_activation_distance=self.config.collision_activation_distance,
+                position_threshold=self.config.position_threshold,
+                rotation_threshold=self.config.rotation_threshold,
+                store_debug_in_result=self.config.debug_planner,
+                self_collision_check=self.config.use_native_self_collision,
+                self_collision_opt=self.config.use_native_self_collision,
+            )
+            self.motion_gen: MotionGen | _CollisionOnlyBackend = MotionGen(motion_gen_config)
+            _self_collision_fallback_buffers_reset_install(self.motion_gen)
+        else:
+            assert not self.config.planning_enabled, "planning backends cannot reuse another planner's world"
+            assert isinstance(collision_world_source.motion_gen, MotionGen)
+            assert collision_world_source.env_id == self.env_id
+            assert collision_world_source.datastream is self.datastream
+            robot_model = CudaRobotModel(robot_configuration.kinematics)
+            self.motion_gen = _CollisionOnlyBackend(
+                kinematics=robot_model,
+                world_coll_checker=collision_world_source.motion_gen.world_coll_checker,
+            )
+        self._collision_world_owner: CuroboPlanner = collision_world_source or self
+        self._kinematics = self.motion_gen.kinematics
+        self._kinematic_robot_cfg = robot_cfg
+        if config.kinematic_robot_config_file is not None:
+            self._kinematic_robot_cfg = load_yaml(config.kinematic_robot_config_file)["robot_cfg"]
+            for field in ("base_link", "ee_link", "collision_link_names"):
+                assert self._kinematic_robot_cfg["kinematics"][field] == robot_cfg["kinematics"][field], field
+            query_config = RobotConfig.from_dict(self._kinematic_robot_cfg, self.tensor_args)
+            self._joint_limits_sync(query_config.kinematics.get_joint_limits())
+            self._kinematics = CudaRobotModel(query_config.kinematics)
+            self._self_collision_ignore = MappingProxyType({
+                str(name): tuple(str(ignored) for ignored in ignored_names)
+                for name, ignored_names in self._kinematic_robot_cfg["kinematics"]["self_collision_ignore"].items()
+            })
+        self._active_joint_names = tuple(str(name) for name in self._kinematics.joint_names)
+        planning_names = set(self.motion_gen.kinematics.joint_names)
+        assert planning_names <= set(self._active_joint_names), "planning joints must belong to the state-query model"
+        self._auxiliary_joint_indices = {
+            name: index for index, name in enumerate(self._active_joint_names) if name not in planning_names
+        }
+        assert set(self._auxiliary_joint_indices) <= set(self._locked_joint_positions)
+        self._locked_joint_positions = MappingProxyType({
+            name: value for name, value in self._locked_joint_positions.items() if name not in self._active_joint_names
+        })
+        self._self_collision_pair_cache: tuple[torch.Tensor, torch.Tensor, tuple[str, ...]] | None = None
 
         # Create plan config with parameters from configuration
         self.plan_config: MotionGenPlanConfig = MotionGenPlanConfig(
             enable_graph=self.config.enable_graph,
+            enable_opt=self.config.enable_opt,
             enable_graph_attempt=self.config.enable_graph_attempt,
             max_attempts=self.config.max_planning_attempts,
             enable_finetune_trajopt=self.config.enable_finetune_trajopt,
@@ -285,6 +403,7 @@ class CuroboPlanner(MotionPlannerBase):
 
         # Initialize planning state
         self._current_plan: JointState | None = None
+        self._failed_joint_state: JointState | None = None
         self._plan_index: int = 0
 
         # Initialize visualization state
@@ -292,12 +411,33 @@ class CuroboPlanner(MotionPlannerBase):
         self.spheres: list[tuple[str, float]] | None = None
         self.sphere_update_freq: int = self.config.sphere_update_freq
 
-        # Warm up planner
-        self.logger.info("Warming up motion planner...")
-        self.motion_gen.warmup(enable_graph=True, warmup_js_trajopt=False)
+        # cuRobo plans in its kinematic root frame, while the rest of AutoData exchanges
+        # env-relative poses. Establish that transform before loading either static or dynamic
+        # collision geometry so every pose follows the same frame path.
+        identity_pose = torch.eye(4, dtype=torch.float32, device=self.datastream.device)
+        self._base_pose_in_env: torch.Tensor = identity_pose
+        self._env_to_base_transform: torch.Tensor = identity_pose.clone()
+        self._base_frame_is_identity: bool = True
+        self._refresh_base_frame_transform()
 
-        # Read static world geometry once
-        self._initialize_static_world()
+        if self.visualize_plan:
+            from autodata_interfaces.motion_planners.curobo.plan_visualizer import PlanVisualizer as _PlanVisualizer
+
+            self.plan_visualizer = _PlanVisualizer(
+                robot_name=self.config.robot_name,
+                recording_id=f"curobo_plan_{env_id}",
+                debug=config.debug_planner,
+                base_pose_in_env=self._base_pose_in_env,
+                save_path=self.config.rerun_output,
+            )
+            self.plan_visualizer.set_motion_generator_reference(self.motion_gen)
+
+        if self.config.planning_enabled:
+            assert isinstance(self.motion_gen, MotionGen)
+            self.logger.info("Warming up motion planner...")
+            self.motion_gen.warmup(enable_graph=self.config.enable_graph, warmup_js_trajopt=False)
+
+        self._initialize_static_world(activate=collision_world_source is None)
 
         # Defer object validation baseline until first update_world() call when scene is fully loaded
         self._expected_objects: set[str] | None = None
@@ -308,15 +448,9 @@ class CuroboPlanner(MotionPlannerBase):
         # Cache object mappings
         # Only recompute when objects are added/removed, not when poses change
         self._cached_object_mappings: dict[str, str] | None = None
-
-        # Robot base frame (cuRobo's planning frame) expressed in the env-relative frame the
-        # planner exchanges with callers. Refreshed from the live articulation in
-        # update_world(); object, goal, and planned poses are reconciled between the two frames.
-        # Initialized to identity so the transform is a no-op until the first world update.
-        identity_pose = torch.eye(4, dtype=torch.float32, device=self.datastream.device)
-        self._base_pose_in_env: torch.Tensor = identity_pose
-        self._env_to_base_transform: torch.Tensor = identity_pose.clone()
-        self._base_frame_is_identity: bool = True
+        self._object_obstacle_transforms: dict[str, torch.Tensor] = (
+            collision_world_source._object_obstacle_transforms if collision_world_source is not None else {}
+        )
 
     # =====================================================================================
     # DEVICE CONVERSION UTILITIES
@@ -333,9 +467,9 @@ class CuroboPlanner(MotionPlannerBase):
             tensor: Input tensor (may be on any device)
 
         Returns:
-            Tensor converted to cuRobo's CUDA device with appropriate dtype
+            Contiguous tensor on cuRobo's CUDA device with the appropriate dtype.
         """
-        return tensor.to(device=self.tensor_args.device, dtype=self.tensor_args.dtype)
+        return tensor.to(device=self.tensor_args.device, dtype=self.tensor_args.dtype).contiguous()
 
     def _to_env_device(self, tensor: torch.Tensor) -> torch.Tensor:
         """Convert tensor back to environment device for Isaac Lab compatibility.
@@ -355,6 +489,11 @@ class CuroboPlanner(MotionPlannerBase):
     # FRAME RECONCILIATION
     # =====================================================================================
 
+    def planning_root_pose_refresh(self) -> None:
+        """Refresh the live planning-root transform used by FK, planning, and visualization."""
+
+        self._refresh_base_frame_transform()
+
     def _refresh_base_frame_transform(self) -> None:
         """Refresh the cached transform between the env-relative and robot base frames.
 
@@ -363,10 +502,22 @@ class CuroboPlanner(MotionPlannerBase):
         base pose (env-relative) and caches the forward and inverse transforms used to map
         object, goal, and planned poses between the two frames.
         """
-        self._base_pose_in_env = self.datastream.get_robot_root_pose(env_ids=[self.env_id])[0]
+        reference_pose = self.datastream.embodiment_adapter.get_reference_frame_pose(env_ids=[self.env_id])
+        assert (
+            reference_pose is None
+        ), "cuRobo requires environment-relative poses; configured embodiment reference frames are not supported"
+        if self.root_pose_source_frame_name is None:
+            self._base_pose_in_env = self.datastream.get_robot_root_pose(env_ids=[self.env_id])[0]
+        else:
+            self._base_pose_in_env = self.datastream.get_robot_planning_root_pose(
+                self.root_pose_source_frame_name,
+                env_ids=[self.env_id],
+            )[0]
         self._env_to_base_transform = torch.linalg.inv(self._base_pose_in_env)
         identity = torch.eye(4, dtype=self._base_pose_in_env.dtype, device=self._base_pose_in_env.device)
         self._base_frame_is_identity = bool(torch.allclose(self._base_pose_in_env, identity, atol=1e-6))
+        if self.plan_visualizer is not None:
+            self.plan_visualizer.set_base_pose_in_env(self._base_pose_in_env)
 
     def _pose_env_to_base(self, pose_env: torch.Tensor) -> torch.Tensor:
         """Express an env-relative pose in the robot base frame.
@@ -408,7 +559,38 @@ class CuroboPlanner(MotionPlannerBase):
     # INITIALIZATION AND CONFIGURATION
     # =====================================================================================
 
-    def _initialize_static_world(self) -> None:
+    def _joint_limits_sync(self, curobo_limits: JointLimits) -> None:
+        """Synchronize positions and fill missing speed bounds from the live articulation."""
+        curobo_joint_names = tuple(curobo_limits.joint_names)
+        live_joint_names = tuple(self.datastream.get_robot_joint_names())
+        missing = set(curobo_joint_names) - set(live_joint_names)
+        assert not missing, f"cuRobo joints are absent from the live articulation: {sorted(missing)}"
+        live_index = {name: index for index, name in enumerate(live_joint_names)}
+        selected = [live_index[name] for name in curobo_joint_names]
+        live_limits = self.datastream.get_robot_joint_position_limits(env_ids=[self.env_id])[0, selected]
+        synchronized = self._to_curobo_device(live_limits).T.contiguous()
+        assert synchronized.shape == curobo_limits.position.shape
+        mismatch_count = int(torch.sum(torch.abs(curobo_limits.position - synchronized) > 0.01).item())
+        curobo_limits.position.copy_(synchronized)
+        live_speed = self._to_curobo_device(
+            self.datastream.get_robot_joint_velocity_limits(env_ids=[self.env_id])[0, selected]
+        )
+        assert bool((live_speed > 0.0).all()), "Live joint speed limits must be positive."
+        exported_speed = curobo_limits.velocity.abs().amax(dim=0)
+        speed = torch.where(exported_speed > 0.0, torch.minimum(exported_speed, live_speed), live_speed)
+        if self.config.max_joint_velocity is not None:
+            cap = self.config.max_joint_velocity
+            assert math.isfinite(cap) and cap > 0.0, "max_joint_velocity must be finite and positive."
+            speed = speed.clamp(max=cap)
+        assert bool(torch.isfinite(speed).all()), "Unbounded joint speeds require an explicit max_joint_velocity."
+        curobo_limits.velocity.copy_(torch.stack((-speed, speed)))
+        self.logger.debug(
+            "Synchronized %d cuRobo joint limits from the live articulation (%d bound differences)",
+            len(curobo_joint_names),
+            mismatch_count,
+        )
+
+    def _initialize_static_world(self, *, activate: bool = True) -> None:
         """Initialize static world geometry from USD stage.
 
         Reads static environment geometry once during planner initialization to establish
@@ -416,29 +598,82 @@ class CuroboPlanner(MotionPlannerBase):
         that don't change during the simulation. Dynamic objects are synchronized separately
         in update_world() to maintain performance.
         """
+        if not activate:
+            owner = self._collision_world_owner
+            assert self.config.include_configured_world == owner.config.include_configured_world
+            assert self.planning_root_frame_name == owner.planning_root_frame_name
+            self._static_world_config = owner._static_world_config
+            return
+
+        _usd_mesh_missing_scales_fill(self.usd_helper.stage)
         # Prim scoping for obstacle extraction comes from the Datastream (collision-world source),
         # not from direct env access.
         env_prim_path = self.datastream.get_env_prim_path(self.env_id)
         robot_prim_path = self.config.robot_prim_path or self.datastream.get_robot_prim_path(self.env_id)
 
-        ignore_list = self.config.world_ignore_substrings or [
-            f"{env_prim_path}/Robot",
-            f"{env_prim_path}/target",
-            "/World/defaultGroundPlane",
-            "/curobo",
-        ]
+        ignore_list = list(
+            self.config.world_ignore_substrings
+            or [
+                f"{env_prim_path}/target",
+                "/World/defaultGroundPlane",
+                "/curobo",
+            ]
+        )
+        if robot_prim_path not in ignore_list:
+            ignore_list.append(robot_prim_path)
 
-        # Static obstacles are expressed relative to the robot prim, which is assumed to
-        # coincide with the kinematic root link that defines cuRobo's planning frame.
+        # USD articulation-link transforms need not equal the live controller root. Extract in
+        # the env frame, then use the same live root transform as goals and dynamic objects.
         self._static_world_config = self.usd_helper.get_obstacles_from_stage(
             only_paths=[env_prim_path],
-            reference_prim_path=robot_prim_path,
+            reference_prim_path=env_prim_path,
             ignore_substring=ignore_list,
         )
+        self._transform_world_config_to_base_frame(self._static_world_config)
         self._static_world_config = self._static_world_config.get_collision_check_world()
+        if self.config.include_configured_world:
+            combined_world = self._configured_world_config.clone()
+            for obstacle in self._static_world_config:
+                combined_world.add_obstacle(obstacle)
+            self._static_world_config = combined_world
 
-        # Initialize cuRobo world with static geometry
+        self._static_world_base_pose = self._base_pose_in_env.clone()
+        self.motion_gen.clear_world_cache()
         self.motion_gen.update_world(self._static_world_config)
+
+    def _static_world_refresh(self) -> None:
+        """Keep shared world geometry in the current planning-root frame without resetting enable flags."""
+
+        owner = self._collision_world_owner
+        if owner is not self:
+            owner._refresh_base_frame_transform()
+            owner._static_world_refresh()
+            return
+        if torch.allclose(self._static_world_base_pose, self._base_pose_in_env, atol=1e-6, rtol=0.0):
+            return
+        transform = self._env_to_base_transform @ self._static_world_base_pose
+        world = self.motion_gen.world_coll_checker.world_model
+        for obstacle in world:
+            pose = self._make_pose(position=obstacle.pose[:3], quaternion=obstacle.pose[3:], quat_is_xyzw=False)
+            moved = transform.to(pose.position) @ pose.get_matrix().reshape(4, 4)
+            pose_list = self._object_pose_to_curobo_list(moved)
+            self.motion_gen.world_coll_checker.update_obstacle_pose(
+                obstacle.name,
+                self._make_pose(position=pose_list[:3], quaternion=pose_list[3:], quat_is_xyzw=False),
+                update_cpu_reference=True,
+            )
+        self._static_world_base_pose = self._base_pose_in_env.clone()
+
+    def _transform_world_config_to_base_frame(self, world_config: WorldConfig) -> None:
+        """Express env-relative cuRobo obstacles in the live planning-root frame."""
+
+        for obstacle in world_config:
+            if obstacle.pose is None:
+                continue
+            pose = torch.as_tensor(obstacle.pose, dtype=torch.float32, device=self.datastream.device)
+            quat_xyzw = torch.cat((pose[4:], pose[3:4]))
+            pose_env = PoseUtils.make_pose(pose[:3], PoseUtils.matrix_from_quat(quat_xyzw))
+            obstacle.pose = self._object_pose_to_curobo_list(self._pose_env_to_base(pose_env))
 
     # =====================================================================================
     # PROPERTIES AND BASIC GETTERS
@@ -459,6 +694,674 @@ class CuroboPlanner(MotionPlannerBase):
         """Current plan from cuRobo motion generator."""
         return self._current_plan
 
+    @property
+    def active_joint_names(self) -> tuple[str, ...]:
+        """Joint names in state-query order, including separately commanded auxiliary joints."""
+        return self._active_joint_names
+
+    @property
+    def locked_joint_positions(self) -> Mapping[str, float]:
+        """Exact named joint positions compiled as fixed in this cuRobo model [rad, m]."""
+
+        return self._locked_joint_positions
+
+    @property
+    def current_joint_position_path(self) -> torch.Tensor | None:
+        """Current arm-local joint-position path in :attr:`active_joint_names` order."""
+        if self._current_plan is None:
+            return None
+        plan = self._current_plan.get_ordered_joint_state(self.active_joint_names)
+        return self._to_env_device(plan.position).detach().clone()
+
+    def get_planned_joint_trajectory(self) -> NamedJointTrajectory | None:
+        """Return the complete planned joint trajectory.
+
+        Returns:
+            Joint names and sampled positions with shape (T, J) [rad, m],
+            or None when no plan is available.
+        """
+        positions = self.current_joint_position_path
+        return None if positions is None else NamedJointTrajectory(self.active_joint_names, positions)
+
+    def joint_positions_to_ee_poses(self, joint_positions: torch.Tensor) -> torch.Tensor:
+        """Compute env-relative end-effector poses for arm-local joint positions.
+
+        Args:
+            joint_positions: Joint positions with shape ``(T, J)`` in
+                :attr:`active_joint_names` order [rad, m].
+
+        Returns:
+            End-effector poses with shape ``(T, 4, 4)`` in the env-relative frame.
+        """
+
+        ee_link = self.config.ee_link_name or self.robot_cfg["kinematics"]["ee_link"]
+        return self.joint_positions_to_link_poses(joint_positions, (ee_link,))[ee_link]
+
+    def joint_positions_to_link_poses(
+        self,
+        joint_positions: torch.Tensor,
+        link_names: tuple[str, ...],
+    ) -> dict[str, torch.Tensor]:
+        """Compute env-relative poses for configured robot links.
+
+        Args:
+            joint_positions: Joint positions with shape ``(T, J)`` in
+                :attr:`active_joint_names` order [rad, m].
+            link_names: Configured links whose poses are requested.
+
+        Returns:
+            Link-name mapping to poses with shape ``(T, 4, 4)`` in the env-relative frame.
+        """
+
+        query = self._joint_positions_query(joint_positions)
+        assert link_names and len(link_names) == len(set(link_names)), "link_names must be non-empty and unique"
+        state = self._kinematics.get_state(query, calculate_jacobian=False)
+        available = {str(name): index for index, name in enumerate(state.link_names)}
+        missing = set(link_names) - set(available)
+        assert not missing, f"cuRobo state does not expose links: {sorted(missing)}"
+        result: dict[str, torch.Tensor] = {}
+        for link_name in link_names:
+            link_index = available[link_name]
+            position = self._to_env_device(state.links_position[..., link_index, :])
+            quaternion_wxyz = self._to_env_device(state.links_quaternion[..., link_index, :])
+            quaternion_xyzw = torch.cat((quaternion_wxyz[..., 1:], quaternion_wxyz[..., :1]), dim=-1)
+            pose_base = PoseUtils.make_pose(position, PoseUtils.matrix_from_quat(quaternion_xyzw))
+            result[link_name] = self._pose_base_to_env(pose_base).detach().clone()
+        return result
+
+    def joint_positions_to_collision_spheres(self, joint_positions: torch.Tensor) -> torch.Tensor:
+        """Return configured collision spheres in the planning-root frame.
+
+        Args:
+            joint_positions: Joint positions with shape ``(T, J)`` in
+                :attr:`active_joint_names` order [rad, m].
+
+        Returns:
+            Sphere tensor with shape ``(T, S, 4)``; the final coordinate is radius [m].
+        """
+
+        query = self._joint_positions_query(joint_positions)
+        state = self._kinematics.get_state(query, calculate_jacobian=False)
+        spheres = state.link_spheres_tensor
+        assert isinstance(spheres, torch.Tensor), "cuRobo kinematics returned no collision spheres"
+        return spheres.reshape(query.shape[0], -1, 4).detach().clone()
+
+    def joint_positions_self_collision_free(
+        self,
+        joint_positions: torch.Tensor,
+        collision_margin_m: float = 0.0,
+    ) -> torch.Tensor:
+        """Check configured full-robot self collision for batched states.
+
+        Args:
+            joint_positions: Joint positions with shape ``(T, J)`` in
+                :attr:`active_joint_names` order [rad, m].
+            collision_margin_m: Required sphere-surface separation [m].
+
+        Returns:
+            Boolean collision freedom with shape ``(T,)`` on the environment device.
+        """
+
+        assert math.isfinite(collision_margin_m) and collision_margin_m >= 0.0
+        spheres = self.joint_positions_to_collision_spheres(joint_positions)
+        if not self.config.use_native_self_collision or self._auxiliary_joint_indices:
+            collisions = self._collision_spheres_self_collisions(spheres, collision_margin_m)
+            return self._to_env_device(~collisions).detach().clone()
+        if collision_margin_m:
+            spheres[..., 3] += torch.where(
+                spheres[..., 3] > 0.0,
+                0.5 * collision_margin_m,
+                0.0,
+            )
+        spheres = spheres.unsqueeze(1)
+        constraint = self.motion_gen.rollout_fn.robot_self_collision_constraint
+        assert constraint.enabled, "cuRobo self-collision constraint is disabled"
+        cost = constraint.forward(spheres)
+        assert cost.shape == (len(joint_positions), 1), "cuRobo returned unexpected self-collision shape"
+        return self._to_env_device(cost[:, 0] <= 0.0).detach().clone()
+
+    def _collision_spheres_self_collisions(
+        self,
+        spheres: torch.Tensor,
+        collision_margin_m: float,
+    ) -> torch.Tensor:
+        """Check configured robot-sphere pairs in bounded sample batches."""
+
+        pair_indices, sphere_offsets, _ = self._self_collision_pair_data(spheres.shape[1])
+        collisions = torch.zeros(len(spheres), dtype=torch.bool, device=spheres.device)
+        if not len(pair_indices):
+            return collisions
+        pair_count = len(pair_indices)
+        sample_batch_size = max(1, 2_000_000 // pair_count)
+        first_indices, second_indices = pair_indices.T
+        for start in range(0, len(spheres), sample_batch_size):
+            stop = min(start + sample_batch_size, len(spheres))
+            batch = spheres[start:stop]
+            first = batch[:, first_indices]
+            second = batch[:, second_indices]
+            clearance = (
+                torch.linalg.vector_norm(first[..., :3] - second[..., :3], dim=-1)
+                - first[..., 3]
+                - second[..., 3]
+                - sphere_offsets[first_indices]
+                - sphere_offsets[second_indices]
+            )
+            active = (first[..., 3] > 0.0) & (second[..., 3] > 0.0)
+            collisions[start:stop] = torch.any(active & (clearance <= collision_margin_m), dim=1)
+        return collisions
+
+    def _self_collision_pair_data(
+        self,
+        sphere_count: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, tuple[str, ...]]:
+        """Build direct collision pairs without cuRobo's fallback scan kernel."""
+
+        if self._self_collision_pair_cache is not None:
+            pairs, offsets, link_names = self._self_collision_pair_cache
+            assert len(link_names) == sphere_count
+            return pairs, offsets, link_names
+
+        link_names = self.collision_sphere_link_names(sphere_count)
+        unknown = set(link_names) - set(self._self_collision_ignore)
+        assert not unknown, f"collision links have no self-collision policy: {sorted(unknown)}"
+        first_indices, second_indices = np.triu_indices(sphere_count, k=1)
+        enabled = np.fromiter(
+            (
+                link_names[first] != link_names[second]
+                and link_names[second] not in self._self_collision_ignore[link_names[first]]
+                for first, second in zip(first_indices, second_indices, strict=True)
+            ),
+            dtype=np.bool_,
+            count=len(first_indices),
+        )
+        pair_indices = torch.as_tensor(
+            np.stack((first_indices[enabled], second_indices[enabled]), axis=1),
+            dtype=torch.long,
+            device=self.tensor_args.device,
+        )
+        # Native offsets remove world-only padding before adding the self-collision margin.
+        sphere_offsets = self._kinematics.self_collision_config.offset.detach().clone().reshape(-1)
+        assert sphere_offsets.shape == (sphere_count,), "cuRobo self-collision offsets must match its spheres"
+        self._self_collision_pair_cache = pair_indices, sphere_offsets, link_names
+        return self._self_collision_pair_cache
+
+    def joint_positions_world_collision_free(
+        self,
+        joint_positions: torch.Tensor,
+        collision_margin_m: float = 0.0,
+        *,
+        excluded_obstacle_paths: tuple[str, ...] = (),
+    ) -> torch.Tensor:
+        """Check robot states against the synchronized cuRobo world.
+
+        Args:
+            joint_positions: Joint positions with shape ``(T, J)`` in
+                :attr:`active_joint_names` order [rad, m].
+            collision_margin_m: Required sphere-to-world separation [m].
+            excluded_obstacle_paths: Exact cuRobo obstacle paths omitted only for this query.
+
+        Returns:
+            Boolean collision freedom with shape ``(T,)`` on the environment device.
+        """
+
+        spheres = self.joint_positions_to_collision_spheres(joint_positions)
+        return self._planning_spheres_world_collision_free(
+            spheres,
+            collision_margin_m,
+            excluded_obstacle_paths=excluded_obstacle_paths,
+        )
+
+    def joint_positions_environment_spheres_collision_free(
+        self,
+        joint_positions: torch.Tensor,
+        environment_spheres: torch.Tensor,
+        collision_margin_m: float = 0.0,
+        *,
+        allowed_robot_link_names: tuple[str, ...] = (),
+    ) -> torch.Tensor:
+        """Check robot states against matched environment-frame object spheres.
+
+        Args:
+            joint_positions: Joint positions with shape ``(T, J)`` in
+                :attr:`active_joint_names` order [rad, m].
+            environment_spheres: Object spheres with shape ``(T, O, 4)`` in the
+                environment frame, with radius last [m].
+            collision_margin_m: Required robot-to-object sphere separation [m].
+            allowed_robot_link_names: Exact robot links whose overlap with these
+                object spheres is authorized.
+
+        Returns:
+            Boolean collision freedom with shape ``(T,)`` on the environment device.
+        """
+
+        collisions, _ = self._joint_positions_environment_spheres_collisions(
+            joint_positions,
+            environment_spheres,
+            collision_margin_m,
+            allowed_robot_link_names=allowed_robot_link_names,
+        )
+        return ~collisions
+
+    def joint_positions_environment_spheres_collision_witness(
+        self,
+        joint_positions: torch.Tensor,
+        environment_spheres: torch.Tensor,
+        collision_margin_m: float = 0.0,
+        *,
+        allowed_robot_link_names: tuple[str, ...] = (),
+    ) -> tuple[str, int, int] | None:
+        """Return the first forbidden robot-to-object sphere overlap.
+
+        Args:
+            joint_positions: One joint state shaped ``(1, J)`` in
+                :attr:`active_joint_names` order [rad, m].
+            environment_spheres: One object sphere state shaped ``(1, O, 4)`` in
+                the environment frame, with radius last [m].
+            collision_margin_m: Required robot-to-object sphere separation [m].
+            allowed_robot_link_names: Exact robot links whose overlap with these
+                object spheres is authorized.
+
+        Returns:
+            Robot link name, robot sphere index, and object sphere index, or ``None``.
+        """
+
+        assert joint_positions.shape == (1, len(self.active_joint_names))
+        assert environment_spheres.shape[0] == 1
+        _, witness = self._joint_positions_environment_spheres_collisions(
+            joint_positions,
+            environment_spheres,
+            collision_margin_m,
+            allowed_robot_link_names=allowed_robot_link_names,
+        )
+        return witness
+
+    def _joint_positions_environment_spheres_collisions(
+        self,
+        joint_positions: torch.Tensor,
+        environment_spheres: torch.Tensor,
+        collision_margin_m: float,
+        *,
+        allowed_robot_link_names: tuple[str, ...],
+    ) -> tuple[torch.Tensor, tuple[str, int, int] | None]:
+        """Check exact robot/object sphere pairs in bounded sample batches."""
+
+        assert math.isfinite(collision_margin_m) and collision_margin_m >= 0.0
+        robot_spheres = self.joint_positions_to_collision_spheres(joint_positions)
+        object_spheres = self._collision_spheres_validate(environment_spheres).to(
+            device=robot_spheres.device,
+            dtype=robot_spheres.dtype,
+        )
+        assert robot_spheres.shape[0] == object_spheres.shape[0], "robot and object batches must match"
+
+        transform = self._env_to_base_transform.to(device=object_spheres.device, dtype=object_spheres.dtype)
+        object_spheres[..., :3] = object_spheres[..., :3] @ transform[:3, :3].T + transform[:3, 3]
+
+        robot_link_names = self.collision_sphere_link_names(robot_spheres.shape[1])
+        assert isinstance(allowed_robot_link_names, tuple) and len(allowed_robot_link_names) == len(
+            set(allowed_robot_link_names)
+        )
+        assert all(
+            isinstance(name, str) and name and name == name.strip() for name in allowed_robot_link_names
+        ), "allowed_robot_link_names must contain unique, non-empty, trimmed strings"
+        missing = set(allowed_robot_link_names) - set(robot_link_names)
+        assert not missing, f"allowed robot links have no cuRobo collision spheres: {sorted(missing)}"
+        allowed = torch.tensor(
+            [name in allowed_robot_link_names for name in robot_link_names],
+            dtype=torch.bool,
+            device=robot_spheres.device,
+        )
+
+        collisions = torch.zeros(len(robot_spheres), dtype=torch.bool, device=robot_spheres.device)
+        witness: tuple[str, int, int] | None = None
+        for start in range(0, len(robot_spheres), 128):
+            stop = min(start + 128, len(robot_spheres))
+            robot_batch = robot_spheres[start:stop]
+            object_batch = object_spheres[start:stop]
+            clearance = (
+                torch.cdist(robot_batch[..., :3], object_batch[..., :3])
+                - robot_batch[..., 3].unsqueeze(-1)
+                - object_batch[..., 3].unsqueeze(-2)
+            )
+            active = (robot_batch[..., 3].unsqueeze(-1) > 0.0) & (object_batch[..., 3].unsqueeze(-2) > 0.0)
+            forbidden = active & ~allowed.view(1, -1, 1) & (clearance <= collision_margin_m)
+            collisions[start:stop] = torch.any(forbidden.flatten(start_dim=1), dim=1)
+            if len(robot_spheres) == 1 and witness is None:
+                indices = torch.nonzero(forbidden[0], as_tuple=False)
+                if len(indices):
+                    robot_index, object_index = (int(index.item()) for index in indices[0])
+                    witness = robot_link_names[robot_index], robot_index, object_index
+        return self._to_env_device(collisions).detach().clone(), witness
+
+    def collision_sphere_link_names(self, sphere_count: int) -> tuple[str, ...]:
+        """Map every configured cuRobo collision sphere to its exact robot link.
+
+        Args:
+            sphere_count: Number of spheres returned by cuRobo kinematics.
+
+        Returns:
+            Link name for each sphere in cuRobo tensor order.
+        """
+
+        kinematics = self._kinematics.kinematics_config
+        sphere_links = kinematics.link_sphere_idx_map
+        assert sphere_links.shape == (sphere_count,)
+        names_by_index = {int(index): str(name) for name, index in kinematics.link_name_to_idx_map.items()}
+        missing = {int(index.item()) for index in sphere_links} - set(names_by_index)
+        assert not missing, f"cuRobo sphere links have no names: {sorted(missing)}"
+        return tuple(names_by_index[int(index.item())] for index in sphere_links)
+
+    def world_object_obstacle_paths(self, object_ref: str) -> tuple[str, ...]:
+        """Resolve one logical scene object to its exact cuRobo obstacle inventory.
+
+        Args:
+            object_ref: Exact key exposed by :meth:`Datastream.get_object_poses`.
+
+        Returns:
+            Canonically ordered cuRobo obstacle paths comprising that scene object.
+        """
+
+        assert object_ref and object_ref == object_ref.strip(), "object_ref must be non-empty and trimmed"
+        root_path = self.datastream.get_object_prim_path(object_ref, self.env_id)
+        matches = tuple(
+            path
+            for path in sorted(set(self._get_world_object_names()))
+            if path == root_path or path.startswith(f"{root_path}/")
+        )
+        if not matches:
+            raise KeyError(f"scene object {object_ref!r} has no cuRobo obstacle inventory")
+        return matches
+
+    def environment_spheres_world_collision_free(
+        self,
+        spheres: torch.Tensor,
+        collision_margin_m: float = 0.0,
+        *,
+        excluded_obstacle_paths: tuple[str, ...] = (),
+    ) -> torch.Tensor:
+        """Check arbitrary environment-frame spheres against the synchronized cuRobo world.
+
+        Args:
+            spheres: Sphere states shaped ``(T, S, 4)`` with environment-relative centers and
+                radius last [m].
+            collision_margin_m: Required sphere-to-world separation [m].
+            excluded_obstacle_paths: Exact cuRobo obstacle paths omitted only for this query.
+
+        Returns:
+            Boolean collision freedom with shape ``(T,)`` on the environment device.
+        """
+
+        query = self._collision_spheres_validate(spheres)
+        transform = self._env_to_base_transform.to(device=query.device, dtype=query.dtype)
+        query[..., :3] = query[..., :3] @ transform[:3, :3].T + transform[:3, 3]
+        return self._planning_spheres_world_collision_free(
+            query,
+            collision_margin_m,
+            excluded_obstacle_paths=excluded_obstacle_paths,
+        )
+
+    def environment_spheres_world_collision_witness(
+        self,
+        spheres: torch.Tensor,
+        collision_margin_m: float = 0.0,
+        *,
+        excluded_obstacle_paths: tuple[str, ...] = (),
+    ) -> tuple[int, str] | None:
+        """Return the first environment-sphere and configured-obstacle collision.
+
+        Args:
+            spheres: One environment-frame sphere state shaped ``(1, S, 4)`` with radius last [m].
+            collision_margin_m: Required sphere-to-world separation [m].
+            excluded_obstacle_paths: Exact cuRobo obstacle paths omitted from attribution.
+
+        Returns:
+            Sphere index and exact obstacle path, or ``None``.
+        """
+
+        assert spheres.shape[0] == 1
+        query = self._collision_spheres_validate(spheres)
+        transform = self._env_to_base_transform.to(device=query.device, dtype=query.dtype)
+        query[..., :3] = query[..., :3] @ transform[:3, :3].T + transform[:3, 3]
+        return self._planning_spheres_world_collision_witness(
+            query,
+            collision_margin_m,
+            excluded_obstacle_paths=excluded_obstacle_paths,
+        )
+
+    def _planning_spheres_world_collision_free(
+        self,
+        spheres: torch.Tensor,
+        collision_margin_m: float,
+        *,
+        excluded_obstacle_paths: tuple[str, ...],
+    ) -> torch.Tensor:
+        """Return collision freedom for each sphere batch in the planner's root frame.
+
+        Args:
+            spheres: Sphere states with shape (T, S, 4), storing XYZ and radius [m].
+            collision_margin_m: Required sphere-to-world separation [m].
+            excluded_obstacle_paths: Exact obstacle paths omitted from this query.
+
+        Returns:
+            One collision-free flag per batch sample.
+        """
+        collisions = self._planning_spheres_world_collisions(
+            spheres,
+            collision_margin_m,
+            excluded_obstacle_paths=excluded_obstacle_paths,
+        )
+        return ~torch.any(collisions, dim=1)
+
+    def _planning_spheres_world_collisions(
+        self,
+        spheres: torch.Tensor,
+        collision_margin_m: float,
+        *,
+        excluded_obstacle_paths: tuple[str, ...],
+    ) -> torch.Tensor:
+        """Return the native binary collision result for every query sphere."""
+
+        assert math.isfinite(collision_margin_m) and collision_margin_m >= 0.0
+        assert isinstance(excluded_obstacle_paths, tuple) and len(excluded_obstacle_paths) == len(
+            set(excluded_obstacle_paths)
+        )
+        assert all(path and path == path.strip() for path in excluded_obstacle_paths)
+        query = self._collision_spheres_validate(spheres)
+        if collision_margin_m:
+            query[..., 3] += torch.where(query[..., 3] > 0.0, collision_margin_m, 0.0)
+
+        query = query.unsqueeze(1)
+        checker = self.motion_gen.world_coll_checker
+        buffer = CollisionQueryBuffer()
+        buffer.update_buffer_shape(query.shape, self.tensor_args, checker.collision_types)
+        with self._world_obstacles_disabled(excluded_obstacle_paths):
+            collisions = checker.get_sphere_collision(
+                query,
+                buffer,
+                weight=self.tensor_args.to_device([1.0]),
+                activation_distance=self.tensor_args.to_device([0.0]),
+            )
+        assert collisions.shape == query.shape[:-1], "cuRobo returned unexpected world-collision shape"
+        return self._to_env_device(torch.any(collisions > 0.0, dim=1)).detach().clone()
+
+    @contextmanager
+    def _world_obstacles_disabled(self, obstacle_paths: tuple[str, ...]) -> Iterator[None]:
+        """Temporarily disable an exact, validated cuRobo obstacle set."""
+
+        assert isinstance(obstacle_paths, tuple) and len(obstacle_paths) == len(set(obstacle_paths))
+        assert all(
+            isinstance(path, str) and path and path == path.strip() for path in obstacle_paths
+        ), "obstacle_paths must contain unique, non-empty, trimmed strings"
+        checker = self.motion_gen.world_coll_checker
+        disabled_paths: list[tuple[str, bool]] = []
+        try:
+            for path in obstacle_paths:
+                for names, tensors in (
+                    (getattr(checker, "_env_mesh_names", None), getattr(checker, "_mesh_tensor_list", None)),
+                    (getattr(checker, "_env_obbs_names", None), getattr(checker, "_cube_tensor_list", None)),
+                ):
+                    if names is not None and path in names[0]:
+                        enabled = bool(tensors[2][0, names[0].index(path)].item())
+                        break
+                else:
+                    raise KeyError(f"unknown collision obstacle {path!r}")
+                checker.enable_obstacle(path, enable=False)
+                disabled_paths.append((path, enabled))
+            yield
+        finally:
+            for path, enabled in reversed(disabled_paths):
+                checker.enable_obstacle(path, enable=enabled)
+
+    def joint_positions_world_collision_witness(
+        self,
+        joint_positions: torch.Tensor,
+        collision_margin_m: float = 0.0,
+        *,
+        excluded_obstacle_paths: tuple[str, ...] = (),
+    ) -> tuple[str, int, str] | None:
+        """Return the first exact robot-link sphere and configured obstacle collision.
+
+        Args:
+            joint_positions: One joint state shaped ``(1, J)`` in
+                :attr:`active_joint_names` order [rad, m].
+            collision_margin_m: Required sphere-to-world separation [m].
+            excluded_obstacle_paths: Exact cuRobo obstacle paths omitted from attribution.
+
+        Returns:
+            Robot link name, global sphere index, and exact obstacle path, or ``None``.
+        """
+
+        assert joint_positions.shape == (1, len(self.active_joint_names))
+        spheres = self.joint_positions_to_collision_spheres(joint_positions)
+        witness = self._planning_spheres_world_collision_witness(
+            spheres,
+            collision_margin_m,
+            excluded_obstacle_paths=excluded_obstacle_paths,
+        )
+        if witness is None:
+            return None
+        sphere_index, obstacle_path = witness
+        return self.collision_sphere_link_names(spheres.shape[1])[sphere_index], sphere_index, obstacle_path
+
+    def _planning_spheres_world_collision_witness(
+        self,
+        spheres: torch.Tensor,
+        collision_margin_m: float,
+        *,
+        excluded_obstacle_paths: tuple[str, ...],
+    ) -> tuple[int, str] | None:
+        """Isolate the first collision against the synchronized obstacle inventory."""
+
+        assert spheres.shape[0] == 1
+        object_mappings = self._get_object_mappings()
+        attached_paths = {
+            object_mappings[object_name] for object_name in self.attached_objects if object_name in object_mappings
+        }
+        candidate_paths = tuple(
+            sorted(set(self._get_world_object_names()) - set(excluded_obstacle_paths) - attached_paths)
+        )
+        inventory_exclusions = tuple(sorted(set(excluded_obstacle_paths) | set(candidate_paths)))
+        residual = self._planning_spheres_world_collisions(
+            spheres,
+            collision_margin_m,
+            excluded_obstacle_paths=inventory_exclusions,
+        )
+        if bool(residual.any()):
+            raise RuntimeError("world collision remains after disabling the synchronized obstacle inventory")
+        for obstacle_path in candidate_paths:
+            isolated_exclusions = tuple(sorted(set(excluded_obstacle_paths) | (set(candidate_paths) - {obstacle_path})))
+            collisions = self._planning_spheres_world_collisions(
+                spheres,
+                collision_margin_m,
+                excluded_obstacle_paths=isolated_exclusions,
+            )
+            colliding = torch.nonzero(collisions[0], as_tuple=False)
+            if not len(colliding):
+                continue
+            sphere_index = int(colliding[0, 0].item())
+            return sphere_index, obstacle_path
+        return None
+
+    def _collision_spheres_validate(self, spheres: torch.Tensor) -> torch.Tensor:
+        """Check sphere batches and copy them to the planner's device.
+
+        Args:
+            spheres: Sphere states with shape (T, S, 4), storing XYZ and radius [m].
+
+        Returns:
+            A detached copy on the cuRobo device, safe for query-specific changes.
+        """
+        assert isinstance(spheres, torch.Tensor), "spheres must be a torch.Tensor"
+        assert spheres.ndim == 3 and spheres.shape[0] > 0 and spheres.shape[1] > 0 and spheres.shape[2] == 4
+        assert bool(torch.isfinite(spheres).all()), "spheres must be finite"
+        assert bool((spheres[..., 3] > 0.0).any(dim=1).all()), "every sample must contain an active sphere"
+        return self._to_curobo_device(spheres).detach().clone()
+
+    def joint_positions_self_collision_witness(
+        self,
+        joint_positions: torch.Tensor,
+        collision_margin_m: float = 0.0,
+    ) -> tuple[str, int, str, int, float] | None:
+        """Return the deepest enabled sphere overlap for one robot state.
+
+        Args:
+            joint_positions: One joint state shaped ``(1, J)`` in :attr:`active_joint_names` order [rad, m].
+            collision_margin_m: Required sphere-surface separation [m].
+
+        Returns:
+            First link, first sphere index, second link, second sphere index, and clearance [m],
+            or ``None`` when the state satisfies the requested margin.
+        """
+
+        assert joint_positions.shape == (1, len(self.active_joint_names))
+        assert math.isfinite(collision_margin_m) and collision_margin_m >= 0.0
+        spheres = self.joint_positions_to_collision_spheres(joint_positions)[0]
+        sphere_count = len(spheres)
+        pair_indices, sphere_offsets, link_names = self._self_collision_pair_data(sphere_count)
+        if not len(pair_indices):
+            return None
+        first_indices, second_indices = pair_indices.T
+        radii = spheres[:, 3]
+        clearance = (
+            torch.linalg.vector_norm(spheres[first_indices, :3] - spheres[second_indices, :3], dim=-1)
+            - radii[first_indices]
+            - radii[second_indices]
+            - sphere_offsets[first_indices]
+            - sphere_offsets[second_indices]
+        )
+        active = (radii[first_indices] > 0.0) & (radii[second_indices] > 0.0)
+        minimum, pair_index = torch.where(active, clearance, torch.inf).min(dim=0)
+        if not bool(torch.isfinite(minimum)) or float(minimum.item()) > collision_margin_m:
+            return None
+
+        first_sphere = int(first_indices[pair_index].item())
+        second_sphere = int(second_indices[pair_index].item())
+        return (
+            link_names[first_sphere],
+            first_sphere,
+            link_names[second_sphere],
+            second_sphere,
+            float(minimum.item()),
+        )
+
+    def _joint_positions_query(self, joint_positions: torch.Tensor) -> torch.Tensor:
+        """Check joint samples and place them on the planner's device.
+
+        Args:
+            joint_positions: Samples with shape (T, J) in active-joint order [rad, m].
+
+        Returns:
+            Finite joint samples on the cuRobo device.
+        """
+        assert isinstance(joint_positions, torch.Tensor), "joint_positions must be a torch.Tensor"
+        assert (
+            joint_positions.ndim == 2 and joint_positions.shape[0] > 0
+        ), "joint_positions must have non-empty shape (T, J)"
+        assert joint_positions.shape[1] == len(
+            self.active_joint_names
+        ), "joint_positions width must match active_joint_names"
+        assert bool(torch.isfinite(joint_positions).all()), "joint_positions must be finite"
+        return self._to_curobo_device(joint_positions)
+
     # =====================================================================================
     # WORLD AND OBJECT MANAGEMENT, ATTACHMENT, AND DETACHMENT
     # =====================================================================================
@@ -467,7 +1370,8 @@ class CuroboPlanner(MotionPlannerBase):
         """Retrieve object pose from cuRobo's collision world model.
 
         Searches the collision world model for the specified object and returns its current
-        pose. This is useful for attachment calculations and debugging collision world state.
+        root pose, accounting for any child-geometry transform. This is used for attachment
+        calculations and debugging collision world state.
         The method handles both mesh and cuboid object types automatically.
 
         Args:
@@ -494,9 +1398,16 @@ class CuroboPlanner(MotionPlannerBase):
                 continue
 
             for obj in obj_list:
-                if obj.name and object_path in str(obj.name):
+                if obj.name and object_path == str(obj.name):
                     if obj.pose is not None:
-                        return Pose.from_list(obj.pose, tensor_args=self.tensor_args)
+                        pose = Pose.from_list(obj.pose, tensor_args=self.tensor_args)
+                        object_from_obstacle = self._object_obstacle_transform(object_name, object_path)
+                        root_from_object = pose.get_matrix().reshape(4, 4) @ torch.linalg.inv(object_from_obstacle).to(
+                            pose.position
+                        )
+                        return Pose.from_list(
+                            self._object_pose_to_curobo_list(root_from_object), tensor_args=self.tensor_args
+                        )
 
         self.logger.debug(f"Object {object_name} found in mappings but pose not available")
         return None
@@ -588,24 +1499,29 @@ class CuroboPlanner(MotionPlannerBase):
 
         return Attachment(attach_pose, link_name)
 
-    def update_world(self) -> None:
+    def update_world(self, object_pose_overrides: Mapping[str, torch.Tensor] | None = None) -> None:
         """Synchronize collision world with current Isaac Lab scene state.
 
         Updates all dynamic object poses in cuRobo's collision world to match their current
         positions in Isaac Lab. This ensures collision checking uses accurate object positions
         after simulation steps, resets, or manual object movements. Static world geometry
-        is loaded once during initialization and not updated here for performance.
+        is loaded once and re-expressed only when the planning root moves.
 
         The method validates that the set of objects hasn't changed at runtime, as cuRobo
         requires world model reinitialization when objects are added or removed.
 
+        Args:
+            object_pose_overrides: Optional environment-relative dynamic-object poses [m] used by
+                offline path accumulation instead of their live simulator poses.
+
         Raises:
-            RuntimeError: If the set of objects has changed at runtime
+            RuntimeError: If the set of objects has changed at runtime.
         """
 
         # Refresh the env-relative -> robot base frame transform before syncing geometry, so
         # object, goal, and planned poses are reconciled against the current base pose.
         self._refresh_base_frame_transform()
+        self._static_world_refresh()
 
         # Establish validation baseline on first call, validate on subsequent calls
         if self._expected_objects is None:
@@ -631,13 +1547,26 @@ class CuroboPlanner(MotionPlannerBase):
                 raise RuntimeError(error_msg)
 
         # Sync object poses with Isaac Lab
-        self._sync_object_poses_with_isaaclab()
+        self._sync_object_poses_with_isaaclab(object_pose_overrides)
 
         if self.visualize_spheres:
             self._update_sphere_visualization(force_update=True)
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
+
+    def world_visualization_refresh(self) -> None:
+        """Refresh the Rerun world scene from this planner's current synchronized world."""
+
+        if self.plan_visualizer is None:
+            return
+        world_scene = None
+        try:
+            self.update_world()
+            world_scene = WorldConfig.get_scene_graph(self.motion_gen.world_coll_checker.world_model)
+        except Exception as error:
+            self.logger.warning(f"Failed to refresh the Rerun world scene: {error}")
+        self.plan_visualizer.world_scene_set(world_scene)
 
     def _get_world_object_names(self) -> list[str]:
         """Extract all object names from cuRobo's collision world model.
@@ -674,7 +1603,10 @@ class CuroboPlanner(MotionPlannerBase):
             self.logger.debug(f"ERROR getting world object names: {e}")
             return []
 
-    def _sync_object_poses_with_isaaclab(self) -> None:
+    def _sync_object_poses_with_isaaclab(
+        self,
+        object_pose_overrides: Mapping[str, torch.Tensor] | None = None,
+    ) -> None:
         """Synchronize cuRobo collision world with Isaac Lab object positions.
 
         Updates all dynamic object poses in cuRobo's world model to match their current
@@ -685,24 +1617,40 @@ class CuroboPlanner(MotionPlannerBase):
         The method updates both the world model and the collision checker to ensure
         consistency across all cuRobo components.
         """
-        # Get cached object mappings and world model. Object poses are read through the
-        # Datastream in env-relative frame (env origin already subtracted) — the same
-        # robot-relative frame cuRobo's collision world is built in.
-        object_mappings = self._get_object_mappings()
+        # Object poses enter in the Datastream's env-relative frame and are converted to the
+        # planning-root frame before updating cuRobo's collision world.
         world_model = self.motion_gen.world_coll_checker.world_model
         object_poses = self.datastream.get_object_poses(env_ids=[self.env_id])
+        pose_overrides = dict(object_pose_overrides or {})
+        unknown_overrides = set(pose_overrides) - set(object_poses)
+        assert not unknown_overrides, f"object-pose overrides reference unknown obstacles: {sorted(unknown_overrides)}"
         static_objects = getattr(self.config, "static_objects", [])
 
         def _is_static(name: str) -> bool:
             return any(static_name in name.lower() for static_name in static_objects)
 
-        updated_count = 0
-
-        for object_name, object_path in object_mappings.items():
-            if object_name not in object_poses or _is_static(object_name):
+        updates: list[tuple[str, str, list[float]]] = []
+        for object_name in object_poses:
+            if _is_static(object_name):
                 continue
-            pose_base = self._pose_env_to_base(object_poses[object_name][0])
-            pose_list = self._object_pose_to_curobo_list(pose_base)
+            if object_name in pose_overrides:
+                pose_env = pose_overrides[object_name]
+            elif object_name in object_poses:
+                pose_env = object_poses[object_name][0]
+            else:
+                continue
+            try:
+                obstacle_paths = self.world_object_obstacle_paths(object_name)
+            except KeyError:
+                assert object_name not in pose_overrides, f"object-pose override has no obstacles: {object_name!r}"
+                continue
+            for object_path in obstacle_paths:
+                child_pose = pose_env @ self._object_obstacle_transform(object_name, object_path).to(pose_env)
+                pose_list = self._object_pose_to_curobo_list(self._pose_env_to_base(child_pose))
+                updates.append((object_name, object_path, pose_list))
+
+        updated_count = 0
+        for object_name, object_path, pose_list in updates:
             if self._update_object_in_world_model(world_model, object_name, object_path, pose_list):
                 updated_count += 1
 
@@ -711,11 +1659,7 @@ class CuroboPlanner(MotionPlannerBase):
         # Sync object poses with collision checker. This preserves static mesh objects unlike
         # load_collision_model which rebuilds everything.
         if updated_count > 0:
-            for object_name, object_path in object_mappings.items():
-                if object_name not in object_poses or _is_static(object_name):
-                    continue
-                pose_base = self._pose_env_to_base(object_poses[object_name][0])
-                pose_list = self._object_pose_to_curobo_list(pose_base)
+            for _, object_path, pose_list in updates:
                 # pose_list quaternion is already cuRobo (w, x, y, z) order.
                 curobo_pose = self._make_pose(position=pose_list[:3], quaternion=pose_list[3:], quat_is_xyzw=False)
                 self.motion_gen.world_coll_checker.update_obstacle_pose(  # type: ignore
@@ -723,6 +1667,44 @@ class CuroboPlanner(MotionPlannerBase):
                 )
 
             self.logger.debug(f"Updated {updated_count} object poses in collision checker")
+
+    def _object_obstacle_transform(self, object_name: str, obstacle_path: str) -> torch.Tensor:
+        """Cache the obstacle's rigid transform relative to its authored scene-object root.
+
+        Args:
+            object_name: Scene object containing the obstacle.
+            obstacle_path: Collision-world name of the object's geometry prim.
+
+        Returns:
+            Object-relative obstacle transform with shape ``(4, 4)`` [m].
+        """
+        from pxr import Gf, UsdGeom
+
+        if obstacle_path not in self._object_obstacle_transforms:
+            stage = self.datastream.get_usd_stage()
+            root = stage.GetPrimAtPath(self.datastream.get_object_prim_path(object_name, self.env_id))
+            env = stage.GetPrimAtPath(self.datastream.get_env_prim_path(self.env_id))
+            authored = Gf.Transform(UsdGeom.XformCache().ComputeRelativeTransform(root, env)[0])
+            env_from_object = torch.eye(4, device=self.datastream.device)
+            env_from_object[:3, :3] = torch.as_tensor(
+                np.asarray(Gf.Matrix4d().SetRotate(authored.GetRotation()))[:3, :3].T.copy(),
+                dtype=env_from_object.dtype,
+                device=env_from_object.device,
+            )
+            env_from_object[:3, 3] = env_from_object.new_tensor(tuple(authored.GetTranslation()))
+            obstacle = next(
+                value for value in self.motion_gen.world_coll_checker.world_model if value.name == obstacle_path
+            )
+            root_from_obstacle = (
+                self._make_pose(position=obstacle.pose[:3], quaternion=obstacle.pose[3:], quat_is_xyzw=False)
+                .get_matrix()
+                .reshape(4, 4)
+                .to(env_from_object)
+            )
+            self._object_obstacle_transforms[obstacle_path] = (
+                torch.linalg.inv(env_from_object) @ self._base_pose_in_env @ root_from_obstacle
+            )
+        return self._object_obstacle_transforms[obstacle_path]
 
     def _object_pose_to_curobo_list(self, pose_mat: torch.Tensor) -> list[float]:
         """Decompose a 4x4 pose into cuRobo's ``[x, y, z, qw, qx, qy, qz]`` list.
@@ -775,24 +1757,29 @@ class CuroboPlanner(MotionPlannerBase):
             Dictionary mapping scene object names to their corresponding USD paths
         """
         mappings = {}
-        env_prefix = f"{self.datastream.get_env_prim_path(self.env_id)}/"
         world_object_paths = []
 
         # Collect all primitive objects from cuRobo world model
         for primitive_type in self.primitive_types:
             primitive_list = getattr(world_model, primitive_type)
             for primitive in primitive_list:
-                if primitive.name and env_prefix in str(primitive.name):
+                if primitive.name:
                     world_object_paths.append(str(primitive.name))
+        world_object_paths = sorted(set(world_object_paths))
 
-        # Match scene object names to world paths
         for object_name in object_names:
-            # Direct name matching
-            for path in world_object_paths:
-                if object_name.lower().replace("_", "") in path.lower().replace("_", ""):
-                    mappings[object_name] = path
-                    self.logger.debug(f"MAPPING: {object_name} -> {path}")
-                    break
+            root_path = self.datastream.get_object_prim_path(object_name, self.env_id)
+            matches = tuple(
+                path for path in world_object_paths if path == root_path or path.startswith(f"{root_path}/")
+            )
+            if len(matches) == 1:
+                mappings[object_name] = matches[0]
+                self.logger.debug(f"MAPPING: {object_name} -> {matches[0]}")
+            elif matches:
+                self.logger.debug(
+                    f"WARNING: Object {object_name} has {len(matches)} cuRobo obstacles; "
+                    "single-obstacle attachment mapping is unavailable"
+                )
             else:
                 self.logger.debug(f"WARNING: Could not find world path for {object_name}")
 
@@ -803,9 +1790,8 @@ class CuroboPlanner(MotionPlannerBase):
     ) -> bool:
         """Update a single object's pose in cuRobo's collision world model.
 
-        Searches through all primitive types in the world model to find the specified object
-        and updates its pose. Uses flexible matching to handle variations in path naming
-        between Isaac Lab and cuRobo representations.
+        Searches every primitive type for the exact resolved cuRobo obstacle path and updates
+        its pose.
 
         Args:
             world_model: cuRobo's collision world model
@@ -829,8 +1815,7 @@ class CuroboPlanner(MotionPlannerBase):
             for primitive in primitive_list:
                 if primitive.name:
                     primitive_name = str(primitive.name)
-                    # Use bidirectional matching for robust path matching
-                    if object_path == primitive_name or object_path in primitive_name or primitive_name in object_path:
+                    if object_path == primitive_name:
                         primitive.pose = pose_list
                         self.logger.debug(f"Updated {primitive_type} {object_name} pose")
                         return True
@@ -838,7 +1823,145 @@ class CuroboPlanner(MotionPlannerBase):
         self.logger.debug(f"WARNING: Object {object_name} not found in world model")
         return False
 
-    def _attach_object(self, object_name: str, object_path: str, env_id: int) -> bool:
+    def object_collision_spheres_fit(
+        self,
+        object_name: str,
+        env_id: int,
+        start_joint_positions: torch.Tensor,
+        expected_tool_from_object: torch.Tensor,
+        object_collision_spheres: ObjectCollisionSpheres | None = None,
+    ) -> ObjectCollisionSpheres:
+        """Fit or bind the exact object spheres used by carried-object planning.
+
+        The query applies the virtual grasp pose in the planner world, attaches at the supplied
+        robot state, captures or reuses object-frame geometry, and detaches before returning.
+        Cleanup failures propagate.
+
+        Args:
+            object_name: Exact logical scene-object name.
+            env_id: Environment index used by the planner.
+            start_joint_positions: Arm-local attachment state in planner joint order [rad, m].
+            expected_tool_from_object: Expected rigid object pose in the physical tool frame.
+            object_collision_spheres: Optional sphere geometry captured by another planner in this episode.
+
+        Returns:
+            Immutable object-frame spheres and their fit details.
+        """
+
+        assert self.config.planning_enabled, "object sphere fitting requires an ordinary planning context"
+        assert env_id == self.env_id, "object sphere fitting must use the planner's environment"
+        assert isinstance(expected_tool_from_object, torch.Tensor) and expected_tool_from_object.shape == (4, 4)
+        tool_pose = self.joint_positions_to_ee_poses(start_joint_positions.unsqueeze(0))[0]
+        object_pose = tool_pose @ expected_tool_from_object.to(device=tool_pose.device, dtype=tool_pose.dtype)
+        self.update_world({object_name: object_pose})
+        object_path = self._get_object_mappings().get(object_name)
+        if object_path is None:
+            raise KeyError(f"object {object_name!r} has no exact cuRobo obstacle mapping")
+        if object_collision_spheres is not None:
+            assert object_collision_spheres.object_name == object_name
+            assert object_collision_spheres.obstacle_path == object_path
+            cached = self._object_collision_spheres.setdefault(object_name, object_collision_spheres)
+            assert cached is object_collision_spheres, "planner already owns different geometry for this object"
+        try:
+            if not self._attach_object(object_name, object_path, start_joint_positions):
+                raise RuntimeError(f"cuRobo failed to fit attachment spheres for {object_name!r}")
+            attachment = self.attached_objects[object_name]
+            captured_transform = torch.as_tensor(
+                attachment.pose.get_matrix(),
+                device=expected_tool_from_object.device,
+                dtype=expected_tool_from_object.dtype,
+            ).reshape(4, 4)
+            assert torch.allclose(
+                captured_transform, expected_tool_from_object, atol=1.0e-4, rtol=0.0
+            ), f"attachment transform for {object_name!r} does not match its planned attachment event"
+            return self._object_collision_spheres[object_name]
+        finally:
+            self._detach_objects()
+
+    def object_collision_spheres_reset(self) -> None:
+        """Clear fitted object geometry at an episode boundary."""
+
+        assert not self.attached_objects, "cannot clear object geometry while an object is attached"
+        self._object_collision_spheres.clear()
+
+    def _object_collision_spheres_capture(
+        self,
+        object_name: str,
+        object_path: str,
+        attachment: Attachment,
+    ) -> ObjectCollisionSpheres:
+        """Capture active native attachment slots as immutable object-frame spheres."""
+
+        link_name = self.config.attached_object_link_name
+        slots = self.motion_gen.kinematics.kinematics_config.get_link_spheres(link_name).detach().clone()
+        assert slots.ndim == 2 and slots.shape[1] == 4, "native attachment slots must have shape (S, 4)"
+        active = slots[:, 3] > 0.0
+        assert bool(active.any()), f"native attachment fit for {object_name!r} produced no active spheres"
+        active_slots = slots[active]
+        object_centers = attachment.pose.inverse().transform_points(active_slots[:, :3])
+        spheres = tuple(
+            CollisionSphere(
+                center=tuple(float(value) for value in center),
+                radius=float(radius),
+            )
+            for center, radius in zip(
+                object_centers.detach().cpu().tolist(),
+                active_slots[:, 3].detach().cpu().tolist(),
+                strict=True,
+            )
+        )
+        transform = attachment.pose.get_matrix().detach().cpu().reshape(4, 4).tolist()
+        result = ObjectCollisionSpheres(
+            object_name=object_name,
+            obstacle_path=object_path,
+            spheres=spheres,
+            fit_type=SphereFitType.SAMPLE_SURFACE.value,
+            surface_sphere_radius_m=self.config.surface_sphere_radius,
+            slot_capacity=len(slots),
+            tool_frame=self.config.ee_link_name or self.robot_cfg["kinematics"]["ee_link"],
+            attachment_link=link_name,
+            captured_tool_from_object=tuple(tuple(float(value) for value in row) for row in transform),
+        )
+        self._object_collision_spheres[object_name] = result
+        return result
+
+    def _object_collision_spheres_attach(
+        self,
+        geometry: ObjectCollisionSpheres,
+        attachment: Attachment,
+    ) -> None:
+        """Reload cached object-frame spheres into the native virtual attachment slots."""
+
+        link_name = self.config.attached_object_link_name
+        assert geometry.obstacle_path == self._get_object_mappings().get(geometry.object_name)
+        assert geometry.attachment_link == link_name
+        assert geometry.fit_type == SphereFitType.SAMPLE_SURFACE.value
+        assert math.isclose(geometry.surface_sphere_radius_m, self.config.surface_sphere_radius)
+        current_slots = self.motion_gen.kinematics.kinematics_config.get_link_spheres(link_name)
+        assert current_slots.shape == (geometry.slot_capacity, 4), "native attachment-slot capacity changed"
+        object_centers = torch.as_tensor(
+            [sphere.center for sphere in geometry.spheres],
+            device=current_slots.device,
+            dtype=current_slots.dtype,
+        )
+        tool_centers = attachment.pose.transform_points(object_centers)
+        sphere_tensor = torch.zeros_like(current_slots)
+        sphere_tensor[:, 3] = -10.0
+        sphere_tensor[: len(geometry.spheres), :3] = tool_centers
+        sphere_tensor[: len(geometry.spheres), 3] = torch.as_tensor(
+            [sphere.radius for sphere in geometry.spheres],
+            device=current_slots.device,
+            dtype=current_slots.dtype,
+        )
+        self.motion_gen.attach_spheres_to_robot(sphere_tensor=sphere_tensor, link_name=link_name)
+        self.motion_gen.world_coll_checker.enable_obstacle(geometry.obstacle_path, enable=False)
+
+    def _attach_object(
+        self,
+        object_name: str,
+        object_path: str,
+        start_joint_positions: torch.Tensor | None = None,
+    ) -> bool:
         """Attach an object to the robot for manipulation planning.
 
         Establishes an attachment between the specified object and the robot's end-effector
@@ -849,51 +1972,68 @@ class CuroboPlanner(MotionPlannerBase):
         Args:
             object_name: Short name of the object to attach (e.g., "cube_2")
             object_path: Full USD path for the object in cuRobo world model
-            env_id: Environment ID for multi-environment support
+            start_joint_positions: Optional arm-local attachment state for offline planning.
 
         Returns:
             True if attachment succeeded, False if attachment failed
         """
-        current_joint_state = self._get_current_joint_state_for_curobo()
-
         self.logger.debug(f"Attaching {object_name} at path {object_path}")
-
-        # Create attachment record (relative pose object-frame to parent link)
-        attachment = self.create_attachment(
-            object_name,
-            self.config.attached_object_link_name,
-            current_joint_state,
-        )
-        self.attached_objects[object_name] = attachment
-        success = self.motion_gen.attach_objects_to_robot(
-            joint_state=current_joint_state,
-            object_names=[object_path],
-            link_name=self.config.attached_object_link_name,
-            surface_sphere_radius=self.config.surface_sphere_radius,
-            sphere_fit_type=SphereFitType.SAMPLE_SURFACE,
-            world_objects_pose_offset=None,
-        )
+        try:
+            current_joint_state = self._get_current_joint_state_for_curobo(start_joint_positions)
+            attachment = self.create_attachment(
+                object_name,
+                self.config.attached_object_link_name,
+                current_joint_state,
+            )
+            cached_geometry = self._object_collision_spheres.get(object_name)
+            if cached_geometry is None:
+                success = self.motion_gen.attach_objects_to_robot(
+                    joint_state=current_joint_state,
+                    object_names=[object_path],
+                    link_name=self.config.attached_object_link_name,
+                    surface_sphere_radius=self.config.surface_sphere_radius,
+                    sphere_fit_type=SphereFitType.SAMPLE_SURFACE,
+                    world_objects_pose_offset=None,
+                )
+                if success:
+                    self._object_collision_spheres_capture(object_name, object_path, attachment)
+            else:
+                assert cached_geometry.obstacle_path == object_path, "cached object obstacle path changed"
+                self._object_collision_spheres_attach(cached_geometry, attachment)
+                success = True
+        except Exception as error:
+            self.logger.error(f"Failed to attach {object_name}: {error}")
+            success = False
 
         if success:
+            self.attached_objects[object_name] = attachment
             self.logger.debug(f"Successfully attached {object_name}")
             self.logger.debug(f"Current attached objects: {list(self.attached_objects.keys())}")
 
             # Force sphere visualization update
             if self.visualize_spheres:
-                self._update_sphere_visualization(force_update=True)
-
-            self.logger.info(f"Sphere count after attach is successful: {self._count_active_spheres()}")
-
-            # Deactivate the original obstacle as it's now carried by the robot
-            self.motion_gen.world_coll_checker.enable_obstacle(object_path, enable=False)
+                try:
+                    self._update_sphere_visualization(force_update=True)
+                except Exception as error:
+                    self.logger.warning(f"Failed to visualize attachment for {object_name}: {error}")
 
             return True
-        else:
-            self.logger.error(f"cuRobo attach_objects_to_robot failed for {object_name}")
-            # Clean up on failure
-            if object_name in self.attached_objects:
-                del self.attached_objects[object_name]
-            return False
+
+        self.logger.error(f"cuRobo attach_objects_to_robot failed for {object_name}")
+        self.attached_objects.pop(object_name, None)
+        try:
+            self.motion_gen.detach_object_from_robot(link_name=self.config.attached_object_link_name)
+        except Exception as error:
+            self.logger.error(f"Failed to clear attachment slots for {object_name}: {error}")
+        try:
+            self._set_active_links([self.config.attached_object_link_name], active=True)
+        except Exception as error:
+            self.logger.error(f"Failed to restore attachment spheres for {object_name}: {error}")
+        try:
+            self.motion_gen.world_coll_checker.enable_obstacle(object_path, enable=True)
+        except Exception as error:
+            self.logger.error(f"Failed to restore world obstacle for {object_name}: {error}")
+        return False
 
     def _detach_objects(self, link_names: set[str] | None = None) -> bool:
         """Detach objects from robot and restore collision checking.
@@ -977,22 +2117,34 @@ class CuroboPlanner(MotionPlannerBase):
     # JOINT STATE AND KINEMATICS
     # =====================================================================================
 
-    def _get_current_joint_state_for_curobo(self) -> JointState:
-        """
-        Construct the current joint state for cuRobo with zero velocity and acceleration.
+    def _get_current_joint_state_for_curobo(
+        self,
+        start_joint_positions: torch.Tensor | None = None,
+    ) -> JointState:
+        """Read one state and select the optimizer's joint order.
 
-        This helper reads the robot's joint positions from Isaac Lab for the current environment
-        and pairs them with zero velocities and accelerations as required by cuRobo planning.
-        All tensors are moved to the cuRobo device and reordered to match the kinematic chain
-        used by the cuRobo motion generator.
+        Args:
+            start_joint_positions: Optional state shaped ``(J,)`` or ``(1, J)`` in
+                :attr:`active_joint_names` order [rad, m]. ``None`` reads the live articulation.
 
         Returns:
-            JointState on the cuRobo device, ordered according to
-            `self.motion_gen.kinematics.joint_names`, with position from the robot
-            and zero velocity/acceleration.
+            CuRobo planning state with zero velocity and acceleration. Separately commanded
+            auxiliary joints remain outside the optimizer's state vector.
         """
-        # Fetch joint position (shape: [1, num_joints]) and names through the Datastream.
-        joint_pos_raw: torch.Tensor = self.datastream.get_robot_joint_positions(env_ids=[self.env_id])
+        if start_joint_positions is None:
+            joint_names = list(self.active_joint_names)
+            joint_pos_raw = self.datastream.get_robot_joint_positions(env_ids=[self.env_id], joint_names=joint_names)
+        else:
+            # Offline accumulation passes one arm-local state in this planner's native order.
+            joint_pos_raw = start_joint_positions
+            if joint_pos_raw.ndim == 1:
+                joint_pos_raw = joint_pos_raw.unsqueeze(0)
+            joint_names = list(self.active_joint_names)
+            assert joint_pos_raw.ndim == 2 and joint_pos_raw.shape[0] == 1
+            assert joint_pos_raw.shape[1] == len(joint_names), (
+                f"planning group {self.config.planning_group_name!r} expects {len(joint_names)} "
+                f"joint positions, got {joint_pos_raw.shape[1]}"
+            )
         joint_vel_raw: torch.Tensor = torch.zeros_like(joint_pos_raw)
         joint_acc_raw: torch.Tensor = torch.zeros_like(joint_pos_raw)
 
@@ -1005,10 +2157,74 @@ class CuroboPlanner(MotionPlannerBase):
             position=joint_pos,
             velocity=joint_vel,
             acceleration=joint_acc,
-            joint_names=self.datastream.get_robot_joint_names(),
+            joint_names=joint_names,
+            tensor_args=self.tensor_args,
+        ).get_ordered_joint_state(self.motion_gen.kinematics.joint_names)
+
+        position_limits = self.motion_gen.kinematics.get_joint_limits().position
+        lower, upper = position_limits[0], position_limits[1]
+        margin = 1e-4
+        assert bool(torch.all(upper - lower > 2.0 * margin)), "joint limits are narrower than the safety margin"
+        position = torch.clamp(cu_js.position, lower + margin, upper - margin)
+        return JointState(
+            position=position,
+            velocity=torch.zeros_like(position),
+            acceleration=torch.zeros_like(position),
+            joint_names=cu_js.joint_names,
             tensor_args=self.tensor_args,
         )
-        return cu_js.get_ordered_joint_state(self.motion_gen.kinematics.joint_names)
+
+    def _auxiliary_joint_positions_update(self, joint_positions: torch.Tensor | None) -> None:
+        """Hold separately commanded joints fixed while the optimizer moves the arm.
+
+        Args:
+            joint_positions: One state in :attr:`active_joint_names` order [rad, m].
+                ``None`` reads the live articulation.
+        """
+        if not self._auxiliary_joint_indices:
+            return
+        positions = (
+            self.datastream.get_robot_joint_positions(env_ids=[self.env_id], joint_names=self.active_joint_names)
+            if joint_positions is None
+            else joint_positions.reshape(1, -1)
+        )
+        assert positions.shape == (1, len(self.active_joint_names)) and bool(torch.isfinite(positions).all())
+        auxiliary = {name: float(positions[0, index].item()) for name, index in self._auxiliary_joint_indices.items()}
+        locked = self.robot_cfg["kinematics"]["lock_joints"]
+        if any(locked[name] != value for name, value in auxiliary.items()):
+            spheres = {
+                link: self.motion_gen.kinematics.kinematics_config.get_link_spheres(link).clone()
+                for link in self.attachment_links
+            }
+            self.motion_gen.update_locked_joints({**locked, **auxiliary}, self.robot_cfg)
+            self._joint_limits_sync(self.motion_gen.kinematics.get_joint_limits())
+            for link, geometry in spheres.items():
+                self.motion_gen.kinematics.kinematics_config.update_link_spheres(link, geometry)
+
+    def _planning_joint_state_expand(
+        self, state: JointState, auxiliary_joint_positions: torch.Tensor | None = None
+    ) -> JointState:
+        """Expand a plan using the current auxiliary-joint targets.
+
+        Args:
+            state: Joint state in the optimizer's joint order [rad, m].
+            auxiliary_joint_positions: Reference state in :attr:`active_joint_names` order [rad, m].
+                ``None`` uses the auxiliary positions held by the planning model.
+
+        Returns:
+            Full joint state with the auxiliary positions used for this planning call.
+        """
+        result = self.motion_gen.get_full_js(state).clone()
+        reference = (
+            self._to_curobo_device(auxiliary_joint_positions).reshape(-1)
+            if auxiliary_joint_positions is not None
+            else None
+        )
+        for name, index in self._auxiliary_joint_indices.items():
+            result.position[..., result.joint_names.index(name)] = (
+                self.robot_cfg["kinematics"]["lock_joints"][name] if reference is None else reference[index]
+            )
+        return result
 
     def get_ee_pose(self, joint_state: JointState) -> Pose:
         """Compute end-effector pose from joint configuration.
@@ -1048,6 +2264,247 @@ class CuroboPlanner(MotionPlannerBase):
 
         kin_state: Any = self.motion_gen.rollout_fn.compute_kinematics(cuda_joint_state)
         return kin_state.ee_pose
+
+    def solve_ik(
+        self,
+        target_pose: torch.Tensor,
+        seed_joint_positions: torch.Tensor | None = None,
+    ) -> torch.Tensor | None:
+        """Solve one collision-feasible arm-local IK problem.
+
+        Args:
+            target_pose: End-effector pose as a 4x4 matrix in the env-relative frame.
+            seed_joint_positions: Arm-local seed in :attr:`active_joint_names` order. ``None``
+                uses the live articulation state.
+
+        Returns:
+            Solved arm-local joint positions on the environment device, or ``None`` when IK fails.
+        """
+        return self._solve_ik(target_pose, seed_joint_positions, require_feasible=True)
+
+    def solve_ik_kinematic(
+        self,
+        target_pose: torch.Tensor,
+        seed_joint_positions: torch.Tensor | None = None,
+    ) -> torch.Tensor | None:
+        """Return the nearest-seed pose-validated arm-local IK candidate for offline scheduling.
+
+        Demonstrated skill poses are replayed as Cartesian controller targets. Their cuRobo joint
+        candidates are used to approximate robot geometry during inter-arm scheduling, so world
+        contact may make a solver-unsuccessful candidate useful. Robot self collision remains
+        forbidden, and explicit forward kinematics must match the target within configured tolerances.
+
+        Args:
+            target_pose: End-effector pose as a 4x4 matrix in the env-relative frame.
+            seed_joint_positions: Arm-local seed in :attr:`active_joint_names` order. ``None``
+                uses the live articulation state.
+
+        Returns:
+            Pose-validated arm-local joint positions, or ``None`` when no candidate passes FK.
+        """
+        return self._solve_ik(target_pose, seed_joint_positions, require_feasible=False)
+
+    @contextmanager
+    def _ik_collision_costs_disabled(self) -> Iterator[None]:
+        """Disable warmed IK collision rollouts and restore their exact prior states."""
+
+        attributes = (
+            "primitive_collision_cost",
+            "primitive_collision_constraint",
+            "robot_self_collision_cost",
+            "robot_self_collision_constraint",
+        )
+        costs = {
+            id(cost): (cost, bool(cost.enabled))
+            for rollout in self.motion_gen.ik_solver.get_all_rollout_instances()
+            for attribute in attributes
+            if (cost := getattr(rollout, attribute, None)) is not None
+        }
+        try:
+            for cost, _ in costs.values():
+                cost.disable_cost()
+            yield
+        finally:
+            for cost, was_enabled in costs.values():
+                (cost.enable_cost if was_enabled else cost.disable_cost)()
+
+    def joint_positions_to_named_positions(self, joint_positions: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Expand one active joint configuration, including its dependent mimic joints.
+
+        Args:
+            joint_positions: Active joint positions in planner order [rad, m].
+
+        Returns:
+            Named scalar positions on the environment device.
+        """
+        assert joint_positions.shape == (len(self.active_joint_names),)
+        state = JointState.from_position(
+            position=self._to_curobo_device(joint_positions), joint_names=list(self.active_joint_names)
+        )
+        expanded = self._kinematics.get_mimic_js(state)
+        if expanded is not None:
+            state = expanded
+        positions = self._to_env_device(state.position)
+        return dict(zip(state.joint_names, positions, strict=True))
+
+    def _solve_ik(
+        self,
+        target_pose: torch.Tensor,
+        seed_joint_positions: torch.Tensor | None,
+        *,
+        require_feasible: bool,
+    ) -> torch.Tensor | None:
+        """Solve a tool pose and validate candidates with the state-query model.
+
+        Args:
+            target_pose: Environment-relative tool transform [m].
+            seed_joint_positions: Reference state in :attr:`active_joint_names` order [rad, m].
+                ``None`` reads the live articulation.
+            require_feasible: Keep native collision constraints enabled during IK.
+
+        Returns:
+            Accepted joint state, or ``None`` when no candidate passes the configured checks.
+        """
+        assert self.config.planning_enabled, "IK is disabled for this collision-only backend"
+        assert target_pose.shape == (4, 4), f"target pose must have shape (4, 4), got {target_pose.shape}"
+        if seed_joint_positions is None:
+            seed_joint_positions = self.datastream.get_robot_joint_positions(
+                env_ids=[self.env_id], joint_names=self.active_joint_names
+            )[0]
+        # Kinematic sampling checks auxiliary geometry in the query model, not the native IK costs.
+        if require_feasible:
+            self._auxiliary_joint_positions_update(seed_joint_positions)
+        seed_state = self._get_current_joint_state_for_curobo(seed_joint_positions)
+        target_pose_base = self._to_curobo_device(self._pose_env_to_base(target_pose))
+        target_position, target_rotation = PoseUtils.unmake_pose(target_pose_base)
+        goal_pose = self._make_pose(
+            position=target_position,
+            quaternion=PoseUtils.quat_from_matrix(target_rotation),
+        )
+        candidate_count = self.config.ik_candidate_count
+        assert type(candidate_count) is int and candidate_count >= 1, "ik_candidate_count must be positive"
+        solver_candidate_count = self.motion_gen.ik_solver.num_seeds
+        assert (
+            candidate_count <= solver_candidate_count
+        ), "ik_candidate_count cannot exceed the warmed-up cuRobo IK seed count"
+        returned_candidate_count = solver_candidate_count if self.config.debug_planner else candidate_count
+
+        try:
+            collision_scope = nullcontext() if require_feasible else self._ik_collision_costs_disabled()
+            with collision_scope:
+                result = self.motion_gen.ik_solver.solve_single(
+                    goal_pose,
+                    retract_config=seed_state.position,
+                    seed_config=seed_state.position.unsqueeze(0),
+                    return_seeds=returned_candidate_count,
+                )
+        except Exception as error:
+            self.logger.debug(f"IK solve failed: {error}")
+            return None
+
+        solution_state = JointState(
+            position=result.solution.reshape(-1, len(self.motion_gen.kinematics.joint_names)),
+            joint_names=list(self.motion_gen.kinematics.joint_names),
+            tensor_args=self.tensor_args,
+        )
+        solutions = (
+            self._planning_joint_state_expand(solution_state, seed_joint_positions)
+            .get_ordered_joint_state(self.active_joint_names)
+            .position
+        )
+        successes = result.success.reshape(-1)
+        assert (
+            len(solutions) == len(successes) == returned_candidate_count
+        ), "cuRobo returned an unexpected IK candidate shape"
+        solutions = self._to_env_device(solutions).detach()
+        successes = successes.to(device=solutions.device)
+        try:
+            actual_poses = self.joint_positions_to_ee_poses(solutions)
+        except Exception as error:
+            self.logger.debug(f"IK candidate FK failed: {error}")
+            return None
+        target_poses = target_pose.to(device=actual_poses.device, dtype=actual_poses.dtype).expand_as(actual_poses)
+        position_error, rotation_error = PoseUtils.pose_errors(actual_poses, target_poses)
+        accepted = (
+            torch.isfinite(solutions).all(dim=-1)
+            & torch.isfinite(actual_poses).all(dim=(-2, -1))
+            & (position_error <= self.config.position_threshold)
+            & (rotation_error <= self.config.rotation_threshold)
+        )
+        if require_feasible:
+            accepted &= successes
+        else:
+            candidate_indices = torch.nonzero(accepted[:candidate_count], as_tuple=False).reshape(-1)
+            if len(candidate_indices):
+                collision_free = self.joint_positions_self_collision_free(
+                    solutions.index_select(0, candidate_indices),
+                    0.0,
+                )
+                accepted[candidate_indices] &= collision_free
+        seed_positions = self._to_env_device(
+            self._planning_joint_state_expand(seed_state, seed_joint_positions)
+            .get_ordered_joint_state(self.active_joint_names)
+            .position
+        ).reshape(1, -1)
+        auxiliary_names = set(self.config.initial_auxiliary_joint_positions)
+        pose_joint_indices = [
+            index for index, name in enumerate(self.active_joint_names) if name not in auxiliary_names
+        ]
+        assert pose_joint_indices, "IK planner must contain at least one non-auxiliary joint"
+        seed_distance = torch.sum(
+            torch.square(solutions[:, pose_joint_indices] - seed_positions[:, pose_joint_indices]),
+            dim=-1,
+        )
+        accepted_indices = torch.nonzero(accepted[:candidate_count], as_tuple=False).reshape(-1)
+        if len(accepted_indices) == 0:
+            if returned_candidate_count > candidate_count:
+                position_limits = self._to_env_device(self._kinematics.get_joint_limits().position)
+                joint_slack, limiting_joint = torch.min(
+                    torch.minimum(
+                        solutions[:, pose_joint_indices] - position_limits[0, pose_joint_indices],
+                        position_limits[1, pose_joint_indices] - solutions[:, pose_joint_indices],
+                    ),
+                    dim=-1,
+                )
+                audit_lines = [
+                    f"[{index:02d}] eligible={index < candidate_count} "
+                    f"solver_success={bool(successes[index].item())} "
+                    f"position_error={float(position_error[index].item()):.6f}m "
+                    f"rotation_error={float(rotation_error[index].item()):.6f}rad "
+                    f"pose_seed_distance={float(torch.sqrt(seed_distance[index]).item()):.6f} "
+                    f"pose_joint_slack={float(joint_slack[index].item()):.6f} "
+                    f"limiting_joint={self.active_joint_names[pose_joint_indices[int(limiting_joint[index].item())]]}"
+                    for index in range(returned_candidate_count)
+                ]
+                self.logger.debug(
+                    "IK candidate audit for group %r after configured prefix %d failed:\n%s",
+                    self.config.planning_group_name,
+                    candidate_count,
+                    "\n".join(audit_lines),
+                )
+            best = int(
+                torch.argmin(
+                    torch.nan_to_num(position_error[:candidate_count] + rotation_error[:candidate_count], nan=torch.inf)
+                ).item()
+            )
+            self.logger.debug(
+                "IK candidates for group %r failed FK validation: position_error=%.6f m, "
+                "rotation_error=%.6f rad, solver_success=%s",
+                self.config.planning_group_name,
+                float(position_error[best].item()),
+                float(rotation_error[best].item()),
+                bool(successes[best].item()),
+            )
+            return None
+
+        selected = int(accepted_indices[torch.argmin(seed_distance[accepted_indices])].item())
+        if not bool(successes[selected].item()):
+            self.logger.debug(
+                "IK candidate %d for group %r passes explicit FK but is solver-unsuccessful",
+                selected,
+                self.config.planning_group_name,
+            )
+        return solutions[selected].clone()
 
     # =====================================================================================
     # PLANNING CORE METHODS
@@ -1089,7 +2546,7 @@ class CuroboPlanner(MotionPlannerBase):
             if not isinstance(quaternion, torch.Tensor):
                 quaternion = torch.tensor(quaternion, dtype=self.tensor_args.dtype, device=self.tensor_args.device)
             else:
-                quaternion = self._to_curobo_device(quaternion)
+                quaternion = self._to_curobo_device(quaternion).clone()
 
             if quat_is_xyzw:
                 quaternion_wxyz = torch.roll(quaternion, shifts=1, dims=-1)
@@ -1099,7 +2556,7 @@ class CuroboPlanner(MotionPlannerBase):
         if not isinstance(position, torch.Tensor):
             position = torch.tensor(position, dtype=self.tensor_args.dtype, device=self.tensor_args.device)
         else:
-            position = self._to_curobo_device(position)
+            position = self._to_curobo_device(position).clone()
 
         return Pose(position=position, quaternion=quaternion_wxyz, name=name, normalize_rotation=normalize_rotation)
 
@@ -1126,6 +2583,9 @@ class CuroboPlanner(MotionPlannerBase):
         target_pose: torch.Tensor,
         step_size: float | None = None,
         enable_retiming: bool | None = None,
+        start_joint_positions: torch.Tensor | None = None,
+        retreat_distance: float | None = None,
+        object_pose_overrides: Mapping[str, torch.Tensor] | None = None,
     ) -> bool:
         """Plan collision-free motion to target pose.
 
@@ -1137,10 +2597,18 @@ class CuroboPlanner(MotionPlannerBase):
             target_pose: Target end-effector pose as 4x4 transformation matrix
             step_size: Step size for linear retiming, enables retiming if provided
             enable_retiming: Whether to enable linear retiming, auto-detected from step_size if None
+            start_joint_positions: Optional arm-local planning state in the configured cuRobo
+                joint order. ``None`` reads the live articulation state.
+            retreat_distance: Optional per-call start-retreat override [m].
+            object_pose_overrides: Optional environment-relative dynamic-object poses [m] retained
+                for plan visualization during offline accumulation.
 
         Returns:
             True if planning succeeded and a valid trajectory was found, False otherwise
         """
+        assert self.config.planning_enabled, "motion planning is disabled for this collision-only backend"
+        self._failed_joint_state = None
+        self._auxiliary_joint_positions_update(start_joint_positions)
         if enable_retiming is None:
             enable_retiming = step_size is not None
 
@@ -1159,25 +2627,28 @@ class CuroboPlanner(MotionPlannerBase):
             quaternion=PoseUtils.quat_from_matrix(target_rot),
         )
 
-        start_state: JointState = self._get_current_joint_state_for_curobo()
+        start_state = self._get_current_joint_state_for_curobo(start_joint_positions)
 
         self.logger.debug(f"Retiming enabled: {enable_retiming}, Step size: {step_size}")
 
         success: bool = self._plan_to_contact(
             start_state=start_state,
             goal_pose=target_curobo_pose,
-            retreat_distance=self.config.retreat_distance,
+            retreat_distance=self.config.retreat_distance if retreat_distance is None else retreat_distance,
             approach_distance=self.config.approach_distance,
             retime_plan=enable_retiming,
             step_size=step_size,
             contact=False,
         )
 
-        # Visualize plan if enabled
-        if success and self.visualize_plan and self._current_plan is not None:
+        # Visualize the successful trajectory, or at least retain the failed target and start state.
+        if self.visualize_plan:
+            self.plan_visualizer.robot_name = self.config.robot_name
+            self.plan_visualizer.set_motion_generator_reference(self.motion_gen)
             # Get current spheres for visualization
-            self._sync_object_poses_with_isaaclab()
-            cu_js = self._get_current_joint_state_for_curobo()
+            self._sync_object_poses_with_isaaclab(object_pose_overrides)
+            cu_js = self._failed_joint_state if not success and self._failed_joint_state is not None else start_state
+            cu_js = cu_js.get_ordered_joint_state(self.motion_gen.kinematics.joint_names)
             sphere_list = self.motion_gen.kinematics.get_robot_as_spheres(cu_js.position)[0]
 
             # Split spheres into robot and attached object spheres
@@ -1203,11 +2674,27 @@ class CuroboPlanner(MotionPlannerBase):
                 else:
                     attached_spheres.append(sphere)
 
+            try:
+                world_scene = WorldConfig.get_scene_graph(self.motion_gen.world_coll_checker.world_model)
+            except Exception:
+                world_scene = None
+
+            if not success or self._current_plan is None:
+                self.plan_visualizer.visualize_failure(
+                    target_pose=target_pose,
+                    robot_spheres=robot_spheres,
+                    attached_spheres=attached_spheres,
+                    world_scene=world_scene,
+                )
+                return success
+
+            viz_plan = self._current_plan.get_ordered_joint_state(self.motion_gen.kinematics.joint_names)
+
             # Compute end-effector positions for visualization
             ee_positions_list = []
             try:
-                for i in range(len(self._current_plan.position)):
-                    js: JointState = self._current_plan[i]
+                for i in range(len(viz_plan.position)):
+                    js: JointState = viz_plan[i]
                     kin = self.motion_gen.compute_kinematics(js)
                     ee_pos = kin.ee_position if hasattr(kin, "ee_position") else kin.ee_pose.position
                     ee_positions_list.append(ee_pos.cpu().numpy().squeeze())
@@ -1220,32 +2707,29 @@ class CuroboPlanner(MotionPlannerBase):
                 self.logger.debug(f"Failed to compute EE positions for visualization: {e}")
                 ee_positions_list = None
 
-            try:
-                world_scene = WorldConfig.get_scene_graph(self.motion_gen.world_coll_checker.world_model)
-            except Exception:
-                world_scene = None
-
             # Visualize plan
             self.plan_visualizer.visualize_plan(
-                plan=self._current_plan,
+                plan=viz_plan,
                 target_pose=target_pose,
                 robot_spheres=robot_spheres,
                 attached_spheres=attached_spheres,
                 ee_positions=np.array(ee_positions_list) if ee_positions_list else None,
                 world_scene=world_scene,
             )
-
             # Animate EE positions over the timeline for playback
             if ee_positions_list:
-                self.plan_visualizer.animate_plan(np.array(ee_positions_list))
+                self.plan_visualizer.animate_plan(
+                    np.array(ee_positions_list),
+                    timeline="planning",
+                )
 
             # Animate spheres along the path for collision visualization
             self.plan_visualizer.animate_spheres_along_path(
-                plan=self._current_plan,
+                plan=viz_plan,
                 robot_spheres_at_start=robot_spheres,
                 attached_spheres_at_start=attached_spheres,
-                timeline="sphere_animation",
-                interpolation_steps=15,  # More steps for smoother animation
+                timeline="planning",
+                interpolation_steps=1,
             )
 
         return success
@@ -1308,17 +2792,20 @@ class CuroboPlanner(MotionPlannerBase):
 
         planning_success = False
         try:
-            result: Any = self.motion_gen.plan_single(start_state, goal_pose, self.plan_config)
+            try:
+                result: Any = self.motion_gen.plan_single(start_state, goal_pose, self.plan_config)
+            finally:
+                # cuRobo can return early from a world-colliding start without restoring this flag.
+                self.motion_gen.rollout_fn.primitive_collision_constraint.enable_cost()
+                self.motion_gen.rollout_fn.robot_self_collision_constraint.enable_cost()
 
             if result.success.item():
-                if result.optimized_plan is not None and len(result.optimized_plan.position) != 0:
-                    self._current_plan = result.optimized_plan
-                    self.logger.debug(f"Using optimized plan with {len(self._current_plan.position)} waypoints")
-                else:
-                    self._current_plan = result.get_interpolated_plan()
-                    self.logger.debug(f"Using interpolated plan with {len(self._current_plan.position)} waypoints")
+                self._current_plan = (
+                    result.get_interpolated_plan() if self.config.interpolate_plan else result.optimized_plan
+                )
+                self.logger.debug(f"Using plan with {len(self._current_plan.position)} waypoints")
 
-                self._current_plan = self.motion_gen.get_full_js(self._current_plan)
+                self._current_plan = self._planning_joint_state_expand(self._current_plan)
                 common_js_names: list[str] = [
                     x for x in self.datastream.get_robot_joint_names() if x in self._current_plan.joint_names
                 ]
@@ -1328,10 +2815,20 @@ class CuroboPlanner(MotionPlannerBase):
                 planning_success = True
                 self.logger.debug(f"Contact planning succeeded with {len(self._current_plan.position)} waypoints")
             else:
-                self.logger.debug(f"Contact planning failed: {result.status}")
+                self.logger.warning(f"Planning failed for group {self.config.planning_group_name!r}: {result.status}")
+                if self.config.debug_planner:
+                    self._log_closest_ik_candidate(result)
+                    if result.status in {
+                        MotionGenStatus.INVALID_START_STATE_SELF_COLLISION,
+                        MotionGenStatus.INVALID_START_STATE_WORLD_COLLISION,
+                    }:
+                        self._log_start_collision(
+                            start_state,
+                            self_collision=result.status == MotionGenStatus.INVALID_START_STATE_SELF_COLLISION,
+                        )
 
         except Exception as e:
-            self.logger.debug(f"Error during planning: {e}")
+            self.logger.warning(f"Planning errored for group {self.config.planning_group_name!r}: {e}")
 
         # Always restore sphere state after planning, regardless of success
         if contact:
@@ -1339,6 +2836,72 @@ class CuroboPlanner(MotionPlannerBase):
             for attached_link, spheres in link_spheres.items():
                 self.motion_gen.kinematics.kinematics_config.update_link_spheres(attached_link, spheres)
         return planning_success
+
+    def _log_closest_ik_candidate(self, result: Any) -> None:
+        """Retain and report the closest IK candidate returned by a failed plan stage."""
+
+        if not isinstance(result.debug_info, dict) or "ik_result" not in result.debug_info:
+            return
+        ik_result = result.debug_info["ik_result"]
+        solver = self.motion_gen.ik_solver
+        positions = ik_result.solution.reshape(-1, solver.dof)
+        position_error = ik_result.position_error.reshape(-1)
+        rotation_error = ik_result.rotation_error.reshape(-1)
+        best = int(torch.argmin(position_error + rotation_error).item())
+        self._failed_joint_state = JointState.from_position(
+            positions[best].unsqueeze(0).clone(),
+            joint_names=solver.joint_names,
+        )
+        self.logger.debug(
+            "Closest IK candidate for group %r: position_error=%.6f m, rotation_error=%.6f rad",
+            self.config.planning_group_name,
+            float(position_error[best].item()),
+            float(rotation_error[best].item()),
+        )
+        candidate = self._to_env_device(
+            self._planning_joint_state_expand(self._failed_joint_state)
+            .get_ordered_joint_state(self.active_joint_names)
+            .position
+        )
+        for margin in dict.fromkeys((0.0, self.config.collision_activation_distance)):
+            try:
+                self_witness = self.joint_positions_self_collision_witness(candidate, margin)
+                world_witness = self.joint_positions_world_collision_witness(candidate, margin)
+                self.logger.debug(
+                    "Closest IK candidate collision at %.6f m margin: self=%s, world=%s",
+                    margin,
+                    self_witness or "clear",
+                    world_witness or "clear",
+                )
+            except Exception as error:
+                self.logger.debug(
+                    "Closest IK candidate collision attribution failed at %.6f m margin: %s: %s",
+                    margin,
+                    type(error).__name__,
+                    error,
+                )
+
+    def _log_start_collision(self, start_state: JointState, *, self_collision: bool) -> None:
+        """Report the exact collision behind a rejected start state."""
+
+        try:
+            ordered = self._planning_joint_state_expand(start_state).get_ordered_joint_state(self.active_joint_names)
+            margin = self.config.collision_activation_distance
+            positions = self._to_env_device(ordered.position)
+            witness = (
+                self.joint_positions_self_collision_witness(positions, margin)
+                if self_collision
+                else self.joint_positions_world_collision_witness(positions, margin)
+            )
+            kind = "self" if self_collision else "world"
+            self.logger.debug(
+                "Start-state %s-collision witness at %.6f m activation: %s",
+                kind,
+                margin,
+                witness or "unattributed",
+            )
+        except Exception as error:
+            self.logger.debug("Start-state collision attribution failed: %s: %s", type(error).__name__, error)
 
     def _plan_to_contact(
         self,
@@ -1371,23 +2934,50 @@ class CuroboPlanner(MotionPlannerBase):
 
         target_poses: list[Pose] = []
         contacts: list[bool] = []
+        direction = self.config.approach_direction
+        in_world_frame = self.config.approach_retreat_frame == "world"
+        world_sign = -1.0 if in_world_frame else 1.0
 
         if retreat_distance is not None and retreat_distance > 0:
             ee_pose: Pose = self.get_ee_pose(start_state)
-            retreat_pose: Pose = ee_pose.multiply(
-                self._make_pose(
-                    position=[0.0, 0.0, -retreat_distance],
+            if in_world_frame:
+                position = ee_pose.position.squeeze()
+                offset = torch.tensor(
+                    [world_sign * component * retreat_distance for component in direction],
+                    device=position.device,
+                    dtype=position.dtype,
                 )
-            )
+                offset = self._env_to_base_transform[:3, :3].to(offset) @ offset
+                retreat_pose = self._make_pose(
+                    position=position + offset,
+                    quaternion=ee_pose.quaternion,
+                    quat_is_xyzw=False,
+                )
+            else:
+                retreat_pose = ee_pose.multiply(
+                    self._make_pose(position=[component * retreat_distance for component in direction])
+                )
             target_poses.append(retreat_pose)
             contacts.append(True)
         contacts.append(contact)
         if approach_distance is not None and approach_distance > 0:
-            approach_pose: Pose = goal_pose.multiply(
-                self._make_pose(
-                    position=[0.0, 0.0, -approach_distance],
+            if in_world_frame:
+                position = goal_pose.position.squeeze()
+                offset = torch.tensor(
+                    [world_sign * component * approach_distance for component in direction],
+                    device=position.device,
+                    dtype=position.dtype,
                 )
-            )
+                offset = self._env_to_base_transform[:3, :3].to(offset) @ offset
+                approach_pose = self._make_pose(
+                    position=position + offset,
+                    quaternion=goal_pose.quaternion,
+                    quat_is_xyzw=False,
+                )
+            else:
+                approach_pose = goal_pose.multiply(
+                    self._make_pose(position=[component * approach_distance for component in direction])
+                )
             target_poses.append(approach_pose)
             contacts.append(True)
 
@@ -1467,19 +3057,14 @@ class CuroboPlanner(MotionPlannerBase):
 
         if len(path) <= 1:
             return plan
+        assert path.ndim == 2, f"joint path must have shape (T, J), got {tuple(path.shape)}"
 
         deltas = path[1:] - path[:-1]
         distances = torch.linalg.norm(deltas, dim=-1)
-
-        waypoints = [path[0]]
-        for distance, waypoint in zip(distances, path[1:]):
-            if distance > 1e-6:
-                waypoints.append(waypoint)
-
+        keep = torch.cat((torch.ones(1, dtype=torch.bool, device=path.device), distances > 1e-6))
+        waypoints = path[keep]
         if len(waypoints) <= 1:
             return plan
-
-        waypoints = torch.stack(waypoints)
 
         if len(waypoints) > 1:
             deltas = waypoints[1:] - waypoints[:-1]
@@ -1542,7 +3127,9 @@ class CuroboPlanner(MotionPlannerBase):
         """Get end-effector pose for the next waypoint in the trajectory.
 
         Advances the trajectory execution index and computes the end-effector pose
-        for the next waypoint using forward kinematics.
+        for the next waypoint using forward kinematics. The optimized trajectory is
+        first projected into :attr:`active_joint_names` order because its storage order
+        is not a kinematics API contract for projected humanoid chains.
 
         Returns:
             End-effector pose for the next waypoint in world coordinates
@@ -1552,15 +3139,13 @@ class CuroboPlanner(MotionPlannerBase):
         """
         if not self.has_next_waypoint():
             raise IndexError("No more waypoints in the plan.")
-        next_joint_state: JointState = self._current_plan[self._plan_index]
+
+        joint_positions = self.current_joint_position_path
+        assert joint_positions is not None
+        next_joint_positions = joint_positions[self._plan_index : self._plan_index + 1]
         self._plan_index += 1
-        eef_state: CudaRobotModelState = self.motion_gen.compute_kinematics(next_joint_state)
-        if self._base_frame_is_identity:
-            return eef_state.ee_pose
-        # Express the base-frame EE pose in the env-relative frame callers expect.
-        ee_pos = self._to_env_device(eef_state.ee_pose.position)
-        ee_rot = self._to_env_device(eef_state.ee_pose.get_rotation())
-        ee_pose_env = self._pose_base_to_env(PoseUtils.make_pose(ee_pos, ee_rot))
+
+        ee_pose_env = self.joint_positions_to_ee_poses(next_joint_positions)[0]
         env_pos, env_rot = PoseUtils.unmake_pose(ee_pose_env)
         return self._make_pose(position=env_pos, quaternion=PoseUtils.quat_from_matrix(env_rot))
 
@@ -1573,58 +3158,28 @@ class CuroboPlanner(MotionPlannerBase):
         self._plan_index = 0
         self._current_plan = None
         if self.visualize_plan and hasattr(self, "plan_visualizer"):
-            self.plan_visualizer.clear_visualization()
             self.plan_visualizer.mark_idle()
 
     def get_planned_poses(self) -> list[torch.Tensor]:
         """Extract all end-effector poses from current trajectory.
 
-        Computes end-effector poses for all waypoints in the current trajectory without
-        affecting the execution state. Optionally repeats the final pose multiple times
-        if configured for stable goal reaching.
+        Computes end-effector poses for all waypoints without affecting the execution state.
+        The plan is first ordered by :attr:`active_joint_names`; cuRobo's optimized trajectory
+        storage order is not a kinematics API contract and can differ for projected humanoid
+        chains. Optionally repeats the final pose when configured for stable goal reaching.
 
         Returns:
             List of end-effector poses as 4x4 transformation matrices, with optional repetition
         """
-        if self._current_plan is None:
+        joint_positions = self.current_joint_position_path
+        if joint_positions is None:
             return []
 
-        # Save current execution state
-        original_plan_index = self._plan_index
+        planned_poses = list(self.joint_positions_to_ee_poses(joint_positions).unbind(0))
 
-        # Iterate through the plan to get all poses
-        planned_poses: list[torch.Tensor] = []
-        self._plan_index = 0
-        while self.has_next_waypoint():
-            # Directly use the joint state from the plan to compute pose
-            # without advancing the main plan index in get_next_waypoint_ee_pose
-            next_joint_state: JointState = self._current_plan[self._plan_index]
-            self._plan_index += 1  # Manually advance index for this loop
-            eef_state: Any = self.motion_gen.compute_kinematics(next_joint_state)
-            planned_pose: Pose | None = eef_state.ee_pose
-
-            if planned_pose is not None:
-                # Convert pose to environment device for compatibility
-                position = (
-                    self._to_env_device(planned_pose.position)
-                    if isinstance(planned_pose.position, torch.Tensor)
-                    else planned_pose.position
-                )
-                rotation = (
-                    self._to_env_device(planned_pose.get_rotation())
-                    if isinstance(planned_pose.get_rotation(), torch.Tensor)
-                    else planned_pose.get_rotation()
-                )
-                ee_pose_base = PoseUtils.make_pose(position, rotation)[0]
-                planned_poses.append(self._pose_base_to_env(ee_pose_base))
-
-        # Restore the original execution state
-        self._plan_index = original_plan_index
-
-        if self.n_repeat is not None and self.n_repeat > 0 and len(planned_poses) > 0:
+        if self.n_repeat is not None and self.n_repeat > 0 and planned_poses:
             self.logger.info(f"Repeating final pose {self.n_repeat} times")
-            final_pose: torch.Tensor = planned_poses[-1]
-            planned_poses.extend([final_pose] * self.n_repeat)
+            planned_poses.extend(planned_poses[-1].clone() for _ in range(self.n_repeat))
 
         return planned_poses
 
@@ -1838,6 +3393,10 @@ class CuroboPlanner(MotionPlannerBase):
         env_id: int = 0,
         step_size: float | None = None,
         enable_retiming: bool | None = None,
+        start_joint_positions: torch.Tensor | None = None,
+        force_object_attachment: bool = False,
+        retreat_distance: float | None = None,
+        object_pose_overrides: Mapping[str, torch.Tensor] | None = None,
     ) -> bool:
         """Complete planning pipeline with world updates and object attachment handling.
 
@@ -1851,17 +3410,25 @@ class CuroboPlanner(MotionPlannerBase):
             env_id: Environment ID for multi-environment setups
             step_size: Step size for linear retiming if retiming is enabled
             enable_retiming: Whether to enable linear retiming of trajectory
+            start_joint_positions: Optional arm-local state for offline path accumulation.
+            force_object_attachment: Attach the expected object at ``start_joint_positions``
+                without consulting the live hand state. Supply its virtual grasp pose through
+                ``object_pose_overrides``.
+            retreat_distance: Optional per-call start-retreat override [m].
+            object_pose_overrides: Optional environment-relative dynamic-object poses [m] used
+                instead of live poses during offline path accumulation.
 
         Returns:
             True if complete planning pipeline succeeded, False if any step failed
         """
+        assert self.config.planning_enabled, "motion planning is disabled for this collision-only backend"
         # Always reset the plan before starting a new one to ensure a clean state
         self.reset_plan()
 
         self.logger.debug("=== MOTION PLANNING DEBUG ===")
         self.logger.debug(f"Expected attached object: {expected_attached_object}")
 
-        self.update_world()
+        self.update_world(object_pose_overrides)
         gripper_closed = expected_attached_object is not None
         self._set_gripper_state(gripper_closed)
         current_attached = self.get_attached_objects()
@@ -1891,12 +3458,22 @@ class CuroboPlanner(MotionPlannerBase):
                         f"Gripper positions: {gripper_pos}; open val: {self.config.grasp_gripper_open_val}"
                     )
 
-                is_grasped = self._check_object_grasped(gripper_pos, expected_attached_object)
+                is_grasped = force_object_attachment or self._check_object_grasped(
+                    gripper_pos, expected_attached_object
+                )
 
                 self.logger.debug(f"Is grasped check result: {is_grasped}")
 
                 if is_grasped:
-                    self._attach_object(expected_attached_object, expected_path, env_id)
+                    attached = self._attach_object(
+                        expected_attached_object,
+                        expected_path,
+                        start_joint_positions=start_joint_positions,
+                    )
+                    if force_object_attachment and not attached:
+                        if self.has_attached_objects():
+                            self._detach_objects()
+                        return False
                     self.logger.debug(f"Attached {expected_attached_object}")
                 else:
                     self.logger.debug(
@@ -1904,6 +3481,10 @@ class CuroboPlanner(MotionPlannerBase):
                     )  # This will cause collision with ghost object!
             else:
                 self.logger.debug(f"Object {expected_attached_object} not found in world mappings")
+                if force_object_attachment:
+                    if self.has_attached_objects():
+                        self._detach_objects()
+                    return False
 
         # Detach objects if no object should be attached (i.e., placing/releasing)
         if expected_attached_object is None and current_attached:
@@ -1912,14 +3493,20 @@ class CuroboPlanner(MotionPlannerBase):
 
         self.logger.debug(f"Planning motion with attached objects: {self.get_attached_objects()}")
 
-        plan_success = self.plan_motion(target_pose, step_size, enable_retiming)
-
-        self.logger.debug(f"Planning result: {plan_success}")
-        self.logger.debug("=== END POST-GRASP DEBUG ===")
-
-        self._detach_objects()
-
-        return plan_success
+        try:
+            plan_success = self.plan_motion(
+                target_pose,
+                step_size,
+                enable_retiming,
+                start_joint_positions=start_joint_positions,
+                retreat_distance=retreat_distance,
+                object_pose_overrides=object_pose_overrides,
+            )
+            self.logger.debug(f"Planning result: {plan_success}")
+            self.logger.debug("=== END POST-GRASP DEBUG ===")
+            return plan_success
+        finally:
+            self._detach_objects()
 
     # =====================================================================================
     # UTILITY METHODS
@@ -1965,7 +3552,10 @@ class CuroboPlanner(MotionPlannerBase):
             # Open gripper for manipulation
             locked_joints = self.config.gripper_open_positions
 
+        if not locked_joints:
+            return
         self.motion_gen.update_locked_joints(locked_joints, self.robot_cfg)
+        self._joint_limits_sync(self.motion_gen.kinematics.get_joint_limits())
 
     def _count_active_spheres(self) -> dict[str, int]:
         """Count active collision spheres by category for debugging.

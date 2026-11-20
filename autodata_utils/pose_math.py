@@ -196,3 +196,21 @@ def quat_unique(quat: torch.Tensor) -> torch.Tensor:
     assert quat.shape[-1] == 4, f"quat last dim must be 4, got {quat.shape[-1]}"
     sign = torch.where(quat[..., 3:4] < 0, -torch.ones_like(quat[..., 3:4]), torch.ones_like(quat[..., 3:4]))
     return quat * sign
+
+
+def pose_errors(actual_poses: torch.Tensor, target_poses: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return translation [m] and geodesic rotation [rad] errors.
+
+    Args:
+        actual_poses: Observed homogeneous poses with shape (..., 4, 4).
+        target_poses: Corresponding targets with the same shape.
+
+    Returns:
+        Translation errors [m] and rotation errors [rad], each with the input batch shape.
+    """
+
+    assert actual_poses.shape == target_poses.shape and actual_poses.shape[-2:] == (4, 4)
+    position_error = torch.linalg.vector_norm(actual_poses[..., :3, 3] - target_poses[..., :3, 3], dim=-1)
+    relative_rotation = actual_poses[..., :3, :3].transpose(-1, -2) @ target_poses[..., :3, :3]
+    cosine = torch.clamp((relative_rotation.diagonal(dim1=-2, dim2=-1).sum(-1) - 1.0) * 0.5, -1.0, 1.0)
+    return position_error, torch.acos(cosine)

@@ -5,6 +5,7 @@ import os
 import tempfile
 import yaml
 from collections.abc import Callable
+from typing import Literal
 
 from curobo.geom.sdf.world import CollisionCheckerType
 from curobo.geom.types import WorldConfig
@@ -38,11 +39,32 @@ class CuroboPlannerCfg:
     robot_config_file: str | None = None
     """cuRobo robot configuration file (path defined by curobo api)."""
 
+    kinematic_robot_config_file: str | None = None
+    """Optional FK/collision model that retains movable auxiliary joints, such as fingers.
+
+    ``robot_config_file`` supplies the motion-planning model, where these joints may be locked.
+    This model instead evaluates their recorded positions without adding them to the planning
+    search. ``None`` uses the motion-planning model for both planning and state queries.
+    """
+
     robot_name: str = ""
     """Robot name for visualization and identification."""
 
+    planning_group_name: str = ""
+    """Named joint group served by this planner, such as ``left`` or ``right``."""
+
     ee_link_name: str | None = None
     """End-effector link name (auto-detected from robot config if None)."""
+
+    root_pose_source_frame_name: str | None = None
+    """Live articulation link corresponding to the cuRobo kinematic root.
+
+    ``None`` preserves the legacy behavior of using the articulation root.
+    Planner poses must be environment-relative; configured embodiment reference frames are not supported.
+    """
+
+    initial_auxiliary_joint_positions: dict[str, float] = {}
+    """Configured auxiliary-joint state used to begin a complete-path episode."""
 
     # Gripper configuration
     gripper_joint_names: list[str] = []
@@ -66,13 +88,16 @@ class CuroboPlannerCfg:
     world_config_file: str = "collision_table.yml"
     """CuRobo world configuration file (without path)."""
 
+    include_configured_world: bool = True
+    """Whether to combine the configured world with obstacles extracted from the live stage."""
+
     # Static objects to not update in the world model
     static_objects: list[str] = []
     """Names of static objects to not update in the world model."""
 
     # Optional prim path configuration
     robot_prim_path: str | None = None
-    """Absolute USD prim path to the robot root for world extraction; None derives it from environment root."""
+    """Absolute robot USD prim to exclude from world extraction; ``None`` derives it from the environment."""
 
     world_ignore_substrings: list[str] | None = None
     """List of substring patterns to ignore when extracting world obstacles
@@ -83,6 +108,9 @@ class CuroboPlannerCfg:
     collision_checker_type: CollisionCheckerType = CollisionCheckerType.MESH
     """Type of collision checker to use."""
 
+    use_native_self_collision: bool = True
+    """Whether cuRobo rollouts construct their native self-collision cost."""
+
     num_trajopt_seeds: int = 12
     """Number of seeds for trajectory optimization."""
 
@@ -91,6 +119,15 @@ class CuroboPlannerCfg:
 
     interpolation_dt: float = 0.05
     """Time step for interpolating waypoints."""
+
+    interpolate_plan: bool = False
+    """Return controller-rate samples; False preserves legacy SkillGen optimizer waypoints."""
+
+    rerun_output: str | None = None
+    """Optional Rerun recording path; None opens the viewer when plan visualization is enabled."""
+
+    max_joint_velocity: float | None = None
+    """Optional planning speed cap [rad/s, m/s], also bounded by the live actuator limits."""
 
     collision_cache_size: dict[str, int] = {"obb": 150, "mesh": 150}
     """Cache sizes for different collision types."""
@@ -107,12 +144,24 @@ class CuroboPlannerCfg:
     retreat_distance: float = 0.05
     """Distance to retreat at the start of the plan."""
 
+    approach_retreat_frame: Literal["world", "eef"] = "eef"
+    """Frame in which :attr:`approach_direction` is expressed."""
+
+    approach_direction: tuple[float, float, float] = (0.0, 0.0, -1.0)
+    """Direction used to construct approach and retreat poses."""
+
     grasp_gripper_open_val: float = 0.04
     """Gripper joint value when considered open for grasp detection."""
 
     # Planning configuration
+    planning_enabled: bool = True
+    """Whether this backend performs motion planning and planning warmup."""
+
     enable_graph: bool = True
     """Whether to enable graph-based planning."""
+
+    enable_opt: bool = True
+    """Whether to optimize graph paths before returning them."""
 
     enable_graph_attempt: int = 5
     """Number of graph planning attempts."""
@@ -163,6 +212,9 @@ class CuroboPlannerCfg:
 
     rotation_threshold: float = 0.05
     """Rotation threshold for motion planning."""
+
+    ik_candidate_count: int = 1
+    """Number of ordered cuRobo IK candidates to validate explicitly with FK."""
 
     cuda_device: int | None = 0
     """Preferred CUDA device index; None uses torch.cuda.current_device() (respects CUDA_VISIBLE_DEVICES)."""

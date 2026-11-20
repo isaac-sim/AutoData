@@ -52,10 +52,30 @@ def test_get_joint_positions_all_and_indexed():
     assert torch.equal(embodiment_adapter.get_joint_positions(env_ids=[1]), joint_pos[[1]])
 
 
+def test_get_joint_velocity_limits_all_and_indexed():
+    speeds = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+    env = _robot_env(torch.zeros(2, 2), ["j0", "j1"])
+    env.scene["robot"].data.joint_vel_limits = speeds
+    adapter = _embodiment_adapter()
+    adapter.bind_env(env)
+    assert torch.equal(adapter.get_joint_velocity_limits(), speeds)
+    assert torch.equal(adapter.get_joint_velocity_limits(env_ids=[1]), speeds[[1]])
+
+
 def test_get_joint_names():
     embodiment_adapter = _embodiment_adapter()
     embodiment_adapter.bind_env(_robot_env(torch.zeros(1, 3), ["j0", "j1", "j2"]))
     assert embodiment_adapter.get_joint_names() == ["j0", "j1", "j2"]
+
+
+def test_get_joint_positions_in_requested_order():
+    adapter = _embodiment_adapter()
+    adapter.bind_env(_robot_env(torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), ["j0", "j1", "j2"]))
+    assert torch.equal(adapter.get_joint_positions([1], joint_names=("j2", "j0")), torch.tensor([[6.0, 4.0]]))
+    with pytest.raises(AssertionError, match="absent"):
+        adapter.get_joint_positions(joint_names=("missing",))
+    with pytest.raises(AssertionError, match="unique"):
+        adapter.get_joint_positions(joint_names=("j0", "j0"))
 
 
 def test_joint_queries_require_bound_env():

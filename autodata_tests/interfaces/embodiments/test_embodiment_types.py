@@ -4,10 +4,22 @@
 """Unit tests for :mod:`autodata_interfaces.embodiments.embodiment_types`."""
 
 import dataclasses
+import torch
 
 import pytest
 
-from autodata_interfaces.embodiments.embodiment_types import PoseObsKeys
+from autodata_interfaces.embodiments.embodiment_types import NamedJointTrajectory, PoseObsKeys
+
+
+@pytest.mark.parametrize(
+    "positions",
+    [torch.empty(0, 1), torch.zeros(1, 2), torch.full((1, 1), float("nan"))],
+    ids=["empty", "wrong_joint_count", "nonfinite"],
+)
+def test_named_joint_trajectory_rejects_invalid_positions(positions):
+    """Reject invalid position arrays at construction, before planning uses them."""
+    with pytest.raises(AssertionError):
+        NamedJointTrajectory(("joint",), positions)
 
 
 def test_pose_obs_keys_fields():

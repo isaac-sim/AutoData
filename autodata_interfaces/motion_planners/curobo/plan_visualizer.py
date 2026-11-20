@@ -1,11 +1,9 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Utility for visualizing motion plans using Rerun.
+"""Rerun views of planned paths, collision spheres and scene geometry."""
 
-This module provides tools to visualize motion plans, robot poses, and collision spheres
-using Rerun's visualization capabilities. It helps in debugging and validating collision-free paths.
-"""
+from __future__ import annotations
 
 import atexit
 import numpy as np
@@ -15,11 +13,13 @@ import threading
 import time
 import torch
 import weakref
-from typing import TYPE_CHECKING, Any, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 # Check if rerun is installed
 try:
     import rerun as rr
+    import rerun.blueprint as rrb
 except ImportError:
     raise ImportError("Rerun is not installed!")
 
@@ -42,7 +42,7 @@ if TYPE_CHECKING:  # For type hints only
 
 
 # Global registry to track all PlanVisualizer instances for cleanup
-_GLOBAL_PLAN_VISUALIZERS: list["PlanVisualizer"] = []
+_GLOBAL_PLAN_VISUALIZERS: list[PlanVisualizer] = []
 
 
 def _kill_owned_rerun_processes(owner_pid: int) -> int:
@@ -108,7 +108,7 @@ class PlanVisualizer:
         recording_id: str | None = None,
         debug: bool = False,
         save_path: str | None = None,
-        base_translation: np.ndarray | None = None,
+        base_pose_in_env: np.ndarray | None = None,
     ):
         """Initialize the plan visualizer.
 
@@ -117,17 +117,14 @@ class PlanVisualizer:
             recording_id: Optional ID for the Rerun recording
             debug: Whether to print debug information
             save_path: Optional path to save the recording
-            base_translation: Optional base translation to apply to all visualized entities
+            base_pose_in_env: Planner-base pose in the environment frame.
         """
         self.robot_name = robot_name
         self.debug = debug
         self.recording_id = recording_id or f"motion_plan_{robot_name}"
         self.save_path = save_path
         self._closed = False
-        # Translation offset applied to all visualized entities (for multi-env setups)
-        self._base_translation = (
-            np.array(base_translation, dtype=float) if base_translation is not None else np.zeros(3)
-        )
+        self.set_base_pose_in_env(np.eye(4) if base_pose_in_env is None else base_pose_in_env)
 
         # Enhanced process management
         self._parent_pid = os.getpid()
@@ -143,38 +140,43 @@ class PlanVisualizer:
         # Initialize Rerun
         rr.init(self.recording_id, spawn=False)
 
-        # Spawn the viewer. Recent Rerun SDK versions return ``None`` while older versions may
-        # return a process handle, so cleanup supports either result.
         self._rerun_process = None
-        try:
-            self._rerun_process = rr.spawn()
-        except Exception as exc:
-            raise RuntimeError(
-                "Failed to spawn the Rerun viewer. Ensure the `rerun` executable from the rerun-sdk "
-                "package is on PATH, for example in the Python environment's bin directory."
-            ) from exc
+        if self.save_path is not None:
+            output_path = Path(self.save_path).expanduser().resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            self.save_path = str(output_path)
+            rr.save(self.save_path)
+            self._rerun_process = None
+        else:
+            # Spawn viewer and keep handle if provided so we can terminate it later.
+            try:
+                self._rerun_process = rr.spawn()
+            except Exception as exc:
+                raise RuntimeError("Failed to spawn Rerun; check that its executable is on PATH.") from exc
 
         # Set up coordinate system
-        rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_UP)
+        rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Z_UP)
+        self._send_blueprint("planning")
 
         # Store visualization state
         self._current_frame = 0
+        self._plan_frame = 0
+        self._schedule_timelines: dict[int, str] = {}
+        self._active_plan_root = "world/plans"
+        self._world_scene = None
         self._sphere_entities: dict[str, list[str]] = {"robot": [], "attached": [], "target": []}
 
-        # Start enhanced parent process monitoring
+        # Close orphaned viewers when their parent process exits.
         self._start_parent_process_monitoring()
 
         # Use weakref.finalize for cleanup when object is garbage collected
-        self._finalizer = weakref.finalize(
-            self, self._cleanup_class_resources, self.recording_id, self.save_path, debug
-        )
+        self._finalizer = weakref.finalize(self, self._cleanup_class_resources, self.recording_id, debug)
 
         # Also register atexit handler as backup for normal script termination
         # Store values locally to avoid capturing self in the closure
         recording_id = self.recording_id
-        save_path = self.save_path
         debug_flag = debug
-        atexit.register(self._cleanup_class_resources, recording_id, save_path, debug_flag)
+        atexit.register(self._cleanup_class_resources, recording_id, debug_flag)
 
         # Store original signal handlers so we can restore them after cleanup
         self._original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -198,10 +200,72 @@ class PlanVisualizer:
 
         if self.debug:
             print(f"Initialized Rerun visualization with recording ID: {self.recording_id}")
-            if np.linalg.norm(self._base_translation) > 0:
-                print(f"Applying translation offset: {self._base_translation}")
+            if not np.allclose(self._base_pose_in_env, np.eye(4)):
+                print(f"Applying planner-base pose:\n{self._base_pose_in_env}")
             if PSUTIL_AVAILABLE:
                 print("Enhanced process monitoring enabled")
+
+    def set_base_pose_in_env(self, base_pose_in_env: np.ndarray | torch.Tensor) -> None:
+        """Set the planner-base pose in the environment frame.
+
+        Args:
+            base_pose_in_env: Homogeneous 4x4 transform from planner base to environment.
+        """
+
+        if torch.is_tensor(base_pose_in_env):
+            base_pose_in_env = base_pose_in_env.detach().cpu().numpy()
+        pose = np.asarray(base_pose_in_env, dtype=float)
+        assert pose.shape == (4, 4), f"base_pose_in_env must have shape (4, 4), got {pose.shape}"
+        assert np.isfinite(pose).all(), "base_pose_in_env must contain finite values"
+        assert np.allclose(pose[3], [0.0, 0.0, 0.0, 1.0]), "base_pose_in_env must be homogeneous"
+        rotation = pose[:3, :3]
+        assert np.allclose(rotation @ rotation.T, np.eye(3), atol=1e-5), "base rotation must be orthonormal"
+        assert np.isclose(np.linalg.det(rotation), 1.0, atol=1e-5), "base rotation must be right-handed"
+        self._base_pose_in_env = pose.copy()
+
+    def world_scene_set(self, world_scene: trimesh.Scene | None) -> None:
+        """Replace the world scene used by subsequent plan and schedule timelines."""
+
+        self._world_scene = world_scene
+
+    def _points_base_to_env(self, points: np.ndarray) -> np.ndarray:
+        """Transform planner-base points into the environment frame."""
+
+        points = np.asarray(points, dtype=float)
+        assert points.shape[-1] == 3, f"points must end in dimension 3, got {points.shape}"
+        return points @ self._base_pose_in_env[:3, :3].T + self._base_pose_in_env[:3, 3]
+
+    def _send_blueprint(self, timeline: str | None = None) -> None:
+        """Separate arm plans from complete-robot checks using the same scene camera."""
+
+        base_position = self._base_pose_in_env[:3, 3]
+        look_target = base_position + np.array([0.0, 0.35, 0.2])
+        camera_position = look_target + np.array([1.0, 0.85, 0.6])
+        views = [
+            rrb.Spatial3DView(
+                name=name,
+                origin="world",
+                contents=["world/scene/**", f"world/{root}/**"],
+                eye_controls=rrb.EyeControls3D(
+                    position=camera_position,
+                    look_target=look_target,
+                ),
+            )
+            for name, root in (("Arm plans", "plans"), ("Scheduled robot", "schedules"))
+        ]
+        rr.send_blueprint(
+            rrb.Blueprint(
+                rrb.Tabs(*views, active_tab=0),
+                rrb.TimePanel(
+                    state="expanded",
+                    timeline=timeline,
+                    fps=20.0,
+                    playback_speed=1.0,
+                    play_state="playing",
+                    loop_mode="all",
+                ),
+            )
+        )
 
     def _start_parent_process_monitoring(self) -> None:
         """Start monitoring the parent process and cleanup when it dies."""
@@ -253,22 +317,18 @@ class PlanVisualizer:
             print(f"Killed {killed_count} Rerun viewer processes owned by PID {self._parent_pid}")
 
     @staticmethod
-    def _cleanup_class_resources(recording_id: str, save_path: str | None, debug: bool) -> None:
-        """Static method for cleanup that doesn't hold references to the instance.
+    def _cleanup_class_resources(recording_id: str, debug: bool) -> None:
+        """Disconnect Rerun and stop viewers owned by this process.
 
-        This is called by weakref.finalize when the object is garbage collected.
+        Args:
+            recording_id: Recording identifier included in debug messages.
+            debug: Whether to print cleanup progress.
         """
         if debug:
             print(f"Cleaning up Rerun visualization for {recording_id}")
 
         # Disconnect from Rerun
         rr.disconnect()
-
-        # Save to file if requested
-        if save_path is not None:
-            rr.save(save_path)
-            if debug:
-                print(f"Saved Rerun recording to {save_path}")
 
         # Kill only viewers spawned by this process; other Rerun sessions are left alone.
         killed_count = _kill_owned_rerun_processes(os.getpid())
@@ -288,7 +348,7 @@ class PlanVisualizer:
             self._kill_rerun_processes()
 
     def close(self) -> None:
-        """Close the Rerun visualization with enhanced cleanup."""
+        """Disconnect the recording and release its owned viewer resources."""
         if self._closed:
             return
 
@@ -300,12 +360,6 @@ class PlanVisualizer:
 
         # Disconnect from Rerun (closes connections, servers, and files)
         rr.disconnect()
-
-        # Save to file if requested
-        if self.save_path is not None:
-            rr.save(self.save_path)
-            if self.debug:
-                print(f"Saved Rerun recording to {self.save_path}")
 
         self._closed = True
 
@@ -340,8 +394,8 @@ class PlanVisualizer:
         robot_spheres: list[Any] | None = None,
         attached_spheres: list[Any] | None = None,
         ee_positions: np.ndarray | None = None,
-        world_scene: Optional["trimesh.Scene"] = None,
-    ) -> None:
+        world_scene: trimesh.Scene | None = None,
+    ) -> int:
         """Visualize a complete motion plan with all components.
 
         Args:
@@ -351,34 +405,35 @@ class PlanVisualizer:
             attached_spheres: Optional list of attached object spheres
             ee_positions: Optional end-effector positions
             world_scene: Optional world scene to visualize
+
+        Returns:
+            Monotonic plan index used to name the plan's entities.
         """
         if self.debug:
             robot_count = len(robot_spheres) if robot_spheres else 0
             attached_count = len(attached_spheres) if attached_spheres else 0
-            offset_info = (
-                f"offset={self._base_translation}" if np.linalg.norm(self._base_translation) > 0 else "no offset"
-            )
             print(
-                f"Visualizing plan: {len(plan.position)} waypoints, {robot_count} robot spheres (with offset),"
-                f" {attached_count} attached spheres (no offset), {offset_info}"
+                f"Visualizing plan: {len(plan.position)} waypoints, {robot_count} robot spheres,"
+                f" {attached_count} attached spheres"
             )
 
-        # Set timeline for static visualization (separate from animation)
-        rr.set_time("static_plan", sequence=self._current_frame)
-        self._current_frame += 1
-
-        # Clear previous visualization of dynamic entities (keep static meshes)
+        plan_index = self._current_frame
         self._clear_visualization()
+        self._active_plan_root = f"world/plans/{plan_index:04d}_{self.robot_name}"
+        rr.reset_time()
+        rr.set_time("planning", sequence=self._plan_frame)
+        self._current_frame += 1
 
         # If a scene is supplied and not yet logged, draw it once
         if world_scene is not None:
+            self._world_scene = world_scene
             self._visualize_world_scene(world_scene)
 
         # Visualize target pose
         self._visualize_target_pose(target_pose)
 
         # Visualize trajectory (end-effector positions if provided)
-        self._visualize_trajectory(plan, ee_positions)
+        self._visualize_trajectory(ee_positions)
 
         # Visualize spheres if provided
         if robot_spheres:
@@ -388,27 +443,52 @@ class PlanVisualizer:
         else:
             # Clear any existing attached sphere visualization when no objects are attached
             self._clear_attached_spheres()
+        rr.reset_time()
+        return plan_index
+
+    def visualize_failure(
+        self,
+        target_pose: torch.Tensor,
+        robot_spheres: list[Any],
+        attached_spheres: list[Any],
+        world_scene: trimesh.Scene | None = None,
+    ) -> None:
+        """Retain the target and start-state spheres for a failed planning attempt.
+
+        Args:
+            target_pose: Failed end-effector target pose.
+            robot_spheres: Robot collision spheres at the planning start state.
+            attached_spheres: Attached-object spheres at the planning start state.
+            world_scene: Optional cuRobo collision scene.
+        """
+
+        plan_index = self._current_frame
+        self._clear_visualization()
+        self._active_plan_root = f"world/plans/{plan_index:04d}_{self.robot_name}_failed"
+        self._current_frame += 1
+        rr.reset_time()
+        rr.set_time("planning", sequence=self._plan_frame)
+        if world_scene is not None:
+            self._world_scene = world_scene
+            self._visualize_world_scene(world_scene)
+        self._visualize_target_pose(target_pose)
+        self._visualize_robot_spheres(robot_spheres)
+        if attached_spheres:
+            self._visualize_attached_spheres(attached_spheres)
+        self._plan_frame += 1
+        rr.reset_time()
 
     def _clear_visualization(self) -> None:
-        """Clear all visualization entities."""
-        # Clear dynamic trajectory, target, and finger logs to avoid artifacts between visualizations
-        dynamic_paths = [
-            "trajectory",
-            "target",
-            "anim",
-        ]
-
-        for path in dynamic_paths:
-            rr.log(f"world/{path}", rr.Clear(recursive=True))
-
-        for entity_type, entities in self._sphere_entities.items():
-            for entity in entities:
-                rr.log(f"world/{entity_type}/{entity}", rr.Clear(recursive=True))
-            self._sphere_entities[entity_type] = []
-        self._current_frame = 0
+        """End the current plan's visibility without deleting earlier playback frames."""
+        rr.reset_time()
+        rr.set_time("planning", sequence=self._plan_frame)
+        rr.log(self._active_plan_root, rr.Clear(recursive=True))
+        self._sphere_entities = {"robot": [], "attached": [], "target": []}
+        rr.reset_time()
 
     def clear_visualization(self) -> None:
         """Public method to clear the visualization."""
+
         self._clear_visualization()
 
     def _visualize_target_pose(self, target_pose: torch.Tensor) -> None:
@@ -427,12 +507,9 @@ class PlanVisualizer:
         pos_np = pos_np.reshape(-1)
         rot_np = rot_np.reshape(3, 3)
 
-        # Apply translation offset
-        pos_np += self._base_translation
-
         # Log target position
         rr.log(
-            "world/target/position",
+            f"{self._active_plan_root}/target/position",
             rr.Points3D(
                 positions=np.array([pos_np]),
                 colors=[[255, 0, 0]],  # Red
@@ -442,7 +519,7 @@ class PlanVisualizer:
 
         # Log target orientation as coordinate frame
         rr.log(
-            "world/target/frame",
+            f"{self._active_plan_root}/target/frame",
             rr.Transform3D(
                 translation=pos_np,
                 mat3x3=rot_np,
@@ -451,48 +528,36 @@ class PlanVisualizer:
 
     def _visualize_trajectory(
         self,
-        plan: JointState,
         ee_positions: np.ndarray | None = None,
     ) -> None:
         """Visualize the robot trajectory.
 
         Args:
-            plan: Joint state trajectory
-            ee_positions: Optional end-effector positions
+            ee_positions: End-effector positions in the planner base frame [m].
         """
         if ee_positions is None:
-            raw = plan.position.detach().cpu().numpy() if torch.is_tensor(plan.position) else np.array(plan.position)
-            if raw.shape[1] >= 3:
-                positions = raw[:, :3]
-            else:
-                raise ValueError("ee_positions not provided and joint positions are not 3-D")
-        else:
-            positions = ee_positions
-
-        # Apply translation offset
-        positions = positions + self._base_translation
+            return
+        positions = self._points_base_to_env(ee_positions)
 
         # Log trajectory points
         rr.log(
-            "world/trajectory",
+            f"{self._active_plan_root}/trajectory",
             rr.LineStrips3D(
                 [positions],  # single strip consisting of all waypoints
                 colors=[[0, 100, 255]],  # Blue
                 radii=[0.005],
             ),
-            static=True,
         )
 
         # Log keyframes
         for i, pos in enumerate(positions):
             rr.log(
-                f"world/trajectory/keyframe_{i}",
+                f"{self._active_plan_root}/trajectory/keyframe_{i}",
                 rr.Points3D(
                     positions=np.array([pos]),
                     colors=[[0, 100, 255]],  # Blue
                     radii=[0.01],
                 ),
-                static=True,
             )
 
     def _visualize_robot_spheres(self, spheres: list[Any]) -> None:
@@ -505,7 +570,6 @@ class PlanVisualizer:
             spheres=spheres,
             entity_type="robot",
             color=[0, 255, 100, 128],  # Semi-transparent green
-            apply_offset=True,
         )
 
     def _visualize_attached_spheres(self, spheres: list[Any]) -> None:
@@ -518,13 +582,12 @@ class PlanVisualizer:
             spheres=spheres,
             entity_type="attached",
             color=[255, 0, 0, 128],  # Semi-transparent red
-            apply_offset=False,
         )
 
     def _clear_attached_spheres(self) -> None:
         """Clear all attached object spheres."""
         for entity_id in self._sphere_entities.get("attached", []):
-            rr.log(f"world/attached/{entity_id}", rr.Clear(recursive=True))
+            rr.log(f"{self._active_plan_root}/attached/{entity_id}", rr.Clear(recursive=True))
         self._sphere_entities["attached"] = []
 
     # ---------------------------------------------------------------------
@@ -536,7 +599,6 @@ class PlanVisualizer:
         spheres: list[Any],
         entity_type: str,
         color: list[int],
-        apply_offset: bool = False,
     ) -> None:
         """Generic helper for sphere visualization.
 
@@ -544,30 +606,27 @@ class PlanVisualizer:
             spheres: List of CuRobo ``Sphere`` objects.
             entity_type: Log path prefix (``robot`` or ``attached``).
             color: RGBA color for the spheres.
-            apply_offset: Whether to add ``self._base_translation`` to sphere positions.
         """
         for i, sphere in enumerate(spheres):
             entity_id = f"sphere_{i}"
             # Track entities so we can clear them later
             self._sphere_entities.setdefault(entity_type, []).append(entity_id)
 
-            # Convert position to numpy and optionally apply offset
+            # cuRobo sphere positions are expressed in the planner base frame.
             pos = (
                 sphere.position.detach().cpu().numpy()
                 if torch.is_tensor(sphere.position)
                 else np.array(sphere.position)
             )
-            if apply_offset:
-                pos = pos + self._base_translation
-            pos = pos.reshape(-1)  # Ensure 1-D
+            pos = self._points_base_to_env(pos.reshape(1, 3))[0]
 
             # Log sphere via Rerun
             rr.log(
-                f"world/{entity_type}/{entity_id}",
+                f"{self._active_plan_root}/{entity_type}/{entity_id}",
                 rr.Points3D(positions=np.array([pos]), colors=[color], radii=[float(sphere.radius)]),
             )
 
-    def _visualize_world_scene(self, scene: "trimesh.Scene") -> None:
+    def _visualize_world_scene(self, scene: trimesh.Scene) -> None:
         """Log world geometry and dynamic transforms each call.
 
         Geometry is sent once (cached), but transforms are updated every invocation
@@ -576,8 +635,8 @@ class PlanVisualizer:
         """
         import trimesh  # local import to avoid hard dependency at top
 
-        def _to_rerun_mesh(mesh: "trimesh.Trimesh") -> "rr.Mesh3D":
-            # Basic conversion without materials
+        def _to_rerun_mesh(mesh: trimesh.Trimesh) -> rr.Mesh3D:
+            """Convert triangle geometry to a Rerun mesh without material properties."""
             return rr.Mesh3D(
                 vertex_positions=mesh.vertices,
                 triangle_indices=mesh.faces,
@@ -594,17 +653,25 @@ class PlanVisualizer:
                 continue
             rr_path = f"world/scene/{node.replace('/', '_')}"
 
-            # Always update transform (objects may move between calls)
-            # NOTE: World scene objects are already in correct world coordinates, no offset needed
+            # cuRobo's collision scene is expressed in the planner base frame.
+            tform_env = self._base_pose_in_env @ tform
             if _RR_HAS_TRANSFORM_AXES:
                 # rerun >= 0.28: axis_length moved to TransformAxes3D
-                rr.log(rr_path, rr.Transform3D(translation=tform[:3, 3], mat3x3=tform[:3, :3]), static=False)
+                rr.log(
+                    rr_path,
+                    rr.Transform3D(translation=tform_env[:3, 3], mat3x3=tform_env[:3, :3]),
+                    static=False,
+                )
                 rr.log(rr_path, rr.TransformAxes3D(axis_length=0.25), static=False)
             else:
                 # rerun <= 0.27: axis_length on Transform3D directly
                 rr.log(
                     rr_path,
-                    rr.Transform3D(translation=tform[:3, 3], mat3x3=tform[:3, :3], axis_length=0.25),
+                    rr.Transform3D(
+                        translation=tform_env[:3, 3],
+                        mat3x3=tform_env[:3, :3],
+                        axis_length=0.25,
+                    ),
                     static=False,
                 )
 
@@ -627,7 +694,7 @@ class PlanVisualizer:
         self,
         ee_positions: np.ndarray,
         object_positions: dict[str, np.ndarray] | None = None,
-        timeline: str = "plan",
+        timeline: str = "planning",
         point_radius: float = 0.01,
     ) -> None:
         """Animate robot end-effector and (optionally) attached object positions over time using Rerun.
@@ -637,10 +704,13 @@ class PlanVisualizer:
         not attempt to render the full robot geometry—only key points—keeping the data
         transfer to the viewer minimal.
 
+        End-effector markers share the current interval with :meth:`animate_spheres_along_path`,
+        which advances the planning cursor after both overlays have been logged.
+
         Args:
-            ee_positions: Array of shape (T, 3) with end-effector world positions.
+            ee_positions: Array of shape (T, 3) with planner-base end-effector positions.
             object_positions: Mapping from object name to an array (T, 3) with that
-                object's world positions.  Each trajectory must be at least as long as
+                object's environment-frame positions. Each trajectory must be at least as long as
                 ``ee_positions``; extra entries are ignored.
             timeline: Name of the Rerun timeline used for the animation frames.
             point_radius: Visual radius (in metres) of the rendered points.
@@ -648,16 +718,20 @@ class PlanVisualizer:
         if ee_positions is None or len(ee_positions) == 0:
             return
 
+        rr.reset_time()
+        rr.set_time(timeline, sequence=self._plan_frame)
+        if self._world_scene is not None:
+            self._visualize_world_scene(self._world_scene)
         # Iterate over timesteps and log a frame on the chosen timeline
         for idx, pos in enumerate(ee_positions):
             # Set time on the chosen timeline (creates it if needed)
-            rr.set_time(timeline, sequence=idx)
+            rr.set_time(timeline, sequence=self._plan_frame + idx)
 
-            # Log end-effector marker (needs offset for multi-env)
+            # End-effector positions from cuRobo FK use the planner base frame.
             rr.log(
-                "world/anim/ee",
+                f"{self._active_plan_root}/anim/ee",
                 rr.Points3D(
-                    positions=np.array([pos + self._base_translation]),
+                    positions=self._points_base_to_env(np.asarray(pos).reshape(1, 3)),
                     colors=[[0, 100, 255]],  # Blue
                     radii=[point_radius],
                 ),
@@ -670,20 +744,89 @@ class PlanVisualizer:
                     if idx >= len(traj):
                         continue
                     rr.log(
-                        f"world/anim/{name}",
+                        f"{self._active_plan_root}/anim/{name}",
                         rr.Points3D(
                             positions=np.array([traj[idx]]),
                             colors=[[255, 128, 0]],  # Orange
                             radii=[point_radius],
                         ),
                     )
+        rr.reset_time()
+
+    def animate_collision_spheres(
+        self,
+        spheres: torch.Tensor,
+        *,
+        timeline_prefix: str = "full_state_schedule",
+    ) -> int:
+        """Animate a complete scheduled robot sphere tensor.
+
+        Args:
+            spheres: Planner-root sphere states shaped ``(T, S, 4)`` with radius last [m].
+            timeline_prefix: Prefix for the isolated Rerun sequence timeline.
+
+        Returns:
+            Monotonic visualization index used in the timeline and entity path.
+        """
+
+        assert spheres.ndim == 3 and spheres.shape[-1] == 4 and len(spheres) > 0
+        values = spheres.detach().cpu().numpy()
+        index = self._current_frame
+        self._current_frame += 1
+        timeline = f"{timeline_prefix}_{index}"
+        self._schedule_timelines[index] = timeline
+        entity_path = f"world/schedules/{index:04d}/robot_spheres"
+
+        rr.reset_time()
+        rr.set_time(timeline, sequence=0)
+        if self._world_scene is not None:
+            self._visualize_world_scene(self._world_scene)
+        for tick, frame in enumerate(values):
+            valid = np.isfinite(frame).all(axis=1) & (frame[:, 3] > 0.0)
+            rr.set_time(timeline, sequence=tick)
+            rr.log(
+                entity_path,
+                rr.Points3D(
+                    positions=self._points_base_to_env(frame[valid, :3]),
+                    radii=frame[valid, 3],
+                    colors=[0, 255, 100, 180],
+                ),
+            )
+        rr.reset_time()
+        return index
+
+    def animate_object_collision_spheres(self, spheres: torch.Tensor, *, schedule_index: int) -> None:
+        """Overlay environment-frame object spheres on a full-state schedule timeline.
+
+        Args:
+            spheres: Environment-frame sphere states shaped ``(T, S, 4)`` with radius last [m].
+            schedule_index: Index returned by :meth:`animate_collision_spheres`.
+        """
+
+        assert spheres.ndim == 3 and spheres.shape[-1] == 4 and len(spheres) > 0
+        assert type(schedule_index) is int and schedule_index >= 0
+        values = spheres.detach().cpu().numpy()
+        timeline = self._schedule_timelines[schedule_index]
+        entity_path = f"world/schedules/{schedule_index:04d}/object_spheres"
+        for tick, frame in enumerate(values):
+            valid = np.isfinite(frame).all(axis=1) & (frame[:, 3] > 0.0)
+            rr.set_time(timeline, sequence=tick)
+            rr.log(
+                entity_path,
+                rr.Points3D(
+                    positions=frame[valid, :3],
+                    radii=frame[valid, 3],
+                    colors=[255, 160, 0, 180],
+                ),
+            )
+        rr.reset_time()
 
     def animate_spheres_along_path(
         self,
         plan: JointState,
         robot_spheres_at_start: list[Any] | None = None,
         attached_spheres_at_start: list[Any] | None = None,
-        timeline: str = "sphere_animation",
+        timeline: str = "planning",
         interpolation_steps: int = 10,
     ) -> None:
         """Animate robot and attached object spheres along the planned trajectory with smooth interpolation.
@@ -726,9 +869,6 @@ class PlanVisualizer:
                 print("Motion generator kinematics not available for sphere animation")
             return
 
-        # Clear static spheres to avoid visual clutter during animation
-        self._hide_static_spheres_for_animation()
-
         # Count robot link spheres (excluding attached objects) for consistent splitting
         robot_link_count = 0
         if robot_spheres_at_start:
@@ -740,10 +880,15 @@ class PlanVisualizer:
         if self.debug:
             print(f"Created interpolated trajectory with {len(interpolated_positions)} total frames")
 
+        rr.reset_time()
+        rr.set_time(timeline, sequence=self._plan_frame)
+        self._hide_static_spheres_for_animation()
+        if self._world_scene is not None:
+            self._visualize_world_scene(self._world_scene)
         # Animate spheres along the interpolated trajectory
         for frame_idx, joint_positions in enumerate(interpolated_positions):
             # Set time on the animation timeline with consistent timing
-            rr.set_time(timeline, sequence=frame_idx)
+            rr.set_time(timeline, sequence=self._plan_frame + frame_idx)
 
             # Create joint state for this interpolated position
             if isinstance(joint_positions, torch.Tensor):
@@ -786,18 +931,16 @@ class PlanVisualizer:
                 radius = float(sphere.radius)
 
                 if i < robot_link_count:
-                    # Robot sphere - needs base translation offset
-                    robot_sphere_positions.append(pos + self._base_translation)
+                    robot_sphere_positions.append(self._points_base_to_env(pos.reshape(1, 3))[0])
                     robot_sphere_radii.append(radius)
                 else:
-                    # Attached object sphere - already in world coordinates
-                    attached_sphere_positions.append(pos)
+                    attached_sphere_positions.append(self._points_base_to_env(pos.reshape(1, 3))[0])
                     attached_sphere_radii.append(radius)
 
             # Log robot spheres with green color
             if robot_sphere_positions:
                 rr.log(
-                    "world/robot_animation",
+                    f"{self._active_plan_root}/robot_animation",
                     rr.Points3D(
                         positions=np.array(robot_sphere_positions),
                         colors=[[0, 255, 100, 220]] * len(robot_sphere_positions),  # Bright green
@@ -808,7 +951,7 @@ class PlanVisualizer:
             # Log attached object spheres with orange color (or clear if no attached objects)
             if attached_sphere_positions:
                 rr.log(
-                    "world/attached_animation",
+                    f"{self._active_plan_root}/attached_animation",
                     rr.Points3D(
                         positions=np.array(attached_sphere_positions),
                         colors=[[255, 150, 0, 220]] * len(attached_sphere_positions),  # Bright orange
@@ -817,7 +960,10 @@ class PlanVisualizer:
                 )
             else:
                 # Clear attached object spheres when no objects are attached
-                rr.log("world/attached_animation", rr.Clear(recursive=True))
+                rr.log(f"{self._active_plan_root}/attached_animation", rr.Clear(recursive=True))
+
+        self._plan_frame += len(interpolated_positions)
+        rr.reset_time()
 
         if self.debug:
             print(
@@ -828,11 +974,11 @@ class PlanVisualizer:
         """Hide static sphere visualization during animation to reduce visual clutter."""
         # Clear static robot spheres
         for entity_id in self._sphere_entities.get("robot", []):
-            rr.log(f"world/robot/{entity_id}", rr.Clear(recursive=True))
+            rr.log(f"{self._active_plan_root}/robot/{entity_id}", rr.Clear(recursive=True))
 
         # Clear static attached spheres
         for entity_id in self._sphere_entities.get("attached", []):
-            rr.log(f"world/attached/{entity_id}", rr.Clear(recursive=True))
+            rr.log(f"{self._active_plan_root}/attached/{entity_id}", rr.Clear(recursive=True))
 
         if self.debug:
             print("Hidden static spheres for cleaner animation view")
@@ -887,21 +1033,6 @@ class PlanVisualizer:
         self._motion_gen_ref = motion_gen
 
     def mark_idle(self) -> None:
-        """Signal that the planner is idle, clearing animations.
-
-        This method advances the animation timelines and logs empty data to ensure that
-        no leftover visualizations from the previous plan are shown. It's useful for
-        creating a clean state between planning episodes.
-        """
-        # Advance plan timeline and emit empty anim so latest frame is blank
-        rr.set_time("plan", sequence=self._current_frame)
-        self._current_frame += 1
-        empty = np.empty((0, 3), dtype=float)
-        rr.log("world/anim/ee", rr.Points3D(positions=empty))
-        rr.log("world/robot_animation", rr.Points3D(positions=empty))
-        rr.log("world/attached_animation", rr.Points3D(positions=empty))
-
-        # Also advance sphere animation timeline
-        rr.set_time("sphere_animation", sequence=self._current_frame)
-        rr.log("world/robot_animation", rr.Points3D(positions=empty))
-        rr.log("world/attached_animation", rr.Points3D(positions=empty))
+        """Clear the active arm preview between episodes, retaining its recorded history."""
+        self._plan_frame += 1
+        self._clear_visualization()

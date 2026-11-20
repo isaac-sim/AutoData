@@ -5,10 +5,12 @@
 
 import dataclasses
 import torch
+from types import SimpleNamespace
 
 import pytest
 
 from autodata_interfaces.embodiments import AbsolutePoseWholeBodyBimanualAdapter, BimanualEefConfig, PoseObsKeys
+from autodata_interfaces.embodiments.embodiment_types import NamedJointTrajectory
 from autodata_tests.interfaces.mocks import MockEnv
 from autodata_utils import pose_math
 
@@ -50,6 +52,39 @@ def _bound(embodiment_adapter: AbsolutePoseWholeBodyBimanualAdapter, left_pos, r
     }
     embodiment_adapter.bind_env(MockEnv(obs_buf=obs))
     return embodiment_adapter
+
+
+def test_optional_posture_hooks_do_not_require_a_planning_action():
+    adapter = _embodiment_adapter()
+    adapter.set_joint_posture_target(("joint",), torch.zeros(1))
+    adapter.reset_joint_posture_target()
+
+
+def test_coupled_joint_solving_delegates_named_targets_to_action(monkeypatch):
+    adapter = _embodiment_adapter()
+    adapter.planning_model_action_term = "arms"
+    captured = []
+    expected = NamedJointTrajectory(("joint",), torch.zeros(2, 1))
+    action = SimpleNamespace(
+        get_action_target_frame_names=lambda: ("left_frame", "right_frame"),
+        solve_joint_trajectory=lambda *args: captured.append(args) or expected,
+    )
+    monkeypatch.setattr(adapter, "_planning_action_term", lambda: action)
+    monkeypatch.setattr(adapter, "get_joint_names", lambda: ["joint"])
+    poses = {name: torch.eye(4).repeat(2, 1, 1) for name in ("left", "right")}
+    seeds = dict.fromkeys(poses, expected)
+
+    def predicate(names, positions, sample):
+        return True
+
+    result = adapter.solve_joint_trajectory(poses, seeds, torch.zeros(1), 0.01, 0.02, predicate, 3)
+
+    assert result is expected
+    targets, proposals, initial, *options = captured[0]
+    assert tuple(targets) == tuple(proposals) == ("left_frame", "right_frame")
+    assert targets["left_frame"] is poses["left"] and proposals["right_frame"] is expected
+    assert initial.joint_names == ("joint",) and torch.equal(initial.positions, torch.zeros(1, 1))
+    assert options == [0.01, 0.02, predicate, 3]
 
 
 # ---------------------------------------------------------------------------------------------------

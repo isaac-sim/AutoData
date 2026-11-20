@@ -3,7 +3,7 @@
 
 """Concrete :class:`EmbodimentAdapter` implementations, organized by morphology.
 
-Two morphology trees ship this phase: :class:`SingleArmEmbodimentAdapter`
+Single-arm and bimanual adapters share the same interface: :class:`SingleArmEmbodimentAdapter`
 (with :class:`DeltaPoseIKSingleArmAdapter` for delta-pose IK control) and
 :class:`BimanualEmbodimentAdapter` (with
 :class:`AbsolutePoseWholeBodyBimanualAdapter` for absolute-pose whole-body
@@ -16,7 +16,7 @@ from autodata_interfaces.embodiments.bimanual_embodiment_adapter import (
     BimanualEefConfig,
     BimanualEmbodimentAdapter,
 )
-from autodata_interfaces.embodiments.embodiment_types import PoseObsKeys
+from autodata_interfaces.embodiments.embodiment_types import ActionTargetFrame, NamedJointTrajectory, PoseObsKeys
 from autodata_interfaces.embodiments.factory import (
     EMBODIMENT_TYPE_REGISTRY,
     embodiment_adapter_from_dict,
@@ -30,10 +30,12 @@ from autodata_interfaces.embodiments.single_arm_embodiment_adapter import (
 __all__ = [
     "AbsolutePoseEmbodimentAdapter",
     "AbsolutePoseWholeBodyBimanualAdapter",
+    "ActionTargetFrame",
     "BimanualEefConfig",
     "BimanualEmbodimentAdapter",
     "DeltaPoseIKSingleArmAdapter",
     "EMBODIMENT_TYPE_REGISTRY",
+    "NamedJointTrajectory",
     "PoseObsKeys",
     "SingleArmEmbodimentAdapter",
     "embodiment_adapter_from_dict",
