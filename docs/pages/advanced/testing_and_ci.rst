@@ -20,6 +20,9 @@ The suite is organized in tiers of increasing cost:
    * - ``interfaces/``, ``core/``, ``utils/``
      - Fast unit tests for the pure-Python layers (task descriptors, embodiment adapters,
        datastream, selection strategies, ...). No Isaac Sim launch; run in seconds.
+   * - ``domain_randomization/``
+     - Unit tests for randomizing lighting, materials, camera calibration, object poses,
+       robot root poses, and robot joint positions on reset. Isaac Sim is not launched.
    * - ``e2e/``
      - Recording and annotation checks, plus data-generation runs for MimicGen, DexMimicGen,
        and SkillGen in single- and multi-env variants. Marked ``with_subprocess``: they
@@ -68,9 +71,10 @@ All tests, including the success-rate benchmarks:
 Continuous Integration
 ----------------------
 
-Pull requests run lint, documentation, and lockfile checks. GPU checks run the six correctness
-suites: ``e2e``, ``interfaces``, ``core``, ``utils``, ``retargeting``, and ``metrics``. The Docker
-check rebuilds the cuRobo image from the checkout while retaining Docker's layer cache.
+Pull requests run lint, documentation, and lockfile checks. GPU checks run the seven correctness
+suites: ``e2e``, ``interfaces``, ``core``, ``domain_randomization``, ``utils``, ``retargeting``, and
+``metrics``. The Docker check rebuilds the cuRobo image from the checkout while retaining Docker's
+layer cache.
 The ``Run tests (GPU, repo Docker)`` status combines Docker, native, lockfile, and lint results.
 
 Changes to source, tests, dependencies, submodules, scripts (including skill scripts), Docker,
@@ -104,7 +108,8 @@ To run the correctness suites in an installed native environment with cuRobo:
 
    uv run --no-sync pytest -sv \
        autodata_tests/e2e/ autodata_tests/interfaces/ autodata_tests/core/ \
-       autodata_tests/utils/ autodata_tests/retargeting/ autodata_tests/metrics/
+       autodata_tests/domain_randomization/ autodata_tests/utils/ \
+       autodata_tests/retargeting/ autodata_tests/metrics/
 
 
 Debugging Isaac Sim Runs

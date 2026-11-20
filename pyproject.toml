@@ -129,6 +129,7 @@ py-modules = ["sitecustomize"]
 [tool.setuptools.packages.find]
 include = [
     "autodata_core*",
+    "autodata_domain_randomization*",
     "autodata_interfaces*",
     "autodata_metrics*",
     "autodata_retargeting*",
@@ -192,6 +193,7 @@ known_third_party = [
 # Imports from this repository
 known_first_party = [
     "autodata_core",
+    "autodata_domain_randomization",
     "autodata_interfaces",
     "autodata_utils",
     "autodata_examples",
@@ -199,7 +201,7 @@ known_first_party = [
 
 [tool.pyright]
 
-include = ["autodata_core", "autodata_interfaces", "autodata_utils", "autodata_examples"]
+include = ["autodata_core", "autodata_domain_randomization", "autodata_interfaces", "autodata_utils", "autodata_examples"]
 exclude = [
     "**/__pycache__",
     "**/_isaac_sim",

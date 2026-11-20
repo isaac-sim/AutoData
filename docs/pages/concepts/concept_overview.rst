@@ -26,11 +26,14 @@ Packages
    * - ``autodata_core``
      - The generation machinery: the data generator, generation algorithms, the source demonstration
        pool, selection strategies, and waypoint execution.
+   * - ``autodata_domain_randomization``
+     - Randomizes lighting, materials, camera calibration, object poses, robot root poses
+       and robot joint positions on reset.
    * - ``autodata_utils``
      - Small shared utilities (pose math, tensor helpers).
    * - ``autodata_examples``
-     - Example task descriptors, embodiment configs, environment profiles, and project-owned
-       environment definitions.
+     - Example task descriptors, embodiment configs, environment profiles with optional
+       domain-randomization settings, and project-owned environment definitions.
    * - ``scripts``
      - User-facing dataset entry points: generation (``generate_dataset.py``), annotation
        (``annotate_demos.py``), and validation (``validate_dataset.py``).
@@ -88,8 +91,8 @@ Data Flow
 
 One generation attempt, end to end:
 
-1. **Reset.** The environment resets and randomizes the scene; the initial state is snapshotted
-   for the output episode.
+1. **Reset.** The environment resets and randomizes the scene with domain-randomization if
+   specified; the initial state is snapshotted for the output episode.
 2. **Select.** For the current subtask of each end-effector, a source demonstration segment is chosen
    by the subtask's selection strategy (random or nearest-neighbor — see
    :doc:`algorithms`), within the scope configured by
