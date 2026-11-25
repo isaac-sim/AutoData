@@ -1,10 +1,10 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Pose math utilities used by the embodiment adapters.
+"""Pose math utilities used by embodiment adapters and domain randomization.
 
-Pure-torch implementations of pose composition, quaternion conversion, and
-axis-angle conversion. Quaternions are ``(x, y, z, w)``. Axis-angle vectors
+Pure-torch implementations of pose composition, quaternion conversion, axis-angle
+conversion, and sampling. Quaternions are ``(x, y, z, w)``. Axis-angle vectors
 are ``axis * angle`` (magnitude is the rotation angle in radians). Rotation
 matrices act on column vectors.
 """
@@ -12,8 +12,44 @@ matrices act on column vectors.
 from __future__ import annotations
 
 import torch
+from typing import Literal
 
 _EPS = 1e-8
+
+
+def sample_uniform_scalar(value_range: tuple[float, float], device: str) -> float:
+    """Sample a uniform scalar, leaving the RNG untouched when the bounds are equal.
+
+    Args:
+        value_range: Lower and upper sampling bounds.
+        device: Device whose Torch RNG supplies the sample.
+    """
+    low, high = value_range
+    if low == high:
+        return float(low)
+    return torch.empty((), device=device).uniform_(low, high).item()
+
+
+def sample_uniform_vector(
+    minimum: tuple[float, float, float],
+    maximum: tuple[float, float, float],
+    device: str,
+) -> torch.Tensor:
+    """Sample a 3D offset, leaving fixed components out of the RNG draw sequence.
+
+    Args:
+        minimum: Lower sampling bounds for each component.
+        maximum: Upper sampling bounds for each component.
+        device: Device whose Torch RNG supplies the samples.
+
+    Returns:
+        A float64 CPU tensor of shape ``(3,)`` for pose and USD mount calculations.
+    """
+    return torch.tensor(
+        [sample_uniform_scalar((low, high), device) for low, high in zip(minimum, maximum)],
+        dtype=torch.float64,
+        device="cpu",
+    )
 
 
 def make_pose(pos: torch.Tensor, rot_mat: torch.Tensor) -> torch.Tensor:
@@ -196,3 +232,73 @@ def quat_unique(quat: torch.Tensor) -> torch.Tensor:
     assert quat.shape[-1] == 4, f"quat last dim must be 4, got {quat.shape[-1]}"
     sign = torch.where(quat[..., 3:4] < 0, -torch.ones_like(quat[..., 3:4]), torch.ones_like(quat[..., 3:4]))
     return quat * sign
+
+
+def quat_mul(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
+    """Compose quaternions, applying ``second`` in the body frame of ``first``.
+
+    Args:
+        first: Quaternion of shape (..., 4) in (x, y, z, w) order.
+        second: Quaternion of shape (..., 4), broadcastable with ``first``.
+
+    Returns:
+        Quaternion product with the broadcast shape of the inputs.
+    """
+    assert first.shape[-1] == 4 and second.shape[-1] == 4, "Quaternions must have four components."
+    first, second = torch.broadcast_tensors(first, second)
+    xyz_first, w_first = first[..., :3], first[..., 3:4]
+    xyz_second, w_second = second[..., :3], second[..., 3:4]
+    xyz = w_first * xyz_second + w_second * xyz_first + torch.linalg.cross(xyz_first, xyz_second, dim=-1)
+    w = w_first * w_second - (xyz_first * xyz_second).sum(dim=-1, keepdim=True)
+    return torch.cat((xyz, w), dim=-1)
+
+
+def quat_from_euler_xyz(euler_angles: torch.Tensor) -> torch.Tensor:
+    """Convert intrinsic XYZ Euler angles to a quaternion.
+
+    The rotation is ``Rx(roll) @ Ry(pitch) @ Rz(yaw)``; angles are about the moving axes.
+
+    Args:
+        euler_angles: Roll, pitch, and yaw [rad] of shape (..., 3).
+
+    Returns:
+        Quaternion of shape (..., 4) in (x, y, z, w) order.
+    """
+    assert euler_angles.shape[-1] == 3, "Euler angles must have three components."
+    axes = torch.eye(3, dtype=euler_angles.dtype, device=euler_angles.device)
+    rotations = quat_from_angle_axis(euler_angles, axes)
+    return quat_mul(quat_mul(rotations[..., 0, :], rotations[..., 1, :]), rotations[..., 2, :])
+
+
+def convert_camera_frame_orientation_convention(
+    orientation: torch.Tensor,
+    origin: Literal["opengl", "ros", "world"] = "opengl",
+    target: Literal["opengl", "ros", "world"] = "ros",
+) -> torch.Tensor:
+    """Express a camera orientation in another convention while preserving its physical mount.
+
+    OpenGL looks along -Z with +Y up; ROS looks along +Z with -Y up; world looks along +X
+    with +Z up. Conversion changes the local camera basis, leaving its world pose intact.
+
+    Args:
+        orientation: Quaternion of shape (..., 4) in (x, y, z, w) order.
+        origin: Source camera convention.
+        target: Destination camera convention.
+
+    Returns:
+        Converted quaternion with the input shape, dtype, and device.
+    """
+    assert orientation.shape[-1] == 4, "Quaternions must have four components."
+    # Right-multiply by these fixed rotations to express each convention in OpenGL.
+    to_opengl = {
+        "opengl": (0.0, 0.0, 0.0, 1.0),
+        "ros": (1.0, 0.0, 0.0, 0.0),
+        "world": (0.5, -0.5, -0.5, 0.5),
+    }
+    assert origin in to_opengl and target in to_opengl, "Unsupported camera orientation convention."
+    if origin == target:
+        return orientation.clone()
+    source_to_opengl = orientation.new_tensor(to_opengl[origin])
+    opengl_to_target = orientation.new_tensor(to_opengl[target])
+    opengl_to_target[:3] *= -1
+    return quat_mul(quat_mul(orientation, source_to_opengl), opengl_to_target)

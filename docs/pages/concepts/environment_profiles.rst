@@ -2,10 +2,10 @@ Environment Profiles
 ====================
 
 An **environment profile** is a YAML file that turns a base task into a variant — extra
-objects in the scene, different reset randomization, a motion planner tuned for the new
-clutter — without defining a new environment id. It is passed to the generation entry point
-with ``--env_profile`` and overlaid onto the parsed env config just before the environment is
-created.
+objects in the scene, different reset randomization, domain randomization, a motion planner
+tuned for the new clutter — without defining a new environment id. It is passed to the
+generation entry point with ``--env_profile`` and overlaid onto the parsed env config just
+before the environment is created.
 
 The shipped example,
 :autodata_code_link:`<autodata_examples/env_profiles/franka_bin_stack.yaml>`,
@@ -50,6 +50,8 @@ What a Profile Can Change
    * - ``events.add``
      - Add new event terms — typically reset randomizations for the added or re-pinned
        objects.
+   * - ``domain_randomization``
+     - Configure domain randomization for lighting, materials, camera calibration, and reset poses.
    * - ``planner``
      - Name the motion-planner profile tuned for the modified scene (used by SkillGen; see
        :doc:`../advanced/motion_planners`).
@@ -88,6 +90,9 @@ Schema
          mode: reset                   # startup | reset | interval
          params: {...}
 
+   domain_randomization:               # optional
+     <randomizer_name>: {<parameter>: <value>}
+
 Profiles are validated on load; a schema violation raises an error naming the offending
 field.
 
@@ -116,7 +121,15 @@ subtly wrong scene:
   the profile's additions — checked at apply time instead of failing later inside the env.
 
 Changes are applied in order: scene additions, scene overrides, then events (remove →
-override → add), so added events may reference added assets.
+override → add), then domain randomization. Added events may reference added assets.
+
+.. important::
+
+   A ``domain_randomization.poses`` entry replaces the **entire** ``pose_range`` of
+   its named event, including ranges set by ``events.override`` or ``events.add`` in this
+   profile. Domain randomization is applied last, so its pose ranges take precedence.
+   Individual axes are not merged with the earlier range; other event parameters are preserved.
+   See :doc:`domain_randomization` for the configuration details.
 
 .. note::
 

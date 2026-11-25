@@ -1,0 +1,47 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: g1_locomanip_dr
+base_env: IsaacContrib-PickPlace-Locomanipulation-G1-Abs
+description: Domain randomization on steering wheel pose, rim appearance, and head-camera calibration for G1 locomanipulation task.
+
+events:
+  add:
+    reset_object_pose:
+      func: "isaaclab.envs.mdp:reset_root_state_uniform"
+      mode: reset
+      params:
+        asset_cfg: object
+        pose_range: {}
+        velocity_range: {}
+
+domain_randomization:
+  poses:
+    - event_name: reset_object_pose
+      position_xyz_min: [-0.02, -0.02, 0.0]
+      position_xyz_max: [0.02, 0.02, 0.0]
+      rpy_min: [0.0, 0.0, -0.15]
+      rpy_max: [0.0, 0.0, 0.15]
+  material_colors:
+    - asset_name: object
+      prim_name_markers: [wheel_rim]
+      shader_input: diffuse_tint
+      color_palette:
+        - [1.5, 0.5, 0.5]
+        - [0.5, 1.5, 0.5]
+        - [0.5, 0.5, 1.5]
+  material_scalars:
+    - asset_name: object
+      prim_name_markers: [wheel_rim]
+      shader_input: reflection_roughness_constant
+      value_range: [0.25, 0.8]
+  # The task already defines this camera. Record its images with --enable_cameras.
+  cameras:
+    - asset_name: robot_pov_cam
+      # Intrinsics DR requires --num_envs 1. Use [1.0, 1.0] for parallel extrinsics-only DR.
+      focal_length_scale_range: [0.98, 1.02]
+      position_xyz_min: [-0.002, -0.002, -0.002]
+      position_xyz_max: [0.002, 0.002, 0.002]
+      rotation_rpy_min_deg: [-1.0, -1.0, -1.0]
+      rotation_rpy_max_deg: [1.0, 1.0, 1.0]
+  # Lighting is left at the task default; its dome supports lighting DR with --num_envs 1.
