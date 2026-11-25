@@ -36,14 +36,14 @@ chown "$DOCKER_RUN_USER_NAME:$DOCKER_RUN_GROUP_NAME" "/home/$DOCKER_RUN_USER_NAM
 
 # Isaac Lab rejects a binary Sim link with an active virtual environment.
 ISAACLAB_DIR="$WORKDIR/submodules/IsaacLab-Arena/submodules/IsaacLab"
-if [ -e "$ISAACLAB_DIR/_isaac_sim" ] || [ -L "$ISAACLAB_DIR/_isaac_sim" ]; then
+if [[ -e "$ISAACLAB_DIR/_isaac_sim" || -L "$ISAACLAB_DIR/_isaac_sim" ]]; then
     echo "error: $ISAACLAB_DIR/_isaac_sim selects a binary Isaac Sim installation." >&2
     echo "Remove the link from the host checkout before using the locked Docker environment." >&2
     exit 1
 fi
 
 # Run the command as the dev user with the image's shell environment.
-if [ $# -ge 1 ]; then
+if [[ $# -ge 1 ]]; then
     # Quote each argument before passing it to the interactive shell so shell
     # preserves paths, marker expressions, and Python code.
     printf -v AUTODATA_COMMAND '%q ' "$@"

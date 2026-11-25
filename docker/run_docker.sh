@@ -15,7 +15,7 @@ CUROBO_VERSION_TAG='sim-6.1.0-curobo'
 # Resolve TORCH_CUDA_ARCH_LIST for the cuRobo build. Honour an explicit override if set, else
 # auto-detect the host GPU's compute capability via nvidia-smi (e.g. "12.0" -> "12.0+PTX").
 detect_cuda_arch() {
-    if [ -n "${TORCH_CUDA_ARCH_LIST:-}" ]; then
+    if [[ -n "${TORCH_CUDA_ARCH_LIST:-}" ]]; then
         echo "${TORCH_CUDA_ARCH_LIST}"
         return 0
     fi
@@ -75,12 +75,13 @@ while getopts ":d:crRvh" OPTION; do
             ;;
         \?) echo "Invalid option: -$OPTARG" >&2; exit 1 ;;
         :) echo "Option -$OPTARG requires an argument." >&2; exit 1 ;;
+        *) echo "Unhandled option: -$OPTION" >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
 
 # Set separate tag for cuRobo image.
-if [ "$INSTALL_CUROBO" = "true" ]; then
+if [[ "$INSTALL_CUROBO" == true ]]; then
     DOCKER_VERSION_TAG="${CUROBO_VERSION_TAG}"
 fi
 
@@ -89,11 +90,11 @@ CONTAINER_NAME="${DOCKER_IMAGE_NAME}-${DOCKER_VERSION_TAG}"
 echo "Using Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} (base: ${BASE_IMAGE})"
 
 # Build the image if it doesn't exist yet, or if a rebuild was requested.
-if [ "$(docker images -q "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ]; then
+if [[ -n "$(docker images -q "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}" 2>/dev/null)" && "$FORCE_REBUILD" == false ]]; then
     echo "Image ${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG} already exists. Use -r to force a rebuild."
 else
     BUILD_ARGS=("--build-arg" "WORKDIR=${WORKDIR}" "--build-arg" "BASE_IMAGE=${BASE_IMAGE}")
-    if [ "$INSTALL_CUROBO" = "true" ]; then
+    if [[ "$INSTALL_CUROBO" == true ]]; then
         # Detect the host GPU arch so cuRobo's kernels are compiled for it.
         ARCH_LIST=$(detect_cuda_arch) || exit 1
         echo "cuRobo enabled — building for TORCH_CUDA_ARCH_LIST=${ARCH_LIST}"
@@ -109,18 +110,18 @@ else
 fi
 
 # Remove a previously-exited container of the same name so we can recreate it.
-if [ "$(docker ps -a --quiet --filter status=exited --filter "name=^${CONTAINER_NAME}$")" ]; then
+if [[ -n "$(docker ps -a --quiet --filter status=exited --filter "name=^${CONTAINER_NAME}$")" ]]; then
     docker rm "${CONTAINER_NAME}" >/dev/null
 fi
 
 # Reuse a running container only if it uses the selected image.
-if [ "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ]; then
-    if [ "$(docker inspect -f '{{.Image}}' "${CONTAINER_NAME}")" != \
-         "$(docker image inspect -f '{{.Id}}' "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}")" ]; then
+if test "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = true; then
+    if test "$(docker inspect -f '{{.Image}}' "${CONTAINER_NAME}")" != \
+            "$(docker image inspect -f '{{.Id}}' "${DOCKER_IMAGE_NAME}:${DOCKER_VERSION_TAG}")"; then
         echo "error: ${CONTAINER_NAME} uses an older image. Stop it and rerun this command." >&2
         exit 1
     fi
-    if [ "$#" -gt 0 ]; then
+    if [[ $# -gt 0 ]]; then
         printf -v AUTODATA_COMMAND '%q ' "$@"
         docker exec --user "$(id -un)" --workdir "${WORKDIR}" "${CONTAINER_NAME}" \
             bash -ic "${AUTODATA_COMMAND}"
@@ -132,7 +133,7 @@ if [ "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/
 fi
 
 add_volume_if_it_exists() {
-    [ -d "$1" ] && echo "-v $1:$2"
+    [[ -d "$1" ]] && echo "-v $1:$2"
 }
 
 # Create it as the host user before Docker can create a root-owned bind source.
@@ -140,7 +141,7 @@ mkdir -p "${CACHE_HOST_MOUNT_DIRECTORY}"
 
 # Forward the host SSH agent if available (so git over SSH works in-container).
 SSH_DOCKER_ARGS=()
-if [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "$SSH_AUTH_SOCK" ]; then
+if [[ -n "${SSH_AUTH_SOCK:-}" && -S "$SSH_AUTH_SOCK" ]]; then
     SSH_DOCKER_ARGS+=("-v" "$SSH_AUTH_SOCK:/ssh-agent" "--env" "SSH_AUTH_SOCK=/ssh-agent")
 fi
 
@@ -183,7 +184,7 @@ fi
 # Only allocate a TTY when stdin is a terminal. CI has no TTY, and passing --tty
 # there fails with "cannot attach stdin to a TTY-enabled container".
 TTY_ARGS=()
-if [ -t 0 ]; then
+if [[ -t 0 ]]; then
     TTY_ARGS+=("--tty")
 fi
 

@@ -49,7 +49,7 @@ cd "${REPO_ROOT}"
 
 # cuRobo (-c) is required for the SkillGen tests; one image covers the whole suite.
 RUN_DOCKER_ARGS=(-c)
-if [ "${FORCE_REBUILD}" = "true" ]; then
+if test "${FORCE_REBUILD}" = true; then
     RUN_DOCKER_ARGS+=(-r)
 fi
 
@@ -66,12 +66,12 @@ PYTEST_ARGS=(
     "WARP_CACHE_PATH=${CONTAINER_CACHE_DIR}/warp"
     python -m pytest -sv --durations=0
 )
-if [ -n "${RESULTS_DIR}" ]; then
+if [[ -n "${RESULTS_DIR}" ]]; then
     # Pre-create on the host so the container can write into the bind-mounted dir.
     mkdir -p "${RESULTS_DIR}"
     PYTEST_ARGS+=("--junitxml=${RESULTS_DIR}/junit.xml")
 fi
-if [ -n "${PYTEST_MARK}" ]; then
+if [[ -n "${PYTEST_MARK}" ]]; then
     PYTEST_ARGS+=(-m "${PYTEST_MARK}")
 fi
 # TEST_PATH may list multiple paths; split on whitespace into separate args.
