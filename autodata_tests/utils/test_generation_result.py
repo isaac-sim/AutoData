@@ -6,7 +6,7 @@
 import json
 from pathlib import Path
 
-from autodata_utils.generation_result import AttemptLog, attempts_file_for, write_generation_result
+from autodata_utils.generation_result import AttemptLog, attempts_file_for, code_revision, write_generation_result
 
 
 def test_write_generation_result_writes_completed_stats_atomically(tmp_path):
@@ -63,3 +63,10 @@ def test_rerun_with_the_same_result_file_keeps_the_earlier_attempt_log(tmp_path:
 
     earlier = Path(attempts_file_for(result_file, "run-a")).read_text().splitlines()
     assert [json.loads(line)["run_id"] for line in earlier] == ["run-a"]
+
+
+def test_code_revision_without_git_is_the_image_revision(monkeypatch) -> None:
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setenv("AUTODATA_REVISION", "0123abcd")
+
+    assert code_revision() == "0123abcd"

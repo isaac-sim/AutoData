@@ -4,13 +4,18 @@
 """Data-generation success-rate perf test for the GR1T2 pick-place (DexMimicGen) task."""
 
 import os
-import tempfile
 
 import pytest
 
-from autodata_tests.utils.constants import TestPaths
+from autodata_tests.utils.constants import BENCHMARK_OPTIONAL_METRICS, DEXMIMICGEN_METRICS, TestPaths
 from autodata_tests.utils.subprocess import run_subprocess
-from autodata_tests.utils.utils import assert_valid_dataset, read_generation_result
+from autodata_tests.utils.utils import (
+    assert_computed_metrics,
+    assert_valid_dataset,
+    benchmark_temp_dir,
+    read_generation_result,
+    report_metrics,
+)
 
 # --- Tunables (change these to adjust the perf test) ---------------------------------------------
 SUCCESS_RATE_THRESHOLD = 0.70  # minimum acceptable data-gen success rate
@@ -24,8 +29,9 @@ TIMEOUT_SEC = 7200  # generous wall-clock budget for generating NUM_TRIALS demos
 
 @pytest.mark.with_subprocess
 def test_dexmimicgen_gr1_data_generation_success_rate():
-    """Generate NUM_TRIALS demos on NUM_ENVS envs and assert the success rate exceeds the threshold."""
-    with tempfile.TemporaryDirectory() as temp_dir:
+    """Generate NUM_TRIALS demos on NUM_ENVS envs, report their metrics and assert the success rate exceeds the
+    threshold."""
+    with benchmark_temp_dir("gr1_pick_place_dexmimicgen") as temp_dir:
         output_file = os.path.join(temp_dir, "generated.hdf5")
         result_file = os.path.join(temp_dir, "generation_result.json")
 
@@ -46,6 +52,7 @@ def test_dexmimicgen_gr1_data_generation_success_rate():
             output_file,
             "--result_file",
             result_file,
+            "--record_metric_inputs",
             "--generation_num_trials",
             str(NUM_TRIALS),
             "--num_envs",
@@ -58,6 +65,7 @@ def test_dexmimicgen_gr1_data_generation_success_rate():
         run_subprocess(args, timeout_sec=TIMEOUT_SEC)
         assert_valid_dataset(output_file, min_num_demos=1)
         num_success, num_attempts = read_generation_result(result_file)
+        report = report_metrics(output_file, result_file)
 
     assert num_attempts > 0, "generation reported zero attempts"
     success_rate = num_success / num_attempts
@@ -66,6 +74,7 @@ def test_dexmimicgen_gr1_data_generation_success_rate():
         f"data-gen success rate {success_rate:.1%} ({num_success}/{num_attempts}) is below the "
         f"required threshold of {SUCCESS_RATE_THRESHOLD:.0%}"
     )
+    assert_computed_metrics(report, DEXMIMICGEN_METRICS, optional=BENCHMARK_OPTIONAL_METRICS)
 
 
 if __name__ == "__main__":
