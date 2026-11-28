@@ -14,6 +14,7 @@ def test_generation_policy_defaults():
     assert p.seed == 1
     assert p.num_trials == 10
     assert p.guarantee_success is True
+    assert p.max_num_failures is None
     assert p.keep_failed is False
     assert p.source_dataset_path is None
     assert p.generation_path is None
@@ -54,6 +55,25 @@ def test_generation_policy_instances_are_independent():
     b = GenerationPolicy()
     a.num_trials = 999
     assert b.num_trials == 10
+
+
+@pytest.mark.parametrize(
+    "guarantee_success, failure_budget, attempts, successes, pending, expected",
+    [
+        (True, None, 60, 0, 0, 5),
+        (True, None, 60, 4, 1, 0),
+        (True, 2, 7, 0, 0, 0),
+        (True, 2, 6, 4, 0, 1),
+        (False, None, 4, 0, 0, 1),
+        (False, 2, 4, 0, 1, 0),
+    ],
+)
+def test_attempt_reservations_preserve_unlimited_retries_and_explicit_limits(
+    guarantee_success, failure_budget, attempts, successes, pending, expected
+):
+    """An omitted cap preserves success retries; explicit caps and pending slots remain bounded."""
+    policy = GenerationPolicy(num_trials=5, guarantee_success=guarantee_success, max_num_failures=failure_budget)
+    assert policy.remaining_attempts(attempts, successes, pending) == expected
 
 
 @pytest.mark.parametrize("limit", [0, -1])

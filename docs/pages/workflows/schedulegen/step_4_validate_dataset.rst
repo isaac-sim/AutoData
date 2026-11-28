@@ -66,14 +66,18 @@ Use the same backend and profile as the saved episode:
        --physics_backend newton \
        --env_profile autodata_examples/env_profiles/gr1t2_nut_pour_schedulegen.yaml \
        --dataset_file datasets/gr1t2_schedulegen/normal_newton.hdf5 \
+       --validate_success_rate \
        --device cuda:0 \
        --num_envs 1 \
        --viz kit
 
 Use ``--physics_backend physx`` and the PhysX filename for PhysX data. For cross data,
 also use the cross environment profile. Leave the replay tool's solver-buffer-reset
-option disabled for Newton. Action replay can diverge from recorded physics; it is an
-additional inspection, not a replacement for generation's recorded task outcome.
+option disabled for Newton. Check the reported successful-replay count and fraction,
+not just the exit code. For a dataset containing only successful generations, compare
+the replay success fraction with 100% and inspect any failures. Action replay can diverge
+from recorded physics; it is an additional inspection, not a replacement for generation's
+recorded task outcome.
 
 The supplied GR1T2 examples keep the waist fixed. For robots with shared planning joints,
 generation can also apply per-step posture targets that are not stored in the action array.

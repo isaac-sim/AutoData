@@ -283,15 +283,23 @@ def test_finalization_does_not_export_a_reset_snapshot_without_steps(recorded_st
 
 
 @pytest.mark.parametrize(
-    "num_envs,num_trials,guarantee_success,fail_first,step_count,expected_attempts,expected_success",
-    [(5, 6, False, 0, 2, 6, 6), (5, 2, False, 0, 2, 2, 2), (3, 4, True, 2, 2, 6, 4), (3, 4, True, 100, 0, 6, 0)],
+    "num_envs,num_trials,guarantee_success,fail_first,step_count,expected_attempts,expected_success,failure_budget",
+    [
+        (5, 6, False, 0, 2, 6, 6, 2),
+        (5, 2, False, 0, 2, 2, 2, 2),
+        (3, 4, True, 2, 2, 6, 4, 2),
+        (3, 4, True, 100, 0, 6, 0, 2),
+        (2, 3, True, 60, 0, 63, 3, None),
+    ],
 )
 def test_generation_loop_reserves_exact_budget_and_holds_idle_relative_targets(
-    num_envs, num_trials, guarantee_success, fail_first, step_count, expected_attempts, expected_success
+    num_envs, num_trials, guarantee_success, fail_first, step_count, expected_attempts, expected_success, failure_budget
 ):
     from autodata_interfaces.env.isaaclab_env_interface import env_loop
 
-    policy = GenerationPolicy(num_trials=num_trials, guarantee_success=guarantee_success, max_num_failures=2)
+    policy = GenerationPolicy(
+        num_trials=num_trials, guarantee_success=guarantee_success, max_num_failures=failure_budget
+    )
     env = SimpleNamespace(
         num_envs=num_envs,
         cfg=SimpleNamespace(),

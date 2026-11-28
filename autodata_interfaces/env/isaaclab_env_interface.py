@@ -452,7 +452,6 @@ def env_loop(
     """
     num_trials = generation_policy_params.num_trials
     guarantee_success = generation_policy_params.guarantee_success
-    max_attempts = num_trials + generation_policy_params.max_num_failures
     assert stop_after_attempts is None or (type(stop_after_attempts) is int and stop_after_attempts > 0)
     stop_at_attempt = None if stop_after_attempts is None else stats["num_attempts"] + stop_after_attempts
     base_env = env.unwrapped if hasattr(env, "unwrapped") else env
@@ -501,8 +500,11 @@ def env_loop(
         if check_value >= num_trials:
             print(f"Reached {num_trials} {'successes' if guarantee_success else 'attempts'}. Exiting.")
             return True
-        if guarantee_success and num_attempts >= max_attempts:
-            print(f"Reached the {max_attempts}-attempt limit with {num_success}/{num_trials} successes.")
+        if guarantee_success and not generation_policy_params.remaining_attempts(num_attempts, num_success):
+            print(
+                f"Reached the failure allowance after {num_attempts} attempts with"
+                f" {num_success}/{num_trials} successes."
+            )
             return False
         if stop_at_attempt is not None and num_attempts >= stop_at_attempt:
             return True

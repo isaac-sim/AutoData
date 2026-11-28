@@ -143,7 +143,7 @@ robot_config:
 
 planner:
   world_config_file: collision_table.yml
-  static_objects: [table, scale, bin]
+  static_objects: [table, bin]
   # Match the reviewed GR1T2 SkillGen collision world. Its per-arm transit planner omits the
   # task table; the loose nut starts inside its beaker and is not an independent transit obstacle.
   world_ignore_substrings:

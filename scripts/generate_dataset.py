@@ -36,6 +36,7 @@ dataset is optional only for an all-motion-planned ScheduleGen task.
 
 import argparse
 import time
+import warnings
 
 from isaaclab.app import AppLauncher
 
@@ -97,7 +98,7 @@ parser.add_argument(
     "--generation_max_failures",
     type=int,
     default=None,
-    help="Override the task descriptor's finite failed-attempt budget.",
+    help="Bound additional failed attempts when targeting successful demos; ignored for fixed-attempt runs.",
 )
 parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
 parser.add_argument(
@@ -164,7 +165,10 @@ planning_args.add_argument("--robot_planning", type=str, default=None, help="Pla
 recording_args.add_argument(
     "--record_video",
     action="store_true",
-    help="Save every generated rollout from the configured simulator viewport (single environment).",
+    help=(
+        "Save every generated rollout from the configured simulator viewport (single environment). "
+        "Also records image observations in HDF5, which can substantially increase dataset size."
+    ),
 )
 recording_args.add_argument(
     "--video_dir",
@@ -212,6 +216,12 @@ if args_cli.alg != "schedulegen" and args_cli.robot_planning is not None:
 if args_cli.alg not in ("skillgen", "schedulegen") and (args_cli.visualize_plan or args_cli.rerun_output):
     parser.error("plan visualization requires SkillGen or ScheduleGen.")
 
+if args_cli.record_video and not args_cli.record_images:
+    warnings.warn(
+        "--record_video also enables rendering and recording image observations in HDF5. "
+        "This can substantially increase dataset size.",
+        UserWarning,
+    )
 args_cli.record_images = args_cli.record_images or args_cli.record_video
 record_viewport = args_cli.record_video and args_cli.video_observation_path is None
 viewport_headless = record_viewport and "kit" not in (args_cli.visualizer or [])

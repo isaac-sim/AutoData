@@ -17,9 +17,10 @@ class GenerationPolicy:
         num_trials: Number of demos to generate.
         guarantee_success: If True, retry until ``num_trials`` successful demos; if False,
             stop after ``num_trials`` attempts regardless of success.
-        max_num_failures: Maximum additional failed attempts tolerated when ``guarantee_success``
-            is True. Together with ``num_trials``, this defines a finite attempt budget. It does
-            not extend fixed-attempt runs.
+        max_num_failures: Optional allowance for additional failed attempts when ``guarantee_success``
+            is True. ``None`` retries until the success target is reached, preserving existing workflows.
+            An explicit value bounds total attempts to ``num_trials + max_num_failures``. Ignored for
+            fixed-attempt runs.
         keep_failed: If True, also export failed trials (useful for debugging low success rates).
         source_dataset_path: Path to the source dataset of human demos.
         generation_path: Path the generated dataset is written to.
@@ -65,7 +66,7 @@ class GenerationPolicy:
     seed: int = 1
     num_trials: int = 10
     guarantee_success: bool = True
-    max_num_failures: int = 50
+    max_num_failures: int | None = None
     keep_failed: bool = False
     source_dataset_path: str | None = None
     generation_path: str | None = None
@@ -105,17 +106,19 @@ class GenerationPolicy:
 
         assert 0 <= num_success <= num_attempts and num_pending >= 0
         completed = num_success if self.guarantee_success else num_attempts
-        budget = self.num_trials + (self.max_num_failures if self.guarantee_success else 0)
-        return max(0, min(self.num_trials - completed, budget - num_attempts) - num_pending)
+        remaining = self.num_trials - completed
+        if self.guarantee_success and self.max_num_failures is not None:
+            remaining = min(remaining, self.num_trials + self.max_num_failures - num_attempts)
+        return max(0, remaining - num_pending)
 
     def __post_init__(self) -> None:
         """Validate trial budgets, source selection and motion-execution settings."""
         assert self.max_navigation_hold_steps > 0, "max_navigation_hold_steps must be positive."
         assert type(self.num_trials) is int and self.num_trials > 0, "num_trials must be a positive integer"
         assert isinstance(self.guarantee_success, bool), "guarantee_success must be a bool"
-        assert (
+        assert self.max_num_failures is None or (
             type(self.max_num_failures) is int and self.max_num_failures >= 0
-        ), "max_num_failures must be a non-negative integer"
+        ), "max_num_failures must be a non-negative integer or None"
         assert self.source_selection_anchor is None or (
             isinstance(self.source_selection_anchor, str) and self.source_selection_anchor
         ), "source_selection_anchor must be a non-empty string or None"

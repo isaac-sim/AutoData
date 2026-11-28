@@ -81,7 +81,8 @@ For PhysX, use ``--physics_backend physx`` and distinct output/result/video path
 are unchanged. To use your own Newton recording, replace ``--input_file`` with
 ``datasets/gr1t2_schedulegen/source_newton_annotated.hdf5``.
 
-``--record_video`` saves the profile's front viewport and enables camera observations.
+``--record_video`` saves the profile's front viewport and also renders and records camera
+observations in the HDF5 dataset, which can substantially increase its size.
 For generation without video, omit both video arguments. Add ``--enable_cameras`` if you
 still want the robot's RGB observations in the dataset. Start the container once and
 reuse it for subsequent checks; first-use assets, shaders and robot models can take time.
@@ -102,6 +103,8 @@ The supplied descriptor sets ``guarantee_success: true``. Thus ``--generation_nu
 is a target number of **successful demonstrations**, not a fixed attempt count. The
 failure allowance bounds additional attempts; reaching that limit can leave a valid but
 smaller dataset. Read the JSON counters rather than assuming the target was reached.
+The supplied descriptor sets this allowance explicitly. Other workflows keep unlimited
+success retries by default; omit ``max_num_failures`` or set it to ``null`` for that behavior.
 
 The descriptor also sets ``keep_failed: true``. Failed physical replays may be exported
 to a separate failure HDF5; planning failures can occur before there are steps to export.

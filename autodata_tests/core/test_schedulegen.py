@@ -710,6 +710,7 @@ def test_buffered_replay_exports_unequal_slots_once_without_hold_tails(
     "num_envs, guarantee_success, failure_budget, expected_batches, expected_success, completed",
     [
         (5, True, 5, [5, 2, 1], 5, True),
+        (5, True, None, [5, 2, 1], 5, True),
         (5, True, 2, [5, 2], 4, False),
         (5, False, 5, [5], 3, True),
         (2, True, 5, [2, 2, 2, 1, 1], 5, True),

@@ -3,12 +3,24 @@
 
 """Native mimic settings for the GR1T2 example."""
 
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("isaaclab")
 from pxr import Sdf, Usd, UsdPhysics  # noqa: E402
 
 from autodata_examples.gr1t2_nut_pour import _mimic_joints_newton  # noqa: E402
+from autodata_interfaces.motion_planners.curobo.planner_factory import _description_load  # noqa: E402
+from autodata_tests.utils.constants import TestPaths  # noqa: E402
+
+
+@pytest.mark.parametrize("profile", ["gr1t2_planning.yaml", "gr1t2_cross_planning.yaml"])
+def test_randomized_scale_is_not_excluded_from_planner_pose_updates(profile):
+    """Both layouts must refresh the scale's collision pose after every randomized reset."""
+    description = _description_load(Path(TestPaths.embodiments_dir) / profile)
+    static_names = description["planner"]["static_objects"]
+    assert not any(name in "sorting_scale" for name in static_names)
 
 
 @pytest.mark.parametrize(
