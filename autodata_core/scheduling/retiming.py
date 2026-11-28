@@ -75,6 +75,12 @@ def schedule_paths(
     therefore constrain exact held-state intervals, including initial,
     inter-segment, and terminal holds.
 
+    Held-state intervals are half-open: one conflicting interval may start on the
+    tick another ends. Unlike the paper's positive temporal gap, no extra idle
+    tick is required here. This discrete-time convention is separate from the
+    spatial ``collision_margin_m`` used to find conflicts; neither provides a
+    continuous-time swept-collision guarantee between sampled states.
+
     A solver failure never produces an executable fallback schedule.
 
     Args:
