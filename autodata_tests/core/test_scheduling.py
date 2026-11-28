@@ -54,6 +54,19 @@ def test_colliding_final_poses_are_infeasible(strategy):
     assert result.reason == "infeasible"
 
 
+def test_conflicting_intervals_can_share_an_endpoint_without_an_extra_idle_tick():
+    """Half-open waypoint intervals permit a same-tick handoff between conflicting states."""
+    left, right = (SegmentId.from_string(f"{arm}.move.transit") for arm in ("left", "right"))
+    result = schedule_paths(
+        (SchedulePath(left, "left", 3), SchedulePath(right, "right", 3)),
+        (WaypointConflict(SegmentWaypoint(left, 1), SegmentWaypoint(right, 1)),),
+    )
+    assert isinstance(result, Schedule)
+    left_ticks, right_ticks = result.ticks_for(left), result.ticks_for(right)
+    assert result.makespan_ticks == 4
+    assert left_ticks[2] == right_ticks[1] or right_ticks[2] == left_ticks[1]
+
+
 @pytest.mark.parametrize("strategy", tuple(SchedulerStrategy))
 @pytest.mark.parametrize("minimize_max_wait", (False, True))
 def test_collision_conflicts_preserve_precedence_and_non_preemption(strategy, minimize_max_wait):
