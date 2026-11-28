@@ -12,9 +12,63 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping
+import time
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from autodata_core.data_generator import GenerationResult
+
+
+def record_generation_attempt(
+    result: GenerationResult,
+    env_id: int,
+    stats: dict[str, int],
+    attempts: list[dict[str, object]],
+    *,
+    attempt_log: AttemptLog | None = None,
+    start_time_s: float | None = None,
+) -> None:
+    """Record one completed attempt in the shared counters and completion-ordered report.
+
+    Args:
+        result: Recorded episode outcome, including failures before replay.
+        env_id: Environment used for the attempt.
+        stats: Mutable success, failure and attempt counters.
+        attempts: Mutable completion-ordered attempt records.
+        attempt_log: Optional native metrics log for the run.
+        start_time_s: Monotonic start time of this attempt [s], required when logging.
+    """
+
+    attempt_index = stats["num_attempts"] + 1
+    if result.diagnostics:
+        details = ", ".join(f"{name}={value}" for name, value in result.diagnostics)
+        print(f"Generation attempt {attempt_index} (env {env_id}): {details}", flush=True)
+    attempts.append({
+        "attempt": attempt_index,
+        "env_id": env_id,
+        "success": result.success,
+        "diagnostics": dict(result.diagnostics),
+    })
+    stats["num_success" if result.success else "num_failures"] += 1
+    stats["num_attempts"] += 1
+    if attempt_log is not None:
+        from autodata_utils.tensor_utils import as_torch
+
+        assert start_time_s is not None, "attempt logging requires a start time"
+        initial_positions = {}
+        for name, state in result.initial_state.get("rigid_object", {}).items():
+            poses = as_torch(state["root_pose"])
+            initial_positions[name] = poses[0 if len(poses) == 1 else env_id, :2].tolist()
+        attempt_log.write({
+            "env_id": env_id,
+            "success": result.success,
+            "start_time_s": start_time_s,
+            "end_time_s": time.monotonic(),
+            "initial_object_positions": initial_positions,
+            "extras": result.extras,
+        })
 
 
 def write_generation_result(
@@ -24,6 +78,9 @@ def write_generation_result(
     stats: Mapping[str, int],
     env_profile: Mapping[str, str | None] | None = None,
     run_metadata: Mapping[str, Any] | None = None,
+    attempts: Sequence[Mapping[str, object]] | None = None,
+    environment: Mapping[str, str | float] | None = None,
+    execution: Mapping[str, object] | None = None,
 ) -> None:
     """Atomically write the final outcome of a completed data-generation run.
 
@@ -37,6 +94,10 @@ def write_generation_result(
             because the generated dataset stores only the base env id and would otherwise not
             reveal that the scene was modified.
         run_metadata: How the run was configured and how long it took, stored under ``run``.
+
+        attempts: Optional completion-ordered per-attempt outcomes and scalar diagnostics.
+        environment: Optional environment name, active physics manager, and control period [s].
+        execution: Optional generation-mode settings, timings [s] and memory measurements [byte].
     """
     required_stats = ("num_success", "num_failures", "num_attempts")
     for stat_name in required_stats:
@@ -59,6 +120,14 @@ def write_generation_result(
         result["env_profile"] = dict(env_profile)
     if run_metadata is not None:
         result["run"] = dict(run_metadata)
+
+    if environment is not None:
+        result["environment"] = dict(environment)
+    if execution is not None:
+        result["execution"] = dict(execution)
+    if attempts is not None:
+        assert len(attempts) == stats["num_attempts"], "Attempt records must match num_attempts."
+        result["attempts"] = [dict(attempt) for attempt in attempts]
 
     file_descriptor, temporary_file_name = tempfile.mkstemp(
         prefix=f".{result_path.name}.", suffix=".tmp", dir=result_path.parent, text=True

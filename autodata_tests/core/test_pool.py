@@ -5,6 +5,7 @@
 
 import torch
 import types
+from pathlib import Path
 
 import pytest
 
@@ -123,6 +124,23 @@ def _pool(task: TaskDescriptor, uses_start_signals: bool = False) -> DataGenInfo
     )
 
 
+def test_appending_after_a_subset_load_uses_an_unused_source_key():
+    pool = _pool(_mimicgen_task())
+    pool._add_episode(_mimicgen_episode(), demo_key="demo_1")
+    pool._add_episode(_mimicgen_episode())
+    assert pool.demo_keys == ("demo_1", "demo_2")
+
+
+def test_single_skill_can_load_without_an_unused_termination_mapping():
+    task = _skillgen_task()
+    task.subtasks["franka"] = task.subtasks["franka"][:1]
+    pool = _pool(task, uses_start_signals=True)
+    episode = _skillgen_episode()
+    del episode.data["obs"]["datagen_info"]["subtask_term_signals"]
+    pool._add_episode(episode)
+    assert pool.subtask_boundaries["franka"] == [[(1, 10)]]
+
+
 def _episode(*, actions_len: int, datagen_info: dict, action_dim: int = 7) -> types.SimpleNamespace:
     return types.SimpleNamespace(
         data={"actions": torch.zeros(actions_len, action_dim), "obs": {"datagen_info": datagen_info}}
@@ -212,6 +230,22 @@ def test_add_episode_parses_mimicgen_boundaries():
     assert pool.subtask_boundaries["franka"] == [[(0, 5), (5, 10)]]
 
 
+@pytest.mark.parametrize("uses_start_signals", [False, True])
+def test_add_episode_uses_first_trigger_when_signals_toggle(uses_start_signals):
+    """Later predicate changes must not move the first source subtask boundary."""
+    pool = _pool(_skillgen_task() if uses_start_signals else _mimicgen_task(), uses_start_signals)
+    episode = _skillgen_episode() if uses_start_signals else _mimicgen_episode()
+    annotations = episode.data["obs"]["datagen_info"]
+    annotations["subtask_term_signals"]["grasp_1"] = torch.tensor([0, 0, 0, 0, 1, 0, 1, 0, 0, 0])
+    if uses_start_signals:
+        annotations["subtask_start_signals"]["grasp_1"] = torch.tensor([0, 1, 0, 1, 1, 1, 1, 1, 1, 1])
+
+    pool._add_episode(episode)
+
+    first_start, second_start = (1, 6) if uses_start_signals else (0, 5)
+    assert pool.subtask_boundaries["franka"] == [[(first_start, 5), (second_start, 10)]]
+
+
 def test_add_episode_populates_datagen_info_and_passthrough():
     pool = _pool(_mimicgen_task())
     pool._add_episode(_mimicgen_episode(actions_len=8, term_edge=3))
@@ -233,6 +267,40 @@ def test_add_episode_accepts_deformable_state_without_rigid_object_pose():
     assert set(di.object_nodal_positions) == {"rope"}
     assert di.object_nodal_positions["rope"].shape == (8, 12, 3)
     assert pool.subtask_boundaries["franka"] == [[(0, 4), (4, 8)]]
+
+
+@pytest.mark.parametrize("sample", [0, 3, 9])
+def test_object_event_uses_exact_source_sample(sample):
+    """Object marks do not receive the completion signal's one-step end offset."""
+    pool = _pool(_mimicgen_task())
+    episode = _mimicgen_episode()
+    episode.data["obs"]["datagen_info"]["object_event_signals"] = {"grasp": _step_signal(10, sample)}
+    pool._add_episode(episode, demo_key="source")
+    assert pool.get_object_event_index(0, "grasp") == sample
+    assert "object_event_signals" in pool.datagen_infos[0].to_dict()
+    with pytest.raises(AssertionError, match="missing object event"):
+        pool.get_object_event_index(0, "release")
+
+
+@pytest.mark.parametrize("signal", [torch.ones(9), torch.ones(1, 10), torch.full((10,), 0.5), torch.zeros(10)])
+def test_object_event_rejects_invalid_signal(signal):
+    """Malformed, nonbinary and unmarked events fail when the source is loaded."""
+    pool = _pool(_mimicgen_task())
+    episode = _mimicgen_episode()
+    episode.data["obs"]["datagen_info"]["object_event_signals"] = {"grasp": signal}
+    with pytest.raises((AssertionError, ValueError)):
+        pool._add_episode(episode)
+
+
+def test_required_object_events_are_checked_before_source_is_added():
+    """A task requesting internal marks cannot silently fall back to skill boundaries."""
+    task = TaskDescriptor.from_yaml(
+        str(Path(__file__).resolve().parents[2] / "autodata_examples/tasks/gr1t2_nut_pour_schedulegen.yaml")
+    )
+    pool = DataGenInfoPool(task, _bimanual_adapter(), "cpu", uses_start_signals=True)
+    with pytest.raises(AssertionError, match="missing object_event_signals"):
+        pool._add_episode(_dexmimicgen_episode())
+    assert pool.num_datagen_infos == 0
 
 
 def test_add_episode_missing_datagen_info_error():

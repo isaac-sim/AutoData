@@ -20,6 +20,7 @@ import argparse
 import h5py
 import importlib
 import json
+import numpy as np
 import os
 import sys
 
@@ -56,8 +57,13 @@ def _decode(value: object) -> str:
     return value if isinstance(value, str) else str(value)
 
 
-def validate_file(path: str) -> ValidationResult:
-    """Structurally validate one HDF5 dataset and collect its metadata."""
+def validate_file(path: str, *, check_arrays: bool = False) -> ValidationResult:
+    """Validate one HDF5 dataset and collect its metadata.
+
+    Args:
+        path: Dataset to read.
+        check_arrays: Whether to also check finite numeric values and observation/action alignment.
+    """
 
     result = ValidationResult(path)
 
@@ -101,8 +107,33 @@ def validate_file(path: str) -> ValidationResult:
                 if field in demo and not isinstance(demo[field], expected_kind):
                     kind = "group" if expected_kind is h5py.Group else "dataset"
                     result.issues.append(f"{name}: '{field}' must be a {kind}")
+            if check_arrays and isinstance(demo.get("actions"), h5py.Dataset):
+                _validate_arrays(demo, result)
 
     return result
+
+
+def _validate_arrays(episode: h5py.Group, result: ValidationResult) -> None:
+    """Check numeric values in chunks and observation lengths without loading image arrays."""
+    actions = episode["actions"]
+    if actions.ndim == 0 or len(actions) == 0:
+        result.issues.append(f"{episode.name}: actions must have a nonempty time dimension")
+        return
+
+    def check(name: str, node: h5py.Group | h5py.Dataset) -> None:
+        """Check one episode array and append any invalid values or lengths."""
+        if not isinstance(node, h5py.Dataset):
+            return
+        if name.startswith("obs/") and (node.ndim == 0 or len(node) != len(actions)):
+            result.issues.append(f"{episode.name}/{name}: observation length differs from actions")
+        if np.issubdtype(node.dtype, np.inexact):
+            chunks = (
+                (node[()],) if node.ndim == 0 else (node[start : start + 256] for start in range(0, len(node), 256))
+            )
+            if any(not np.isfinite(chunk).all() for chunk in chunks):
+                result.issues.append(f"{episode.name}/{name}: contains non-finite numeric values")
+
+    episode.visititems(check)
 
 
 def _read_env_metadata(data: h5py.Group, result: ValidationResult) -> None:
@@ -167,6 +198,9 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="Validate AutoData demonstration HDF5 datasets.")
     parser.add_argument("files", nargs="+", help="HDF5 dataset file(s) to validate.")
+    parser.add_argument(
+        "--check_arrays", action="store_true", help="Check finite values and observation/action lengths."
+    )
     parser.add_argument("--report", action="store_true", help="Also report the metrics of a single dataset.")
     parser.add_argument("--result_file", help="Generation result (generate_dataset.py --result_file) of the dataset.")
     parser.add_argument("--source", help="Source dataset the generation started from.")
@@ -186,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
 
-    results = [validate_file(path) for path in args.files]
+    results = [validate_file(path, check_arrays=args.check_arrays) for path in args.files]
     print_results(results)
 
     num_invalid = sum(not r.valid for r in results)

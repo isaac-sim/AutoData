@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
+from isaaclab.controllers.pink_ik import DampingTaskCfg, FrameTaskCfg, NullSpacePostureTaskCfg, PinkIKControllerCfg
 from isaaclab.envs.mdp.actions.pink_task_space_actions import PinkInverseKinematicsAction
 from isaaclab.managers import DatasetExportMode, EventTermCfg, SceneEntityCfg
 from isaaclab.managers.recorder_manager import RecorderManagerBaseCfg
@@ -32,7 +33,7 @@ from isaaclab_physx.sim.schemas import PhysxRigidBodyPropertiesCfg
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
 from autodata_interfaces.env.datagen_info_recorder import add_step_success_recorder
-from autodata_interfaces.env.env_profile import EnvironmentProfile, convert_event_params
+from autodata_interfaces.env.env_profile import EnvironmentProfile, PinkIKControlOverrideSpec, convert_event_params
 from autodata_interfaces.env.pink_ik_action import PinkInverseKinematicsActionSharedUrdf
 from autodata_interfaces.env.recorders import make_action_state_recorder_manager_cfg
 from autodata_interfaces.env.reset_request import EnvResetRequest
@@ -103,12 +104,79 @@ def get_env_name_from_dataset(input_file_path: str) -> str:
     return env_name
 
 
+def _pink_task_cfg_unique(
+    task_cfgs: list[Any], task_cfg_type: type, *, action_term: str, frame: str | None = None
+) -> Any:
+    """Resolve exactly one Pink task config, optionally by exact frame name."""
+    matches = [
+        task_cfg
+        for task_cfg in task_cfgs
+        if isinstance(task_cfg, task_cfg_type) and (frame is None or getattr(task_cfg, "frame", None) == frame)
+    ]
+    selection = task_cfg_type.__name__ if frame is None else f"{task_cfg_type.__name__} for frame {frame!r}"
+    assert (
+        len(matches) == 1
+    ), f"Pink IK action term {action_term!r} must contain exactly one {selection}; found {len(matches)}."
+    return matches[0]
+
+
+def _apply_pink_ik_control_override(env_cfg: Any, override: PinkIKControlOverrideSpec) -> None:
+    """Apply a validated Pink IK objective override without replacing its controller."""
+    actions_cfg = getattr(env_cfg, "actions", None)
+    assert actions_cfg is not None, "The base env does not define an actions config."
+    action_cfg = getattr(actions_cfg, override.action_term, None)
+    assert action_cfg is not None, f"The base env does not define action term {override.action_term!r}."
+    controller_cfg = getattr(action_cfg, "controller", None)
+    assert isinstance(
+        controller_cfg, PinkIKControllerCfg
+    ), f"Action term {override.action_term!r} does not use PinkIKControllerCfg."
+    task_cfgs = controller_cfg.variable_input_tasks
+
+    # Resolve every target before mutation so a malformed base config cannot be partially patched.
+    frame_targets = {
+        frame_name: _pink_task_cfg_unique(
+            task_cfgs,
+            FrameTaskCfg,
+            action_term=override.action_term,
+            frame=frame_name,
+        )
+        for frame_name in override.frame_tasks
+    }
+    damping_override = override.damping_task
+    damping_target = (
+        _pink_task_cfg_unique(task_cfgs, DampingTaskCfg, action_term=override.action_term)
+        if damping_override is not None
+        else None
+    )
+    null_space_override = override.null_space_posture_task
+    null_space_target = (
+        _pink_task_cfg_unique(task_cfgs, NullSpacePostureTaskCfg, action_term=override.action_term)
+        if null_space_override is not None
+        else None
+    )
+    existing_joint_names = list(action_cfg.pink_controlled_joint_names)
+    duplicate_joint_names = set(override.additional_joint_names) & set(existing_joint_names)
+    assert not duplicate_joint_names, f"Pink IK action term already controls joints: {sorted(duplicate_joint_names)}"
+
+    for frame_name, frame_override in override.frame_tasks.items():
+        target = frame_targets[frame_name]
+        target.position_cost = frame_override.position_cost
+        target.orientation_cost = frame_override.orientation_cost
+        target.lm_damping = frame_override.lm_damping
+        target.gain = frame_override.gain
+    if damping_override is not None:
+        damping_target.cost = damping_override.cost
+    if null_space_override is not None:
+        null_space_target.cost = null_space_override.cost
+        null_space_target.lm_damping = null_space_override.lm_damping
+    action_cfg.pink_controlled_joint_names = [*existing_joint_names, *override.additional_joint_names]
+
+
 def apply_env_profile(env_cfg: Any, profile: EnvironmentProfile, env_name: str) -> None:
     """Overlay ``profile`` onto a parsed env config in place, before ``gym.make``.
 
-    The scene and event managers build entities from the config instance's ``__dict__``, so
-    assets and event terms set here are consumed like class-declared ones, and event terms set
-    to None are skipped.
+    Scene and event changes are consumed like class-declared config. Controller changes patch
+    existing task configs without replacing the action term or controller implementation.
 
     Args:
         env_cfg: Parsed env config instance returned by ``parse_env_cfg``.
@@ -127,6 +195,20 @@ def apply_env_profile(env_cfg: Any, profile: EnvironmentProfile, env_name: str) 
         for parameter, value in overrides.items():
             assert hasattr(term_cfg, parameter), f"Action term {term_name!r} has no parameter {parameter!r}."
             setattr(term_cfg, parameter, value)
+
+    if profile.viewer is not None:
+        from isaaclab_visualizers.kit import KitVisualizerCfg
+
+        viewer = profile.viewer
+        track_path = viewer.asset_name
+        if viewer.origin_type == "asset_body":
+            track_path = f"{viewer.asset_name}/{viewer.body_name}"
+        env_cfg.sim.default_visualizer_cfg = KitVisualizerCfg(
+            eye=viewer.eye,
+            lookat=viewer.lookat,
+            origin_type="asset" if viewer.origin_type.startswith("asset_") else viewer.origin_type,
+            origin_track_path=track_path,
+        )
 
     # Scene: add rigid objects.
     for asset_name, add_spec in profile.scene.rigid_objects.add.items():
@@ -150,10 +232,20 @@ def apply_env_profile(env_cfg: Any, profile: EnvironmentProfile, env_name: str) 
             ),
         )
 
-    # Scene: override rigid-body properties of existing objects.
+    # Scene: override initial positions and rigid-body properties of existing objects.
     for asset_name, object_override in profile.scene.rigid_objects.override.items():
         asset_cfg = getattr(env_cfg.scene, asset_name, None)
         assert asset_cfg is not None, f"Cannot override scene asset {asset_name!r}: the base env does not define it."
+        if object_override.position is not None:
+            asset_cfg.init_state.pos = object_override.position
+        if object_override.scale is not None:
+            asset_cfg.spawn.scale = object_override.scale
+        if object_override.physics_material is not None:
+            from isaaclab.sim.spawners.materials.physics_materials_cfg import UsdPhysicsRigidBodyMaterialCfg
+
+            asset_cfg.spawn.physics_material = UsdPhysicsRigidBodyMaterialCfg(**object_override.physics_material)
+        if not object_override.rigid_props:
+            continue
         rigid_props = getattr(asset_cfg.spawn, "rigid_props", None)
         assert rigid_props is not None, f"Scene asset {asset_name!r} has no spawn rigid-body properties to override."
         for prop_name, value in object_override.rigid_props.items():
@@ -161,6 +253,34 @@ def apply_env_profile(env_cfg: Any, profile: EnvironmentProfile, env_name: str) 
                 rigid_props, prop_name
             ), f"Rigid-body properties of {asset_name!r} have no field {prop_name!r}."
             setattr(rigid_props, prop_name, value)
+
+    # Scene: override existing cameras without introducing a second render product.
+    for camera_name, camera_override in profile.scene.cameras.override.items():
+        camera_cfg = getattr(env_cfg.scene, camera_name, None)
+        assert camera_cfg is not None, f"Cannot override scene camera {camera_name!r}: the base env does not define it."
+        offset_cfg = getattr(camera_cfg, "offset", None)
+        assert offset_cfg is not None, f"Scene asset {camera_name!r} is not a camera with an offset configuration."
+        spawn_cfg = getattr(camera_cfg, "spawn", None)
+        assert spawn_cfg is not None, f"Scene camera {camera_name!r} has no spawn configuration."
+
+        if camera_override.prim_path is not None:
+            camera_cfg.prim_path = camera_override.prim_path
+        offset_cfg.pos = camera_override.position
+        offset_cfg.rot = camera_override.rotation_xyzw
+        offset_cfg.convention = camera_override.convention
+        if camera_override.clipping_range is not None:
+            assert hasattr(
+                spawn_cfg, "clipping_range"
+            ), f"Spawn configuration of scene camera {camera_name!r} has no clipping_range field."
+            spawn_cfg.clipping_range = camera_override.clipping_range
+        if camera_override.focal_length is not None:
+            assert hasattr(
+                spawn_cfg, "focal_length"
+            ), f"Spawn configuration of scene camera {camera_name!r} has no focal_length field."
+            spawn_cfg.focal_length = camera_override.focal_length
+        if camera_override.width is not None:
+            camera_cfg.width = camera_override.width
+            camera_cfg.height = camera_override.height
 
     # Events: remove, override, then add.
     events_cfg = env_cfg.events
@@ -192,6 +312,9 @@ def apply_env_profile(env_cfg: Any, profile: EnvironmentProfile, env_name: str) 
             "which does not exist on the base env or the profile's scene additions."
         )
 
+    if profile.control.pink_ik is not None:
+        _apply_pink_ik_control_override(env_cfg, profile.control.pink_ik)
+
 
 def setup_env_config(
     env_name: str,
@@ -220,8 +343,8 @@ def setup_env_config(
         device: Device to run on.
         generation_policy_params: The task descriptor's generation config (source of truth).
         recorder_cfg: Optional recorder manager config; defaults to an action/state recorder.
-        env_profile: Optional environment profile overlaid on the parsed config (scene additions,
-            reset-event changes) before the generation-specific adjustments below.
+        env_profile: Optional environment profile overlaid on the parsed config (scene, event,
+            and controller changes) before the generation-specific adjustments below.
         enable_cameras: Record the task's image observations. Defaults to low-dimensional
             observations, excluding the cameras used for teleoperation previews.
         record_step_success: Also record whether the task's success term holds after each step, as
@@ -244,6 +367,9 @@ def setup_env_config(
 
     if env_profile is not None:
         apply_env_profile(env_cfg, env_profile, env_name)
+
+    if enable_cameras:
+        env_cfg.num_rerenders_on_reset = max(1, env_cfg.num_rerenders_on_reset)
 
     # Extract success checking function
     assert hasattr(env_cfg.terminations, "success"), "No success termination term was found in the environment."
@@ -292,6 +418,8 @@ def env_loop(
     generation_policy_params: GenerationPolicy,
     stats: dict,
     data_gen_tasks: asyncio.Future | None = None,
+    *,
+    stop_after_attempts: int | None = None,
 ) -> bool:
     """Synchronous step loop for the environment.
 
@@ -301,48 +429,99 @@ def env_loop(
     when enough demos/attempts have been collected.
 
     The stop condition is read from ``generation_policy_params`` (the task descriptor's generation
-    config) rather than from ``env.cfg.datagen_config``: ``num_trials`` interpreted as successes
+    config) rather than from ``base_env.cfg.datagen_config``: ``num_trials`` interpreted as successes
     when ``guarantee_success`` is set, otherwise as total attempts.
 
-    Reset settling uses ``env.cfg.idle_action`` when configured, or zeros otherwise. A configured
+    Reset settling uses ``base_env.cfg.idle_action`` when configured, or zeros otherwise. A configured
     idle action must be a finite vector matching one environment's action dimensions.
 
     Args:
-        env: The environment to run the main step loop on.
-        env_reset_queue: The asyncio queue carrying :class:`EnvResetRequest` instances.
+        env: Environment to step; single-environment Gym video wrappers are supported.
+        env_reset_queue: Queue carrying :class:`EnvResetRequest` instances.
         env_action_queue: The asyncio queue carrying ``(env_id, action)`` pairs to execute.
         asyncio_event_loop: The main asyncio event loop.
         generation_policy_params: The task descriptor's generation config (source of truth).
         stats: Shared dict with ``num_success``, ``num_failures``, and ``num_attempts`` counters.
         data_gen_tasks: Gathered future for all data generation tasks. When provided, the loop
             exits early if all tasks finish unexpectedly (e.g. due to an unhandled exception).
-
+        stop_after_attempts: Optional number of additional completed attempts before returning,
+            without resetting the run's counters or changing its generation policy.
     Returns:
-        Whether the generation policy's requested trial target was reached.
+        Whether the generation target or the additional-attempt limit was reached. False means
+        the run exhausted its failure allowance or execution stopped before either target.
     """
     num_trials = generation_policy_params.num_trials
     guarantee_success = generation_policy_params.guarantee_success
+    assert stop_after_attempts is None or (type(stop_after_attempts) is int and stop_after_attempts > 0)
+    stop_at_attempt = None if stop_after_attempts is None else stats["num_attempts"] + stop_after_attempts
+    base_env = env.unwrapped if hasattr(env, "unwrapped") else env
     reset_settling_steps = generation_policy_params.reset_settling_steps
     assert reset_settling_steps >= 0, "reset_settling_steps must be non-negative"
-    idle_actions = torch.zeros(env.action_space.shape, dtype=torch.float32, device=env.device)
-    configured_idle_action = getattr(env.cfg, "idle_action", None)
+    idle_actions = torch.zeros(base_env.action_space.shape, dtype=torch.float32, device=base_env.device)
+    configured_idle_action = getattr(base_env.cfg, "idle_action", None)
     if reset_settling_steps > 0 and configured_idle_action is not None:
-        idle_action = torch.as_tensor(configured_idle_action, dtype=idle_actions.dtype, device=env.device)
-        assert (
-            idle_action.shape == env.action_space.shape[1:]
-        ), f"env.cfg.idle_action must have shape {env.action_space.shape[1:]}, got {tuple(idle_action.shape)}."
-        assert torch.isfinite(idle_action).all(), "env.cfg.idle_action must contain only finite values."
+        idle_action = torch.as_tensor(configured_idle_action, dtype=idle_actions.dtype, device=base_env.device)
+        assert idle_action.shape == base_env.action_space.shape[1:], (
+            f"base_env.cfg.idle_action must have shape {base_env.action_space.shape[1:]}, got"
+            f" {tuple(idle_action.shape)}."
+        )
+        assert torch.isfinite(idle_action).all(), "base_env.cfg.idle_action must contain only finite values."
         idle_actions[:] = idle_action
-    env_id_tensor = torch.tensor([0], dtype=torch.int64, device=env.device)
+    env_id_tensor = torch.tensor([0], dtype=torch.int64, device=base_env.device)
     settling_requests: dict[int, EnvResetRequest] = {}
     settling_steps_remaining: dict[int, int] = {}
     prev_num_attempts = 0
-    # simulate environment -- run everything in inference mode
-    with contextlib.suppress(KeyboardInterrupt) and torch.inference_mode():
+
+    def generation_status() -> bool | None:
+        """Report progress and return the terminal result, if generation is complete."""
+
+        nonlocal prev_num_attempts
+        if prev_num_attempts == stats["num_attempts"]:
+            return None
+        prev_num_attempts = stats["num_attempts"]
+        num_success = stats["num_success"]
+        num_attempts = stats["num_attempts"]
+        generated_success_rate = 100 * num_success / num_attempts if num_attempts > 0 else 0.0
+        print("")
+        print("*" * 50, "\033[K")
+        if guarantee_success:
+            print(
+                f"{num_success}/{num_trials} successful demos generated ({num_attempts} attempts,"
+                f" {stats['num_failures']} failures; {generated_success_rate:.1f}% success)\033[K"
+            )
+        else:
+            print(
+                f"{num_attempts}/{num_trials} attempts completed "
+                f"({num_success} successful demos; {generated_success_rate:.1f}% success)\033[K"
+            )
+        print("*" * 50, "\033[K")
+
+        check_value = num_success if guarantee_success else num_attempts
+        if check_value >= num_trials:
+            print(f"Reached {num_trials} {'successes' if guarantee_success else 'attempts'}. Exiting.")
+            return True
+        if guarantee_success and not generation_policy_params.remaining_attempts(num_attempts, num_success):
+            print(
+                f"Reached the failure allowance after {num_attempts} attempts with"
+                f" {num_success}/{num_trials} successes."
+            )
+            return False
+        if stop_at_attempt is not None and num_attempts >= stop_at_attempt:
+            return True
+        return None
+
+    with contextlib.suppress(KeyboardInterrupt), torch.inference_mode():
         while True:
-            # check if any environment needs to be reset while waiting for actions
-            while env_action_queue.qsize() + len(settling_requests) != env.num_envs:
-                asyncio_event_loop.run_until_complete(asyncio.sleep(0))
+            status = generation_status()
+            if status is not None:
+                return status
+            while env_action_queue.qsize() + len(settling_requests) != base_env.num_envs:
+                # cuRobo planning and IK may require gradients while producers run.
+                with torch.enable_grad(), torch.inference_mode(False):
+                    asyncio_event_loop.run_until_complete(asyncio.sleep(0))
+                status = generation_status()
+                if status is not None:
+                    return status
                 if data_gen_tasks is not None and data_gen_tasks.done():
                     exc = data_gen_tasks.exception()
                     if exc is not None:
@@ -354,13 +533,16 @@ def env_loop(
                         request, EnvResetRequest
                     ), f"env_reset_queue entries must be EnvResetRequest instances, got {type(request).__name__}"
                     assert (
-                        0 <= request.env_id < env.num_envs
-                    ), f"Reset environment index {request.env_id} is outside [0, {env.num_envs})."
+                        0 <= request.env_id < base_env.num_envs
+                    ), f"Reset environment index {request.env_id} is outside [0, {base_env.num_envs})."
                     assert (
                         request.env_id not in settling_requests
                     ), f"Environment {request.env_id} already has a reset settling request in progress."
                     env_id_tensor[0] = request.env_id
-                    env.reset(env_ids=env_id_tensor)
+                    if env is not base_env and base_env.num_envs == 1:
+                        env.reset()
+                    else:
+                        base_env.reset(env_ids=env_id_tensor)
 
                     if reset_settling_steps > 0:
                         settling_requests[request.env_id] = request
@@ -370,7 +552,7 @@ def env_loop(
                             request.completion.set_result(None)
                         env_reset_queue.task_done()
 
-                expected_action_count = env.num_envs - len(settling_requests)
+                expected_action_count = base_env.num_envs - len(settling_requests)
                 assert env_action_queue.qsize() <= expected_action_count, (
                     f"Received {env_action_queue.qsize()} queued actions for only {expected_action_count} "
                     "non-settling environments."
@@ -380,9 +562,10 @@ def env_loop(
 
             # Settling environments use the idle action. Batch-fetch one real action for every
             # other environment so their generation trajectories continue without interruption.
-            action_count = env.num_envs - len(settling_requests)
+            action_count = base_env.num_envs - len(settling_requests)
             get_tasks = [env_action_queue.get() for _ in range(action_count)]
-            results = asyncio_event_loop.run_until_complete(asyncio.gather(*get_tasks)) if get_tasks else []
+            with torch.enable_grad(), torch.inference_mode(False):
+                results = asyncio_event_loop.run_until_complete(asyncio.gather(*get_tasks)) if get_tasks else []
             action_env_ids: set[int] = set()
             for env_id, action in results:
                 assert (
@@ -391,7 +574,7 @@ def env_loop(
                 assert env_id not in action_env_ids, f"Received multiple actions for environment {env_id}."
                 action_env_ids.add(env_id)
                 actions[env_id] = action
-            expected_action_env_ids = set(range(env.num_envs)) - settling_requests.keys()
+            expected_action_env_ids = set(range(base_env.num_envs)) - settling_requests.keys()
             assert (
                 action_env_ids == expected_action_env_ids
             ), f"Expected actions for environments {sorted(expected_action_env_ids)}, got {sorted(action_env_ids)}."
@@ -410,15 +593,15 @@ def env_loop(
                     settled_env_ids.append(env_id)
 
             if settled_env_ids:
-                settled_env_ids_tensor = torch.tensor(settled_env_ids, dtype=torch.int64, device=env.device)
+                settled_env_ids_tensor = torch.tensor(settled_env_ids, dtype=torch.int64, device=base_env.device)
                 # Discard temporary settle frames, then capture the settled state as the generated
                 # episode's initial state before releasing the corresponding generators.
-                env.recorder_manager.reset(env_ids=settled_env_ids_tensor)
+                base_env.recorder_manager.reset(env_ids=settled_env_ids_tensor)
                 # Settling is not a reset: Arena correctly ignores post-reset callbacks here.
                 # Snapshot the actual settled state through the public recorder API instead.
-                env.recorder_manager.add_to_episodes(
+                base_env.recorder_manager.add_to_episodes(
                     "initial_state",
-                    get_scene_state(env.scene, is_relative=True, env_ids=settled_env_ids_tensor),
+                    get_scene_state(base_env.scene, is_relative=True, env_ids=settled_env_ids_tensor),
                     env_ids=settled_env_ids_tensor,
                 )
                 for env_id in settled_env_ids:
@@ -428,24 +611,8 @@ def env_loop(
                         request.completion.set_result(None)
                     env_reset_queue.task_done()
 
-            if prev_num_attempts != stats["num_attempts"]:
-                prev_num_attempts = stats["num_attempts"]
-                num_success = stats["num_success"]
-                num_attempts = stats["num_attempts"]
-                generated_success_rate = 100 * num_success / num_attempts if num_attempts > 0 else 0.0
-                print("")
-                print("*" * 50, "\033[K")
-                print(f"{num_success}/{num_attempts} ({generated_success_rate:.1f}%) successful demos generated\033[K")
-                print("*" * 50, "\033[K")
-
-                # termination condition is on enough successes if guarantee_success else enough attempts
-                check_val = num_success if guarantee_success else num_attempts
-                if check_val >= num_trials:
-                    print(f"Reached {num_trials} {'successes' if guarantee_success else 'attempts'}. Exiting.")
-                    return True
-
             # check that simulation is stopped or not
-            if env.sim.is_stopped():
+            if base_env.sim.is_stopped():
                 return False
 
     # Do not close env here: async data generator tasks may still be running.

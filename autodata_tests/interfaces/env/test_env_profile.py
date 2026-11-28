@@ -20,6 +20,23 @@ def _minimal_valid() -> dict:
     return {"name": "p", "base_env": "IsaacContrib-Stack-Cube-Franka-IK-Rel"}
 
 
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"position": None, "scale": [1, 1, 1]},
+        {"scale": None, "rigid_props": {"disable_gravity": True}},
+    ],
+)
+def test_optional_object_vectors_preserve_null(override):
+    profile = EnvironmentProfile.from_dict({
+        **_minimal_valid(),
+        "scene": {"rigid_objects": {"override": {"object": override}}},
+    })
+    spec = profile.scene.rigid_objects.override["object"]
+    assert spec.position is None
+    assert spec.scale == ((1, 1, 1) if override.get("scale") is not None else None)
+
+
 def _full_valid() -> dict:
     return {
         "name": "p",

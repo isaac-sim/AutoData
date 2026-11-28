@@ -24,6 +24,13 @@ from autodata_interfaces.tasks.generation_policy_spec import GenerationPolicy
 from autodata_interfaces.tasks.subtask_spec import MimicGenSubtaskAlgoParams, Subtask
 
 
+def test_generation_result_preserves_positional_extras():
+    extras = {"example": 1}
+    result = GenerationResult({}, True, extras)
+    assert result.extras is extras
+    assert result.diagnostics == ()
+
+
 def _subtask(term_signal: str = "s", term_offset: tuple[int, int] = (0, 0)) -> Subtask:
     return Subtask(
         subtask_term_signal=term_signal,
@@ -202,6 +209,7 @@ def test_unresponsive_navigation_fails_and_finalizes_the_attempt(monkeypatch):
     generator = _navigation_generator(active=True, reached=False)
     generator.datastream.generation_policy.max_navigation_hold_steps = 3
     recorder = Mock()
+    recorder.get_episode.return_value = SimpleNamespace(data={"actions": torch.zeros(1, 1)})
     generator.datastream.env = SimpleNamespace(recorder_manager=recorder)
     waypoint = Waypoint(pose=torch.eye(4), passthrough_action={})
     monkeypatch.setattr(generator.algorithm, "plan_subtask_trajectory", lambda **kwargs: ([waypoint, waypoint], False))
@@ -258,3 +266,108 @@ def test_source_selection_preserves_positional_arguments():
     )
 
     assert selected == 0
+
+
+@pytest.mark.parametrize("recorded_steps", [False, True])
+def test_finalization_does_not_export_a_reset_snapshot_without_steps(recorded_steps):
+    recorder = Mock()
+    data = {"initial_state": {}}
+    if recorded_steps:
+        data["obs"] = torch.zeros(1, 2)
+    recorder.get_episode.return_value = SimpleNamespace(data=data)
+    generator = object.__new__(DataGenerator)
+    generator.datastream = SimpleNamespace(device="cpu", get_env=lambda: SimpleNamespace(recorder_manager=recorder))
+    generator._finalize_episode_recording(env_id_tensor=torch.tensor([0]), success=False, export_demo=True)
+    recorder.set_success_to_episodes.assert_called_once()
+    assert recorder.export_episodes.call_count == int(recorded_steps)
+
+
+@pytest.mark.parametrize(
+    "num_envs,num_trials,guarantee_success,fail_first,step_count,expected_attempts,expected_success,failure_budget",
+    [
+        (5, 6, False, 0, 2, 6, 6, 2),
+        (5, 2, False, 0, 2, 2, 2, 2),
+        (3, 4, True, 2, 2, 6, 4, 2),
+        (3, 4, True, 100, 0, 6, 0, 2),
+        (2, 3, True, 60, 0, 63, 3, None),
+    ],
+)
+def test_generation_loop_reserves_exact_budget_and_holds_idle_relative_targets(
+    num_envs, num_trials, guarantee_success, fail_first, step_count, expected_attempts, expected_success, failure_budget
+):
+    from autodata_interfaces.env.isaaclab_env_interface import env_loop
+
+    policy = GenerationPolicy(
+        num_trials=num_trials, guarantee_success=guarantee_success, max_num_failures=failure_budget
+    )
+    env = SimpleNamespace(
+        num_envs=num_envs,
+        cfg=SimpleNamespace(),
+        device="cpu",
+        action_space=SimpleNamespace(shape=(num_envs, 1)),
+        action_manager=SimpleNamespace(action=torch.zeros(num_envs, 1)),
+        sim=SimpleNamespace(is_stopped=lambda: False),
+        positions=torch.zeros(num_envs),
+    )
+
+    def step(actions):
+        env.positions += actions[:, 0]
+        env.action_manager.action = actions.clone()
+
+    def pose(env_ids, name):
+        result = torch.eye(4).repeat(len(env_ids), 1, 1)
+        result[:, 0, 3] = env.positions[env_ids]
+        return result
+
+    def encode(target_eef_pose_dict, env_id, **kwargs):
+        return (target_eef_pose_dict["eef"][0, 3] - env.positions[env_id]).reshape(1)
+
+    env.step = step
+    generator = object.__new__(DataGenerator)
+    generator.datastream = SimpleNamespace(
+        get_env=lambda: env,
+        get_generation_policy=lambda: policy,
+        get_eef_names=lambda: ["eef"],
+        get_robot_eef_pose=pose,
+        get_passthrough_actions=lambda ids: None if num_trials < num_envs else {},
+        actions_to_passthrough_actions=lambda actions: {},
+        target_eef_pose_to_action=encode,
+    )
+    calls = []
+    pending = set()
+    stats = {"num_success": 0, "num_failures": 0, "num_attempts": 0}
+    attempts = []
+
+    async def generate(env_id, env_action_queue, **kwargs):
+        index = len(calls)
+        calls.append(env_id)
+        assert len(pending) <= min(num_envs, num_trials)
+        for _ in range(step_count):
+            await env_action_queue.put((env_id, torch.ones(1)))
+            await env_action_queue.join()
+        return GenerationResult({}, success=index >= fail_first)
+
+    generator.generate = generate
+    success_term = SimpleNamespace(func=lambda env: torch.zeros(num_envs, dtype=torch.bool), params={})
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    action_queue = asyncio.Queue()
+    reset_queue = asyncio.Queue()
+    tasks = asyncio.gather(*(
+        generator.generate_loop(index, success_term, reset_queue, action_queue, False, stats, attempts, pending)
+        for index in range(num_envs)
+    ))
+    guarded = loop.create_task(asyncio.wait_for(tasks, timeout=2.0))
+    try:
+        completed = env_loop(env, reset_queue, action_queue, loop, policy, stats, data_gen_tasks=guarded)
+    finally:
+        guarded.cancel()
+        loop.run_until_complete(asyncio.gather(guarded, return_exceptions=True))
+        loop.close()
+        asyncio.set_event_loop(None)
+    assert completed is (expected_success >= num_trials if guarantee_success else True)
+    assert len(calls) == len(attempts) == stats["num_attempts"] == expected_attempts
+    assert stats["num_success"] == expected_success
+    assert stats["num_failures"] == expected_attempts - expected_success
+    assert not pending
+    assert env.positions.tolist() == [calls.count(index) * step_count for index in range(num_envs)]

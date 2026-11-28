@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import numpy as np
+import time
 import torch
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -30,9 +31,11 @@ from autodata_core.transforms import (
 from autodata_core.waypoint import MultiWaypoint, Waypoint, WaypointSequence, WaypointTrajectory
 from autodata_interfaces.env.reset_request import EnvResetRequest
 from autodata_interfaces.tasks.subtask_constraint_spec import SubTaskConstraintCoordinationScheme, SubTaskConstraintType
+from autodata_utils.generation_result import record_generation_attempt
 
 if TYPE_CHECKING:
     from autodata_interfaces.datastream.datastream import Datastream
+    from autodata_utils.generation_result import AttemptLog
 
 
 @contextlib.asynccontextmanager
@@ -55,11 +58,13 @@ class GenerationResult:
         success: Whether the task succeeded at any step of the attempt.
         extras: Algorithm-specific facts about the attempt, from
             :meth:`~autodata_core.algorithms.GenerationAlgorithm.attempt_extras`.
+        diagnostics: Scalar algorithm details recorded in the generation result.
     """
 
     initial_state: dict
     success: bool
     extras: dict[str, Any] = field(default_factory=dict)
+    diagnostics: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
@@ -117,7 +122,23 @@ class DataGenerator:
         self.datastream = datastream
         self.algorithm = algorithm
         self.src_demo_datagen_info_pool = datastream.source_pool
-        self.demo_keys = demo_keys
+        assert demo_keys is None or isinstance(demo_keys, list), "demo_keys must be a list or None"
+        self.demo_keys = None if demo_keys is None else tuple(demo_keys)
+        self._source_demo_indices: tuple[int, ...] | None = None
+        if self.demo_keys is not None:
+            assert self.demo_keys, "demo_keys must be non-empty or None"
+            assert all(
+                isinstance(key, str) and key for key in self.demo_keys
+            ), "demo_keys must contain non-empty strings"
+            assert len(self.demo_keys) == len(set(self.demo_keys)), "demo_keys must be unique"
+            pool_demo_keys = tuple(self.src_demo_datagen_info_pool.demo_keys)
+            assert len(pool_demo_keys) == len(
+                self.src_demo_datagen_info_pool.datagen_infos
+            ), "source demo keys and episodes are misaligned"
+            pool_indices = {key: index for index, key in enumerate(pool_demo_keys)}
+            unknown_keys = tuple(key for key in self.demo_keys if key not in pool_indices)
+            assert not unknown_keys, f"unknown source demo keys: {unknown_keys}"
+            self._source_demo_indices = tuple(pool_indices[key] for key in self.demo_keys)
 
         self._validate_eef_count_for_algorithm()
         self._validate_coordination_for_algorithm()
@@ -132,9 +153,13 @@ class DataGenerator:
     # ------------------------------------------------------------------
 
     def _validate_eef_count_for_algorithm(self) -> None:
+        """Check that the task's end-effector count is supported by the algorithm."""
         num_eefs = len(self.datastream.get_eef_names())
         expected = self.algorithm.expected_eef_count
-        ok = num_eefs == expected if isinstance(expected, int) else num_eefs in expected
+        if expected is None:
+            ok = num_eefs > 0
+        else:
+            ok = num_eefs == expected if isinstance(expected, int) else num_eefs in expected
         if not ok:
             raise ValueError(
                 f"Algorithm {self.algorithm.name!r} expects {expected} EEF(s), task descriptor defines {num_eefs}"
@@ -228,15 +253,85 @@ class DataGenerator:
         object_nodal_positions: torch.Tensor | None = None,
         subtask_object_soft: bool = False,
     ) -> int:
-        """Pick a source demonstration index for a subtask via the configured strategy."""
+        """Pick one source demonstration for a subtask.
+
+        Args:
+            eef_name: End effector performing the subtask.
+            eef_pose: Current end-effector transform with shape ``(4, 4)`` [m].
+            object_pose: Current reference-object transform [m], or None for object-free subtasks.
+            src_demo_current_subtask_boundaries: Start/end sample indices for each source demonstration.
+            subtask_object_name: Reference-object name, or None for object-free subtasks.
+            selection_strategy_name: Registered source-selection strategy.
+            selection_strategy_kwargs: Optional strategy settings.
+            object_nodal_positions: Current deformable-object nodes [m], or None.
+            subtask_object_soft: Whether the reference object uses nodal state.
+
+        Returns:
+            Selected index in the source demonstration pool.
+        """
+
+        return self.select_source_demo_candidates(
+            eef_name=eef_name,
+            eef_pose=eef_pose,
+            object_pose=object_pose,
+            src_demo_current_subtask_boundaries=src_demo_current_subtask_boundaries,
+            subtask_object_name=subtask_object_name,
+            selection_strategy_name=selection_strategy_name,
+            selection_strategy_kwargs=selection_strategy_kwargs,
+            max_candidates=1,
+            object_nodal_positions=object_nodal_positions,
+            subtask_object_soft=subtask_object_soft,
+        )[0]
+
+    def select_source_demo_candidates(
+        self,
+        eef_name: str,
+        eef_pose: torch.Tensor,
+        object_pose: torch.Tensor | None,
+        src_demo_current_subtask_boundaries: np.ndarray,
+        subtask_object_name: str | None,
+        selection_strategy_name: str,
+        selection_strategy_kwargs: dict | None = None,
+        max_candidates: int | None = None,
+        *,
+        object_nodal_positions: torch.Tensor | None = None,
+        subtask_object_soft: bool = False,
+    ) -> tuple[int, ...]:
+        """Select ordered source demonstrations without replacement for one subtask.
+
+        Args:
+            eef_name: End effector performing the subtask.
+            eef_pose: Current end-effector transform with shape ``(4, 4)`` [m].
+            object_pose: Current reference-object transform [m], or None for object-free subtasks.
+            src_demo_current_subtask_boundaries: Start/end sample indices for each source demonstration.
+            subtask_object_name: Reference-object name, or None for object-free subtasks.
+            selection_strategy_name: Registered source-selection strategy.
+            selection_strategy_kwargs: Optional strategy settings.
+            max_candidates: Maximum number of candidates; None keeps all eligible candidates.
+            object_nodal_positions: Current deformable-object nodes [m], or None.
+            subtask_object_soft: Whether the reference object uses nodal state.
+
+        Returns:
+            Candidate indices in the source demonstration pool, in selection order.
+        """
+
+        assert max_candidates is None or (
+            type(max_candidates) is int and max_candidates >= 1
+        ), "max_candidates must be a positive integer or None"
         if subtask_object_name is None:
             assert selection_strategy_name == "random", selection_strategy_name
 
+        source_demo_indices: range | tuple[int, ...]
+        if self._source_demo_indices is None:
+            source_demo_indices = range(len(self.src_demo_datagen_info_pool.datagen_infos))
+        else:
+            source_demo_indices = self._source_demo_indices
+
         src_subtask_datagen_infos: list[DatagenInfo] = []
-        for i in range(len(self.src_demo_datagen_info_pool.datagen_infos)):
-            src_ep = self.src_demo_datagen_info_pool.datagen_infos[i]
-            start_ind = src_demo_current_subtask_boundaries[i][0]
-            end_ind = src_demo_current_subtask_boundaries[i][1]
+        for source_demo_index in source_demo_indices:
+            src_ep = self.src_demo_datagen_info_pool.datagen_infos[source_demo_index]
+            start_ind = src_demo_current_subtask_boundaries[source_demo_index][0]
+            end_ind = src_demo_current_subtask_boundaries[source_demo_index][1]
             src_subtask_datagen_infos.append(
                 DatagenInfo(
                     eef_pose=src_ep.eef_pose[eef_name][start_ind:end_ind],
@@ -258,13 +353,58 @@ class DataGenerator:
 
         strategy = make_selection_strategy(selection_strategy_name)
         kwargs = selection_strategy_kwargs or {}
-        return strategy.select_source_demo(
+        strategy_args = dict(
             eef_pose=eef_pose,
             object_pose=object_pose,
             src_subtask_datagen_infos=src_subtask_datagen_infos,
-            object_nodal_positions=object_nodal_positions,
             **kwargs,
         )
+        if subtask_object_soft:
+            strategy_args["object_nodal_positions"] = object_nodal_positions
+        if max_candidates == 1:
+            selected = strategy.select_source_demo(**strategy_args)
+            return (source_demo_indices[selected],)
+        local_candidates = strategy.source_demo_candidates(**strategy_args)
+        candidates = tuple(source_demo_indices[index] for index in local_candidates)
+        return candidates if max_candidates is None else candidates[:max_candidates]
+
+    def select_episode_source_candidates(
+        self,
+        env_id: int,
+        all_randomized_subtask_boundaries: dict[str, np.ndarray],
+    ) -> tuple[int, ...]:
+        """Select shared source demonstrations using the policy's anchor subtask.
+
+        Args:
+            env_id: Environment whose current robot and object poses guide selection.
+            all_randomized_subtask_boundaries: Source start/end sample indices per end effector.
+
+        Returns:
+            Ordered source-pool indices, or an empty tuple when no anchor is configured.
+        """
+
+        policy = self.datastream.get_generation_policy()
+        if policy.source_selection_anchor is None:
+            return ()
+        eef_name, subtask_name = policy.source_selection_anchor.split(".", maxsplit=1)
+        subtasks = self.datastream.get_subtasks(eef_name)
+        subtask_index = next(index for index, subtask in enumerate(subtasks) if subtask.name == subtask_name)
+        subtask = subtasks[subtask_index]
+        object_name = subtask.object_ref or None
+        object_pose = (
+            self.datastream.get_object_poses(env_ids=[env_id])[object_name][0] if object_name is not None else None
+        )
+        candidates = self.select_source_demo_candidates(
+            eef_name=eef_name,
+            eef_pose=self.datastream.get_robot_eef_pose(env_ids=[env_id], eef_name=eef_name)[0],
+            object_pose=object_pose,
+            src_demo_current_subtask_boundaries=all_randomized_subtask_boundaries[eef_name][:, subtask_index],
+            subtask_object_name=object_name,
+            selection_strategy_name=subtask.selection_strategy,
+            selection_strategy_kwargs=subtask.selection_strategy_kwargs,
+            max_candidates=policy.source_candidate_count,
+        )
+        return candidates
 
     # ------------------------------------------------------------------
     # Subtask trajectory generation
@@ -556,6 +696,81 @@ class DataGenerator:
     # Generation loop
     # ------------------------------------------------------------------
 
+    async def generate_loop(
+        self,
+        env_id: int,
+        success_term: TerminationTermCfg,
+        env_reset_queue: asyncio.Queue,
+        env_action_queue: asyncio.Queue,
+        pause_subtask: bool,
+        stats: dict[str, int],
+        attempts: list[dict[str, Any]],
+        pending_env_ids: set[int],
+        attempt_log: AttemptLog | None = None,
+    ) -> None:
+        """Generate within a shared trial budget and hold slots while other episodes finish.
+
+        Reservation and completion updates do not yield, so the simulator's event loop owns
+        the counters without a lock. The caller cancels this coroutine after reaching its target.
+
+        Args:
+            env_id: Environment used by this generation coroutine.
+            success_term: Task success predicate.
+            env_reset_queue: Reset requests serviced by the synchronous simulator loop.
+            env_action_queue: Actions consumed by the synchronous simulator loop.
+            pause_subtask: Whether to pause at subtask boundaries.
+            stats: Shared completed-episode counters.
+            attempts: Shared completion-ordered episode results.
+            pending_env_ids: Environment slots with a reserved, unfinished episode.
+            attempt_log: Optional native metrics log receiving each completed attempt.
+        """
+
+        policy = self.datastream.get_generation_policy()
+        hold = None
+        while True:
+            if not policy.remaining_attempts(stats["num_attempts"], stats["num_success"], len(pending_env_ids)):
+                if hold is None:
+                    hold = self._hold_current_pose(env_id)
+                await hold.execute(self.datastream, success_term, env_id, env_action_queue)
+                continue
+            assert env_id not in pending_env_ids
+            pending_env_ids.add(env_id)
+            hold = None
+            attempt_started = time.monotonic()
+            try:
+                result = await self.generate(
+                    env_id=env_id,
+                    success_term=success_term,
+                    env_reset_queue=env_reset_queue,
+                    env_action_queue=env_action_queue,
+                    pause_subtask=pause_subtask,
+                )
+            finally:
+                pending_env_ids.remove(env_id)
+            record_generation_attempt(
+                result, env_id, stats, attempts, attempt_log=attempt_log, start_time_s=attempt_started
+            )
+
+    def _hold_current_pose(self, env_id: int) -> MultiWaypoint:
+        """Capture fixed EEF targets and current passthrough commands for an idle slot.
+
+        Args:
+            env_id: Environment whose targets should be held.
+
+        Returns:
+            Waypoints encoded through the embodiment for each step, including relative controllers.
+        """
+
+        passthrough = self.datastream.get_passthrough_actions([env_id])
+        if passthrough is None:
+            actions = self.datastream.get_env().action_manager.action[env_id : env_id + 1]
+            passthrough = self.datastream.actions_to_passthrough_actions(actions)
+        commands = {name: values[0].detach().clone() for name, values in passthrough.items()}
+        return MultiWaypoint({
+            name: Waypoint(self.datastream.get_robot_eef_pose([env_id], name)[0].detach().clone(), commands, noise=0.0)
+            for name in self.datastream.get_eef_names()
+        })
+
     async def generate(
         self,
         env_id: int,
@@ -570,6 +785,25 @@ class DataGenerator:
         env_id_tensor, initial_state = await self._reset_environment_for_generation(
             env_id=env_id, env_reset_queue=env_reset_queue
         )
+
+        if self.algorithm.plans_complete_episode:
+            episode_result = await self.algorithm.generate_and_execute_episode(
+                data_generator=self,
+                env_id=env_id,
+                success_term=success_term,
+                env_action_queue=env_action_queue,
+                pause_subtask=pause_subtask,
+            )
+            self._finalize_episode_recording(
+                env_id_tensor=env_id_tensor,
+                success=episode_result.success,
+                export_demo=export_demo,
+            )
+            return GenerationResult(
+                initial_state=initial_state,
+                success=episode_result.success,
+                diagnostics=episode_result.diagnostics,
+            )
 
         runtime_constraints = self._build_runtime_subtask_constraints()
         eef_states = self._initialize_eef_states()
@@ -651,13 +885,11 @@ class DataGenerator:
 
         # Recorder lifecycle stays on env by design: the Datastream is
         # a read interface; controller-side mutation is reached through the get_env() escape hatch.
-        env = self.datastream.get_env()
-        env.recorder_manager.set_success_to_episodes(
-            env_id_tensor,
-            torch.tensor([[buffers.success]], dtype=torch.bool, device=self.datastream.device),
+        self._finalize_episode_recording(
+            env_id_tensor=env_id_tensor,
+            success=buffers.success,
+            export_demo=export_demo,
         )
-        if export_demo:
-            env.recorder_manager.export_episodes(env_id_tensor)
 
         return GenerationResult(
             initial_state=initial_state,
@@ -701,6 +933,15 @@ class DataGenerator:
         env_id: int,
         env_reset_queue: asyncio.Queue,
     ) -> tuple[torch.Tensor, dict]:
+        """Reset recording and the selected environment before capturing its state.
+
+        Args:
+            env_id: Environment to reset.
+            env_reset_queue: Queue serviced by the synchronous simulator loop.
+
+        Returns:
+            Environment index tensor and a copied, single-environment reset state.
+        """
         env_id_tensor = torch.tensor([env_id], dtype=torch.int64, device=self.datastream.device)
         # Recorder + reset queue stay on env. The initial scene state
         # snapshot is read through the Datastream interface.
@@ -708,7 +949,36 @@ class DataGenerator:
         completion = asyncio.get_running_loop().create_future()
         await env_reset_queue.put(EnvResetRequest(env_id=env_id, completion=completion))
         await completion
-        return env_id_tensor, self.datastream.get_scene_state(is_relative=True)
+        return env_id_tensor, self.datastream.get_scene_state(is_relative=True, env_ids=[env_id])
+
+    def _finalize_episode_recording(
+        self,
+        *,
+        env_id_tensor: torch.Tensor,
+        success: bool,
+        export_demo: bool,
+    ) -> None:
+        """Set recorder success and export nonempty episodes after either algorithm path.
+
+        Args:
+            env_id_tensor: Environment indices whose episodes have finished.
+            success: Whether the episode satisfies the task success condition.
+            export_demo: Whether to export the recorded episode.
+        """
+
+        env = self.datastream.get_env()
+        env.recorder_manager.set_success_to_episodes(
+            env_id_tensor,
+            torch.tensor([[success]], dtype=torch.bool, device=self.datastream.device),
+        )
+        if export_demo:
+            env_ids = [
+                env_id
+                for env_id in env_id_tensor.tolist()
+                if any(key != "initial_state" for key in env.recorder_manager.get_episode(env_id).data)
+            ]
+            if env_ids:
+                env.recorder_manager.export_episodes(env_ids)
 
     def _build_runtime_subtask_constraints(self) -> dict:
         runtime_constraints: dict = {}

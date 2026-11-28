@@ -15,6 +15,25 @@ from autodata_interfaces.tasks.task_descriptor import TaskDescriptor
 from autodata_tests.utils.constants import TestPaths
 
 
+def test_legacy_algorithm_rejects_explicit_segment_providers():
+    with pytest.raises(AssertionError, match="explicit segments require"):
+        TaskDescriptor.from_dict({
+            "name": "unsupported",
+            "algo": "mimicgen",
+            "subtasks": {
+                "arm": [{
+                    "name": "move",
+                    "segments": [{
+                        "name": "transit",
+                        "kind": "transit",
+                        "provider": "motion_planner",
+                        "motion_goal": {"position_m": [0, 0, 0], "rotation_xyzw": [0, 0, 0, 1]},
+                    }],
+                }]
+            },
+        })
+
+
 def _stack_task_dict() -> dict:
     """A four-subtask single-arm stack task (each subtask has a term signal, like SkillGen)."""
     return {

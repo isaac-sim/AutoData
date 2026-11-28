@@ -175,6 +175,17 @@ DOCKER_RUN_ARGS=(
     "--env" "DOCKER_RUN_GROUP_NAME=$(id -gn)"
 )
 
+# Linked worktrees keep their Git metadata outside the checkout.
+if [ -f "${REPO_ROOT}/.git" ]; then
+    GIT_COMMON_DIR=$(git -C "${REPO_ROOT}" rev-parse --path-format=absolute --git-common-dir)
+    GIT_COMMON_RELATIVE=$(realpath --relative-to="${REPO_ROOT}" "${GIT_COMMON_DIR}")
+    GIT_COMMON_MOUNT=$(realpath -m "${WORKDIR}/${GIT_COMMON_RELATIVE}")
+    GIT_WORKTREE_RELATIVE=$(realpath --relative-to="${GIT_COMMON_DIR}" "${REPO_ROOT}")
+    GIT_WORKTREE_MOUNT=$(realpath -m "${GIT_COMMON_MOUNT}/${GIT_WORKTREE_RELATIVE}")
+    DOCKER_RUN_ARGS+=("-v" "${GIT_COMMON_DIR}:${GIT_COMMON_DIR}" "-v" "${GIT_COMMON_DIR}:${GIT_COMMON_MOUNT}")
+    DOCKER_RUN_ARGS+=("-v" "${REPO_ROOT}:${GIT_WORKTREE_MOUNT}")
+fi
+
 # Allow local X11 clients from the container (for the Kit viewer).
 if command -v xhost >/dev/null 2>&1; then
     xhost +local:docker >/dev/null 2>&1 || true

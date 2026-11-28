@@ -1,0 +1,72 @@
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: gr1t2_nut_pour_schedulegen
+description: AutoData ScheduleGen planner profile over the upstream GR1T2 nut-pouring environment.
+base_env: AutoData-NutPour-GR1T2-ScheduleGen-v0
+planner: gr1t2_nut_pour
+viewer:
+  # Exact base-link-relative front view from the reviewed IsaacLab SkillGen task.
+  eye: [0.0, 2.0, 2.0]
+  lookat: [0.0, 0.0, 0.2]
+  origin_type: asset_body
+  asset_name: robot
+  body_name: base_link
+scene:
+  rigid_objects:
+    override:
+      # Reviewed source layout for the executable fixed-waist arm chains. The reset event
+      # independently perturbs bowl and scale by +/-1 cm in XY and applies one shared +/-1 cm
+      # XY translation to beaker and nut.
+      sorting_beaker:
+        position: [-0.12757, 0.46167, 0.9861]
+        physics_material: {static_friction: 2.0, dynamic_friction: 2.0, restitution: 0.1}
+      factory_nut:
+        position: [-0.12757, 0.46167, 0.9995]
+      sorting_bowl:
+        position: [0.03185, 0.43028, 0.9860]
+      sorting_scale:
+        position: [0.21782, 0.56552, 0.9859]
+      black_sorting_bin:
+        scale: [0.8, 1.0, 1.0]
+
+events:
+  add:
+    # Keep the lightweight beaker from the reviewed task, but use a realistic bowl mass so
+    # incidental pour contact cannot displace the later motion-planning target.
+    set_sorting_bowl_mass:
+      func: isaaclab.envs.mdp:randomize_rigid_body_mass
+      mode: startup
+      params:
+        asset_cfg: sorting_bowl
+        mass_distribution_params: [0.2, 0.2]
+        operation: abs
+    set_sorting_beaker_mass:
+      func: isaaclab.envs.mdp:randomize_rigid_body_mass
+      mode: startup
+      params:
+        asset_cfg: sorting_beaker
+        mass_distribution_params: [0.01, 0.01]
+        operation: abs
+
+control:
+  # Match the reviewed ScheduleGen task objective while retaining the current
+  # Isaac Lab Pink controller implementation and DAQP solver.
+  pink_ik:
+    action_term: gr1_action
+    frame_tasks:
+      left_hand_pitch_link:
+        position_cost: 30.0
+        orientation_cost: 5.0
+        lm_damping: 50.0
+        gain: 0.08
+      right_hand_pitch_link:
+        position_cost: 30.0
+        orientation_cost: 5.0
+        lm_damping: 50.0
+        gain: 0.08
+    damping_task:
+      cost: 0.1
+    null_space_posture_task:
+      cost: 0.1
+      lm_damping: 50.0

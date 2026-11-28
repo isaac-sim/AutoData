@@ -1,10 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Per-episode datagen schema consumed by :class:`DataGenerator`.
-
-This is the generator-internal stand-in for the eventual ``Datastream`` abstraction.
-"""
+"""Recorded source poses, annotation signals and action channels used during generation."""
 
 from __future__ import annotations
 
@@ -25,7 +22,9 @@ class DatagenInfo:
         object_nodal_positions: ``{object_name: [T, N, 3]}`` recorded deformable-object
             nodal positions [m].
         subtask_term_signals: ``{subtask_name: [T]}`` binary completion flag per step.
-        subtask_start_signals: ``{subtask_name: [T]}`` binary start flag per step; required by SkillGen.
+        subtask_start_signals: ``{subtask_name: [T]}`` binary skill-start flags for SkillGen and ScheduleGen.
+        object_event_signals: ``{event_name: [T]}`` grasp/release flags used by ScheduleGen's
+            object ownership tracking, separate from the shared skill-boundary signals.
         target_eef_pose: ``{eef_name: [T, 4, 4]}`` controller target poses [m, rad].
         passthrough_action: ``{channel_name: [T, D]}`` non-pose actions copied verbatim from the
             source demo, keyed by channel (eef grippers/hands plus any non-eef channel such as a
@@ -41,7 +40,9 @@ class DatagenInfo:
         subtask_start_signals: dict[str, Any] | None = None,
         target_eef_pose: dict[str, torch.Tensor] | None = None,
         passthrough_action: dict[str, torch.Tensor] | None = None,
+        object_event_signals: dict[str, torch.Tensor] | None = None,
     ) -> None:
+        """Store source tensors and annotation mappings."""
         self.eef_pose = eef_pose
         self.object_poses = dict(object_poses) if object_poses is not None else None
         self.object_nodal_positions = dict(object_nodal_positions) if object_nodal_positions is not None else None
@@ -49,6 +50,7 @@ class DatagenInfo:
         self.subtask_start_signals = dict(subtask_start_signals) if subtask_start_signals is not None else None
         self.target_eef_pose = target_eef_pose
         self.passthrough_action = passthrough_action
+        self.object_event_signals = dict(object_event_signals) if object_event_signals is not None else None
 
     @classmethod
     def from_episode(cls, ep_grp: dict, eef_name_map: dict[str, str] | None = None) -> DatagenInfo:
@@ -86,11 +88,12 @@ class DatagenInfo:
             object_nodal_positions=datagen_info.get("object_nodal_position"),
             subtask_term_signals=datagen_info.get("subtask_term_signals"),
             subtask_start_signals=datagen_info.get("subtask_start_signals"),
+            object_event_signals=datagen_info.get("object_event_signals"),
             target_eef_pose=_rename(datagen_info.get("target_eef_pose")),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Materialize a dict with only the populated fields."""
+        """Return a dictionary containing only populated fields."""
         out: dict[str, Any] = {}
         if self.eef_pose is not None:
             out["eef_pose"] = self.eef_pose
@@ -106,4 +109,6 @@ class DatagenInfo:
             out["target_eef_pose"] = self.target_eef_pose
         if self.passthrough_action is not None:
             out["passthrough_action"] = self.passthrough_action
+        if self.object_event_signals is not None:
+            out["object_event_signals"] = deepcopy(self.object_event_signals)
         return out

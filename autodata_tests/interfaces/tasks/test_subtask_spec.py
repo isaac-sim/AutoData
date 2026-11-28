@@ -83,6 +83,7 @@ def test_algo_params_registry_contents():
         "dexmimicgen": DexMimicGenSubtaskAlgoParams,
         "skillgen": SkillGenSubtaskAlgoParams,
         "softmimicgen": SoftMimicGenSubtaskAlgoParams,
+        "schedulegen": SkillGenSubtaskAlgoParams,
     }
     for cls in ALGO_PARAMS_REGISTRY.values():
         assert issubclass(cls, SubtaskAlgoParams)
